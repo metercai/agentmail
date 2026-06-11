@@ -6,7 +6,10 @@
 #   --auto    non-interactive mode (from env vars, suitable for CI/scripts)
 #             env vars: AMAIL_URL, AMAIL_ADMIN_KEY,
 #                       AMAIL_PRODUCT_CODE, AMAIL_DOMAIN, AMAIL_SAVE_SNAPSHOTS,
-#                       AMAIL_MANAGER_ADDRESS
+#                       AMAIL_MANAGER_ADDRESS, AMAIL_BRIDGE_BIN
+#
+# Sensitive variables (ADMIN_KEY, PRODUCT_CODE) can also be placed in
+# ~/.hermes/.env — sourced automatically, avoids ps aux exposure.
 #
 # When using a product activation code (AMAIL_PRODUCT_CODE), AMAIL_ADMIN_KEY
 # is not required. Step 3 (domain) is skipped automatically.
@@ -41,6 +44,14 @@ if ! $AUTO_MODE && [ -z "$LANG_CHOICE" ]; then
     [ "$LANG_ANS" = "2" ] && LANG_CHOICE="zh" || LANG_CHOICE="en"
 elif $AUTO_MODE; then
     LANG_CHOICE="${LANG_CHOICE:-en}"
+fi
+
+# ── Load .env file for sensitive variables ────────────────────
+ENV_FILE="$HOME/.hermes/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    . "$ENV_FILE"
+    set +a
 fi
 
 # ── Strings by language ─────────────────────────────────────────
@@ -282,6 +293,7 @@ step_fail() { echo -e "  ${RED}✗${NC} $1"; echo ""; exit 1; }
 info()      { echo -e "     $1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export SCRIPT_DIR
 TOOLS_PY="$SCRIPT_DIR/tools/amail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 
@@ -479,23 +491,32 @@ fi
 # ═══════════════════════════════════════════════════════════════
 step_begin "$T_SAVE"
 
-SETUP_RESULT=$(python3 << PYEOF
+SETUP_RESULT=$(
+export INTEGRATE_GATEWAY_URL="$GATEWAY_URL"
+export INTEGRATE_SYSTEM_ID="$SYSTEM_ID"
+export INTEGRATE_AMAIL_DOMAIN="$AMAIL_DOMAIN"
+export INTEGRATE_SAVE_SNAPSHOTS="$SAVE_SNAPSHOTS"
+export INTEGRATE_MANAGER_ADDRESS="$MANAGER_ADDRESS"
+export INTEGRATE_WEBHOOK_HOST="$WEBHOOK_HOST"
+export INTEGRATE_PRODUCT_CODE="$PRODUCT_CODE"
+export INTEGRATE_ADMIN_KEY="$ADMIN_KEY"
+export INTEGRATE_USE_PRODUCT_CODE="$USE_PRODUCT_CODE"
+python3 << 'PYEOF'
 import sys, json, os
-sys.path.insert(0, "$SCRIPT_DIR/tools")
+sys.path.insert(0, os.environ["SCRIPT_DIR"] + "/tools")
 from amail_tools import setup
 kwargs = dict(
-    gateway_url="$GATEWAY_URL",
-    system_id="$SYSTEM_ID",
-    domain=os.environ.get("AMAIL_DOMAIN", "$AMAIL_DOMAIN") or "",
-    save_raw_snapshots=os.environ.get("AMAIL_SAVE_SNAPSHOTS", "$SAVE_SNAPSHOTS") == "true",
-    manager_address=os.environ.get("AMAIL_MANAGER_ADDRESS", "$MANAGER_ADDRESS") or "",
-    webhook_host=os.environ.get("AMAIL_WEBHOOK_HOST", "$WEBHOOK_HOST") or "",
+    gateway_url=os.environ.get("INTEGRATE_GATEWAY_URL", ""),
+    system_id=os.environ.get("INTEGRATE_SYSTEM_ID", ""),
+    domain=os.environ.get("INTEGRATE_AMAIL_DOMAIN", "") or "",
+    save_raw_snapshots=os.environ.get("INTEGRATE_SAVE_SNAPSHOTS", "false") == "true",
+    manager_address=os.environ.get("INTEGRATE_MANAGER_ADDRESS", "") or "",
+    webhook_host=os.environ.get("INTEGRATE_WEBHOOK_HOST", "") or "",
 )
-if $USE_PRODUCT_CODE; then
-    kwargs["product_code"] = "$PRODUCT_CODE"
-else
-    kwargs["admin_key"] = "$ADMIN_KEY"
-fi
+if os.environ.get("INTEGRATE_USE_PRODUCT_CODE", "") == "true":
+    kwargs["product_code"] = os.environ.get("INTEGRATE_PRODUCT_CODE", "")
+else:
+    kwargs["admin_key"] = os.environ.get("INTEGRATE_ADMIN_KEY", "")
 result = setup(**kwargs)
 print(json.dumps(result, indent=2, ensure_ascii=False))
 if not result.get("success"): sys.exit(1)
@@ -544,45 +565,54 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
     BRIDGE_LINK="$BRIDGE_DIR/amail-bridge"
     mkdir -p "$BRIDGE_DIR"
 
-    # TODO: multi-platform binaries — currently only linux-amd64 available
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-    RELEASE_API="https://api.github.com/repos/metercai/amail-bridge/releases/latest"
+    # ── Resolve bridge binary: env var > GitHub download ──
+    BRIDGE_BIN=""
+    if [ -n "${AMAIL_BRIDGE_BIN:-}" ] && [ -x "$AMAIL_BRIDGE_BIN" ]; then
+        BRIDGE_BIN="$AMAIL_BRIDGE_BIN"
+        echo "  Using local bridge: $BRIDGE_BIN"
+        ln -sf "$BRIDGE_BIN" "$BRIDGE_LINK"
+    else
+        # Download from GitHub if not specified locally
+        # TODO: multi-platform binaries — currently only linux-amd64 available
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+        RELEASE_API="https://api.github.com/repos/metercai/amail-bridge/releases/latest"
 
-    LATEST_TAG=$(curl -fsS "$RELEASE_API" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
+        LATEST_TAG=$(curl -fsS "$RELEASE_API" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
 
-    BRIDGE_URL="https://github.com/metercai/amail-bridge/releases/download/${LATEST_TAG}/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
+        BRIDGE_URL="https://github.com/metercai/amail-bridge/releases/download/${LATEST_TAG}/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
 
-    if [ -n "$LATEST_TAG" ]; then
-        BRIDGE_VERSIONED="$BRIDGE_DIR/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
+        if [ -n "$LATEST_TAG" ]; then
+            BRIDGE_VERSIONED="$BRIDGE_DIR/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
 
-        if [ -x "$BRIDGE_VERSIONED" ]; then
-            echo "  Bridge ${LATEST_TAG} up to date — skip download"
+            if [ -x "$BRIDGE_VERSIONED" ]; then
+                echo "  Bridge ${LATEST_TAG} up to date — skip download"
+            else
+                echo -n "  Downloading bridge (${LATEST_TAG})... "
+                if curl -fsSL "$BRIDGE_URL" -o "$BRIDGE_VERSIONED" 2>/dev/null; then
+                    chmod +x "$BRIDGE_VERSIONED"
+                    echo "$T_OK"
+                else
+                    echo "$T_FAILED"
+                    step_warn "Bridge download failed — will use webhook push mode"
+                fi
+            fi
+            # Symlink to current version (atomically replaces old target)
+            [ -x "$BRIDGE_VERSIONED" ] && ln -sf "$(basename "$BRIDGE_VERSIONED")" "$BRIDGE_LINK"
         else
-            echo -n "  Downloading bridge (${LATEST_TAG})... "
-            if curl -fsSL "$BRIDGE_URL" -o "$BRIDGE_VERSIONED" 2>/dev/null; then
-                chmod +x "$BRIDGE_VERSIONED"
+            # API unavailable — use latest redirect, version unknown
+            FALLBACK_URL="https://github.com/metercai/amail-bridge/releases/latest/download/amail-bridge-${OS}-${ARCH}"
+            echo -n "  Downloading bridge (version unknown)... "
+            if curl -fsSL "$FALLBACK_URL" -o "$BRIDGE_LINK" 2>/dev/null; then
+                chmod +x "$BRIDGE_LINK"
                 echo "$T_OK"
             else
                 echo "$T_FAILED"
                 step_warn "Bridge download failed — will use webhook push mode"
             fi
         fi
-        # Symlink to current version (atomically replaces old target)
-        [ -x "$BRIDGE_VERSIONED" ] && ln -sf "$(basename "$BRIDGE_VERSIONED")" "$BRIDGE_LINK"
-    else
-        # API unavailable — use latest redirect, version unknown
-        FALLBACK_URL="https://github.com/metercai/amail-bridge/releases/latest/download/amail-bridge-${OS}-${ARCH}"
-        echo -n "  Downloading bridge (version unknown)... "
-        if curl -fsSL "$FALLBACK_URL" -o "$BRIDGE_LINK" 2>/dev/null; then
-            chmod +x "$BRIDGE_LINK"
-            echo "$T_OK"
-        else
-            echo "$T_FAILED"
-            step_warn "Bridge download failed — will use webhook push mode"
-        fi
     fi
-    
+
     if [ -x "$BRIDGE_LINK" ]; then
         # ── Resolve bridge addr from webhook_host ──
         BRIDGE_ADDR="${WEBHOOK_HOST:-$(read_config webhook_host)}"
@@ -843,11 +873,17 @@ fi
 # ═══════════════════════════════════════════════════════════════
 step_begin "$T_DIAG"
 
-DIAG=$(python3 << PYEOF
-import sys, json
-sys.path.insert(0, "$SCRIPT_DIR/tools")
+DIAG=$(
+export INTEGRATE_GATEWAY_URL="$GATEWAY_URL"
+export INTEGRATE_ADMIN_KEY="$ADMIN_KEY"
+python3 << 'PYEOF'
+import sys, json, os
+sys.path.insert(0, os.environ["SCRIPT_DIR"] + "/tools")
 from amail_tools import verify_integration
-result = verify_integration(gateway_url="$GATEWAY_URL", admin_key="$ADMIN_KEY")
+result = verify_integration(
+    gateway_url=os.environ.get("INTEGRATE_GATEWAY_URL", ""),
+    admin_key=os.environ.get("INTEGRATE_ADMIN_KEY", "")
+)
 print(json.dumps(result, indent=2, ensure_ascii=False))
 PYEOF
 )
