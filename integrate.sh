@@ -9,7 +9,7 @@
 #                       AMAIL_MANAGER_ADDRESS, AMAIL_BRIDGE_BIN
 #
 # Sensitive variables (ADMIN_KEY, PRODUCT_CODE) can also be placed in
-# ~/.hermes/.env — sourced automatically, avoids ps aux exposure.
+# ./.env (alongside integrate.sh) — sourced automatically, avoids ps aux exposure.
 #
 # When using a product activation code (AMAIL_PRODUCT_CODE), AMAIL_ADMIN_KEY
 # is not required. Step 3 (domain) is skipped automatically.
@@ -44,14 +44,6 @@ if ! $AUTO_MODE && [ -z "$LANG_CHOICE" ]; then
     [ "$LANG_ANS" = "2" ] && LANG_CHOICE="zh" || LANG_CHOICE="en"
 elif $AUTO_MODE; then
     LANG_CHOICE="${LANG_CHOICE:-en}"
-fi
-
-# ── Load .env file for sensitive variables ────────────────────
-ENV_FILE="$HOME/.hermes/.env"
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    . "$ENV_FILE"
-    set +a
 fi
 
 # ── Strings by language ─────────────────────────────────────────
@@ -270,12 +262,12 @@ ask_param() {
     if [ -z "$value" ]; then
         value="$default"
     fi
-    
+
     if $AUTO_MODE; then
         echo "$value"
         return
     fi
-    
+
     read -r -p "  $label [$value]: " user_input
     echo "${user_input:-$value}"
 }
@@ -296,6 +288,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export SCRIPT_DIR
 TOOLS_PY="$SCRIPT_DIR/tools/amail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
+
+# ── Load .env file for sensitive variables ────────────────────
+ENV_FILE="$SCRIPT_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    . "$ENV_FILE"
+    set +a
+fi
 
 if [ ! -f "$TOOLS_PY" ]; then
     echo -e "${RED}[ERROR] $T_ERR_NO_TOOLS: $TOOLS_PY${NC}"
@@ -325,6 +325,16 @@ else
     GATEWAY_URL=$(ask_param "gateway_url" "AMAIL_URL" "gateway_url" "$DEFAULT_URL")
 fi
 
+# Normalize: default to port 80 (http) or 443 (https) if no port in URL
+if ! echo "$GATEWAY_URL" | grep -qE ':[0-9]+(/|$|#|\?)'; then
+    if echo "$GATEWAY_URL" | grep -qi '^https://'; then
+        GATEWAY_URL="${GATEWAY_URL%/}:443"
+    else
+        GATEWAY_URL="${GATEWAY_URL%/}:80"
+    fi
+    info "No port specified, defaulting → $GATEWAY_URL"
+fi
+
 echo -n "  $T_CHECKING "
 HEALTH=$(curl -s -o /dev/null -w '%{http_code}' "$GATEWAY_URL/health" 2>/dev/null || echo "000")
 [ "$HEALTH" != "200" ] && { echo -e "${RED}$T_FAILED (HTTP $HEALTH)${NC}"; step_fail "Cannot reach $GATEWAY_URL/health"; }
@@ -352,38 +362,48 @@ if $AUTO_MODE; then
         step_fail "$T_AUTH_NEED_ONE"
     fi
 else
-    echo ""
-    info "$T_SELECT_AUTH"
-    info "  [1] $T_AUTH_OPT1"
-    info "  [2] $T_AUTH_OPT2"
-    echo -n "  $T_CHOOSE [1/2] (default 1): "; read -r AUTH_MODE
-    AUTH_MODE="${AUTH_MODE:-1}"
-
-    if [ "$AUTH_MODE" = "2" ]; then
+    # Check if env vars provide the answer
+    ADMIN_KEY="${AMAIL_ADMIN_KEY:-}"
+    PRODUCT_CODE="${AMAIL_PRODUCT_CODE:-}"
+    if [ -n "$ADMIN_KEY" ] && [ -z "$PRODUCT_CODE" ]; then
+        info "$T_AUTH_READ"
+    elif [ -n "$PRODUCT_CODE" ] && [ -z "$ADMIN_KEY" ]; then
         USE_PRODUCT_CODE=true
-        echo "  $T_PC_HELP"
-        read -r -p "  $T_PC_PROMPT" PRODUCT_CODE
-        [ -z "$PRODUCT_CODE" ] && step_fail "$T_PC_EMPTY"
-        info "$T_PC_USING: ${PRODUCT_CODE:0:8}..."
-        info "  $T_PC_AUTO"
+        info "$T_AUTH_READ_PC"
     else
-        # admin_key path — auto-detect file + manual input
-        AUTO_KEY=""; AUTO_PATH=""
-        for dir in "." "/tmp/amail-gateway"; do
-            [ -d "$dir" ] || continue
-            found=$(find "$dir" -maxdepth 1 -name "*.admin_key" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
-            [ -n "$found" ] && [ -f "$found" ] && AUTO_KEY=$(head -1 "$found") && AUTO_PATH="$found" && break
-        done
-        if [ -n "$AUTO_KEY" ]; then
-            info "$T_DETECT_KEY: $AUTO_PATH (${AUTO_KEY:0:8}...)"
-            echo -n "  $T_USE_KEY [Y/n]: "; read -r USE_AUTO
-            if [ "${USE_AUTO:-Y}" = "Y" ] || [ "${USE_AUTO:-y}" = "y" ]; then
-                ADMIN_KEY="$AUTO_KEY"
+        echo ""
+        info "$T_SELECT_AUTH"
+        info "  [1] $T_AUTH_OPT1"
+        info "  [2] $T_AUTH_OPT2"
+        echo -n "  $T_CHOOSE [1/2] (default 1): "; read -r AUTH_MODE
+        AUTH_MODE="${AUTH_MODE:-1}"
+
+        if [ "$AUTH_MODE" = "2" ]; then
+            USE_PRODUCT_CODE=true
+            echo "  $T_PC_HELP"
+            read -r -p "  $T_PC_PROMPT" PRODUCT_CODE
+            [ -z "$PRODUCT_CODE" ] && step_fail "$T_PC_EMPTY"
+            info "$T_PC_USING: ${PRODUCT_CODE:0:8}..."
+            info "  $T_PC_AUTO"
+        else
+            # admin_key path — auto-detect file + manual input
+            AUTO_KEY=""; AUTO_PATH=""
+            for dir in "." "/tmp/amail-gateway"; do
+                [ -d "$dir" ] || continue
+                found=$(find "$dir" -maxdepth 1 -name "*.admin_key" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
+                [ -n "$found" ] && [ -f "$found" ] && AUTO_KEY=$(head -1 "$found") && AUTO_PATH="$found" && break
+            done
+            if [ -n "$AUTO_KEY" ]; then
+                info "$T_DETECT_KEY: $AUTO_PATH (${AUTO_KEY:0:8}...)"
+                echo -n "  $T_USE_KEY [Y/n]: "; read -r USE_AUTO
+                if [ "${USE_AUTO:-Y}" = "Y" ] || [ "${USE_AUTO:-y}" = "y" ]; then
+                    ADMIN_KEY="$AUTO_KEY"
+                fi
             fi
-        fi
-        if [ -z "$ADMIN_KEY" ]; then
-            echo "  $T_KEY_HINT"
-            ADMIN_KEY=$(ask_param "$T_KEY_PROMPT" "AMAIL_ADMIN_KEY" "admin_key" "")
+            if [ -z "$ADMIN_KEY" ]; then
+                echo "  $T_KEY_HINT"
+                ADMIN_KEY=$(ask_param "$T_KEY_PROMPT" "AMAIL_ADMIN_KEY" "admin_key" "")
+            fi
         fi
     fi
 fi
@@ -491,6 +511,7 @@ fi
 # ═══════════════════════════════════════════════════════════════
 step_begin "$T_SAVE"
 
+EXIT_CODE=0
 SETUP_RESULT=$(
 export INTEGRATE_GATEWAY_URL="$GATEWAY_URL"
 export INTEGRATE_SYSTEM_ID="$SYSTEM_ID"
@@ -521,8 +542,7 @@ result = setup(**kwargs)
 print(json.dumps(result, indent=2, ensure_ascii=False))
 if not result.get("success"): sys.exit(1)
 PYEOF
-)
-EXIT_CODE=$?
+) || EXIT_CODE=$?
 echo "$SETUP_RESULT"
 [ $EXIT_CODE -ne 0 ] && step_fail "$T_CONFIG_FAIL"
 

@@ -62,7 +62,7 @@ class _GatewayClient:
         raw_body: Optional[bytes] = None,
         headers: Optional[dict] = None,
     ) -> dict:
-        ""Make an HTTP request to the gateway API. Returns parsed JSON or error dict."""
+        """"Make an HTTP request to the gateway API. Returns parsed JSON or error dict."""
         url = f"{self.gateway_url}{path}"
         req_headers = {"Accept": "application/json"}
         if self.api_key:
@@ -211,14 +211,14 @@ class _GatewayClient:
     # ── Agent State API (per-agent KV store) ─────────────────────
 
     def agent_state_get(self, key: str) -> Optional[str]:
-        """GET /api/v1/admin/agent-state/:key — returns value string or None."""
+        """GET /api/v1/admin/agent-state/:key - returns value string or None."""
         result = self._request("GET", f"/api/v1/admin/agent-state/{key}")
         if result.get("status") == 200:
             return result.get("value")
         return None
 
     def agent_state_put(self, key: str, value: str) -> dict:
-        """PUT /api/v1/admin/agent-state/:key — upsert a value."""
+        """PUT /api/v1/admin/agent-state/:key - upsert a value."""
         return self._request("PUT", f"/api/v1/admin/agent-state/{key}", body={"value": value})
 
     def agent_state_delete(self, key: str) -> dict:
@@ -269,20 +269,17 @@ class _GatewayClient:
         webhook_secret: str,
         manager_address: str = "",
         delivery_mode: str = "webhook",
+        generate_code: bool = False,
     ) -> dict:
-        """POST /api/v1/admin/systems/:tid/domains -- register an email/webhook route.
-
-        The `email` address is registered as a routing entry (stored in
-        system_domains.domain_addr). Incoming SMTP mail to this exact address
-        will be delivered to the configured webhook URL.
-
-        Also creates an outbound whitelist entry so the profile can send mail."""
+        """POST /api/v1/admin/systems/:sid/addresses — register an agent address.
+        When generate_code=True, also creates an activation code in one call."""
+        params = "?generate_code=true" if generate_code else ""
         result = self._request(
             "POST",
-            f"/api/v1/admin/systems/{system_id}/domains",
+            f"/api/v1/admin/systems/{system_id}/addresses{params}",
             body={
-                "id": f"dom-{email.replace('@', '-at-')}-{int(time.time())}",
-                "domain": email,
+                "id": f"addr-{email.replace('@', '-at-')}-{int(time.time())}",
+                "email": email,
                 "webhook_url": webhook_url,
                 "webhook_secret": webhook_secret,
                 "manager_address": manager_address,
@@ -412,7 +409,7 @@ def _gateway_config_path() -> Path:
 
 
 def _load_gateway_config() -> Optional[dict]:
-    load amail gateway connection config
+    """load amail gateway connection config
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
@@ -546,7 +543,7 @@ def setup(
             return {"success": False, "error": "system_id is required for admin_key path"}
         # Save directly to Hermes config
         _save_gateway_config(
-            "gateway_url": gateway_url
+            gateway_url=gateway_url,
             admin_key=admin_key,
             system_id=system_id,
             domain=domain or "admin.local",
@@ -568,7 +565,7 @@ def setup(
             system_id=system_id,
             system_name=system_name,
             domain=domain,
-            "gateway_url": gateway_url
+            gateway_url=gateway_url,
             save_raw_snapshots=save_raw_snapshots,
             manager_address=manager_address,
             webhook_host=webhook_host,
@@ -901,7 +898,7 @@ def _load_webhook_config() -> Optional[dict]:
 # ── Webhook host auto-detection ──────────────────────────────
 
 def _detect_webhook_host(gateway_url: str) -> str:
-    determine the reachable host for gateway → Hermes webhook callbacks
+    """determine the reachable host for gateway → Hermes webhook callbacks
 
     Compares ``gateway_url``'s host against local interfaces to choose the
     correct callback address:
@@ -1174,7 +1171,7 @@ def init_system(
 
     # Save admin_key to standalone gateway config
     _save_gateway_config(
-        "gateway_url": gateway_url
+        gateway_url=gateway_url,
         admin_key=admin_key,
         system_id=created_system_id,
         domain=created_domain,
@@ -1862,7 +1859,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
 
-    # Register the email as a per-recipient webhook route on gateway
+    # Register the email + generate activation code in one call
     result = client.register_email(
         system_id=system_id,
         mx_domain=config["domain"],
@@ -1871,10 +1868,11 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         webhook_secret=webhook_secret,
         manager_address=manager_address,
         delivery_mode=delivery_mode,
+        generate_code=True,
     )
     logger.info("[amail_gateway] Registered email %s: %s", email, result)
 
-    if result.get("status") not in (200, 201):
+    if result.get("status") not in ("created", 200, 201):
         logger.error("[amail_gateway] Failed to register email %s: %s — skipping activation code generation", email, result)
         return
 
@@ -1889,21 +1887,21 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         )
         logger.info("[amail_gateway] Whitelisted manager %s for agent %s", manager_address, email)
 
-    # Create address activation code (NOT the API key itself -- that happens in the agent process)
-    code_result = client.generate_address_codes(
-        system_id=system_id,
-        domain=config["domain"],
-        count=1,
-        email_address=email,
-    )
+    # Extract activation code from combined response
+    activation_code = ""
+    if isinstance(result, dict):
+        raw = result.get("activation_code", "")
+        if raw:
+            activation_code = raw
 
-    raw_codes = code_result.get("raw_codes", [])
-    if raw_codes:
-        activation_code = raw_codes[0]
-        _inject_profile_config(profile_dir, {
-            "email": email,
-            "activation_code": activation_code,
-            "gateway_url": gateway_url
+    if not activation_code:
+        logger.warning("[amail_gateway] No activation code in register response for %s", email)
+        return
+
+    _inject_profile_config(profile_dir, {
+        "email": email,
+        "activation_code": activation_code,
+        "gateway_url": gateway_url,
             "domain": config["domain"],
             "system_id": system_id,
             "manager_address": manager_address,
@@ -1911,13 +1909,10 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             "webhook_host": config.get("webhook_host", "127.0.0.1"),
             "bridge_url": config.get("bridge_url", ""),
         })
-        logger.info("[amail_gateway] Created activation code for %s (must be activated by agent)", email)
-    else:
-        logger.warning("[amail_gateway] Failed to create activation code for %s: %s", email, code_result)
 
 
-# ── Hook: auto-activate profile on agent startup ─────────────────
-
+# ═══════════════════════════════════════════════════════════════
+# Hook: auto-activate profile on agent startup
 def _auto_activate_profile(profile_dir: str, config: dict) -> None:
     """Activate a pending profile (has activation_code, no api_key yet).
 
