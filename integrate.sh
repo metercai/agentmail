@@ -690,6 +690,10 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
         # ── Probe gateway → agent reachability to pick push vs pull ──
         BRIDGE_MODE="push"
         echo -n "  Probing gateway reachability to ${BRIDGE_ADDR}... "
+        # Loopback addresses can't be probed remotely — skip probe, default push
+        if echo "$BRIDGE_ADDR" | grep -qE "^127\\.|^0\\.|^::1$|^localhost"; then
+            echo "local (push mode)"
+        else
         PROBE_RESULT=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/probe-webhook" \
             -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
             -d "{\"addr\":\"${BRIDGE_ADDR}\"}" 2>/dev/null || echo '{"reachable":false,"error":"curl_failed"}')
@@ -699,6 +703,7 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
             BRIDGE_MODE="pull"
             PROBE_ERR=$(echo "$PROBE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','?'))" 2>/dev/null || echo "?")
             echo "unreachable (pull mode, reason: $PROBE_ERR)"
+        fi
         fi
 
         # ── Write bridge_url to amail_gateway.json (used by _auto_register_email) ──
