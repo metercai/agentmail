@@ -656,7 +656,25 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
                     except Exception:
                         pass
     if has_amail:
-        add("webhook_route", True, "amail-inbound route found")
+        # Verify the route has preprocess = "amail_gateway" configured
+        preprocess_ok = False
+        for subs_path in routes_checked:
+            p = Path(subs_path)
+            if p.exists():
+                try:
+                    data = json.loads(p.read_text())
+                    routes = data.get("subscriptions", {}).get("routes", {})
+                    route = routes.get("amail-inbound", {})
+                    if route.get("preprocess") == "amail_gateway":
+                        preprocess_ok = True
+                        break
+                except Exception:
+                    pass
+        if preprocess_ok:
+            add("webhook_route", True, "amail-inbound route found (preprocessor configured)")
+        else:
+            add("webhook_route", False, "amail-inbound route missing preprocess=\"amail_gateway\"",
+                "Run integrate.sh (Step 5) to reconfigure the webhook route")
     else:
         add("webhook_route", False,
             f"amail-inbound route missing (checked: {', '.join(routes_checked)})",
