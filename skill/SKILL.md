@@ -1,13 +1,24 @@
 ---
 name: amail
-description: "Conduct email conversations — process inbound mail, decide whether and how to reply, compose professional responses, and remember contacts and thread state. Powered by the amail toolset (send_mail, contact_profile, set_contact_profile, manage_contacts, email_summary, set_email_summary)."
-version: 2.0.0
+description: "Send outbound emails for reporting deliverables, project status updates, requesting decisions/approvals, or A2A collaboration. Also handles inbound email (auto-loaded by webhook)."
+version: 1.0.0
 author: MeterCai
 license: GPL-3.0
 metadata:
   hermes:
     tags: [email, mail, amail, conversation]
     toolset: amail
+triggers:
+  - "send email"
+  - "compose email"
+  - "report deliverables"
+  - "project status update"
+  - "request decision"
+  - "request approval"
+  - "A2A collaboration"
+  - "agent-to-agent"
+  - "outbound email"
+  - "send_mail"
 ---
 
 # amail — Email Conversation Agent

@@ -1,3 +1,3 @@
 ---
-description: "Agent's mail — its own email address for communicating with humans and other agents. Inbound mail arrives as messages with auto-extracted sender profiles and signatures. contact_profile remembers each contact's role and context. Four tools: send_mail, contact_profile, set_contact_profile, manage_contacts."
+description: "Send outbound emails for: reporting deliverables, project status updates, requesting decisions/approvals, or A2A collaboration (agent-to-agent via email addresses). Also handles inbound email processing (auto-loaded by system webhook)."
 ---
