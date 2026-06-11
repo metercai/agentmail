@@ -440,8 +440,9 @@ print(entries[$DOMAIN_CHOICE-1]['domain'])
         step_ok "$T_DOMAIN_UNSET"
     fi
 else
-    # product_code: skip Step 3 entirely, advance step counter
-    step=$((step + 1))
+    # product_code: skip Step 3 entirely
+    step_begin "$T_DOMAIN (skipped for product_code)"
+    step_ok "domain = ${AMAIL_DOMAIN:-$T_DOMAIN_UNSET}"
     SYSTEM_ID=""
     AMAIL_DOMAIN=""
 fi
@@ -633,7 +634,17 @@ system_id = "$SYSTEM_ID"
 poll_interval_sec = 10
 EOF
         fi
-        
+
+        # Kill old bridge if running (avoid duplicate listeners)
+        OLD_PID_FILE="$HOME/.hermes/bridge.pid"
+        if [ -f "$OLD_PID_FILE" ]; then
+            OLD_PID=$(cat "$OLD_PID_FILE" 2>/dev/null || echo "")
+            if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+                echo "  Stopping old bridge (pid $OLD_PID)..."
+                kill "$OLD_PID" 2>/dev/null && sleep 1
+            fi
+        fi
+
         # Start bridge
         nohup "$BRIDGE_LINK" > "$HOME/.hermes/bridge.log" 2>&1 &
         BRIDGE_PID=$!
@@ -812,14 +823,14 @@ else:
     print(f"registered:{count}")
 PYEOF
 )
-    echo "$REG_OUTPUT" | while IFS=: read key val; do
-        case "$key" in
-            registered) REG_COUNT="$val" ;;
-            failed) info "  ⚠ $val" ;;
-            no_config) info "  No gateway config — skip" ;;
+    REG_COUNT=0
+    while IFS= read -r line; do
+        case "$line" in
+            registered:*) REG_COUNT="${line#registered:}" ;;
+            failed:*)     info "  ⚠ ${line#failed:}" ;;
+            no_config)    info "  No gateway config — skip" ;;
         esac
-    done
-    REG_COUNT=$(echo "$REG_OUTPUT" | grep '^registered:' | cut -d: -f2)
+    done <<< "$REG_OUTPUT"
     if [ "${REG_COUNT:-0}" -gt 0 ]; then
         echo "  $T_PROFILES_REG_DONE" | sed "s/{count}/$REG_COUNT/"
     else
