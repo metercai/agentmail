@@ -9,7 +9,7 @@ Usage:
     # 直接运行（自动启动内置 mock server）
     python3 test_amr_tools.py
 
-    # 指定真实 relay 地址（可选，用于 E2E 验证）
+    # 指定真实 gateway 地址（可选，用于 E2E 验证）
     python3 test_amr_tools.py --live http://127.0.0.1:38080 --key sk-xxx
 
     # 只测试特定模块
@@ -60,7 +60,7 @@ from amail_tools import (
     _profile_hooks,
     _auto_register_email,
     _auto_deregister_email,
-    _load_relay_config,
+    _load_gateway_config,
     _load_profile_config,
     _inject_profile_config,
     init_tenant,
@@ -436,12 +436,12 @@ def test_init_tenant(mock: MockRelayServer):
         t.check(r.get("success"), f"success={r.get('success')}")
         t.check(r.get("admin_key"), f"admin_key returned")
 
-    with TestCase("init_tenant — missing relay_url") as t:
+    with TestCase("init_tenant — missing gateway_url") as t:
         for k in list(os.environ.keys()):
             if k.startswith("AMAIL"):
                 del os.environ[k]
         r = init_tenant(product_code="x", tenant_id="x", tenant_name="x")
-        t.check(not r.get("success", True), "should fail without relay_url")
+        t.check(not r.get("success", True), "should fail without gateway_url")
 
 
 def test_agent_startup_activate(mock: MockRelayServer):
@@ -467,7 +467,7 @@ def test_agent_startup_activate(mock: MockRelayServer):
             _inject_profile_config(d, {
                 "email": "agent@test.com",
                 "api_key": "sk-already-has-key",
-                "relay_url": mock.url,
+                "gateway_url": mock.url,
             })
             r = agent_startup_activate()
             t.check(r.get("success"), f"success={r.get('success')}")
@@ -480,11 +480,11 @@ def test_agent_startup_activate(mock: MockRelayServer):
             _inject_profile_config(d, {
                 "email": "agent@test.com",
                 "activation_code": "mock-addr-code-agent",
-                "relay_url": mock.url,
+                "gateway_url": mock.url,
                 "domain": "test.com",
                 "tenant_id": "t1",
             })
-            # Also need global config for relay_url
+            # Also need global config for gateway_url
             os.environ["AMAIL_URL"] = mock.url
             os.environ["AMAIL_ADMIN_KEY"] = "test-key"
             r = agent_startup_activate()
@@ -504,10 +504,10 @@ def test_config_loading(mock: MockRelayServer):
         os.environ["AMAIL_ADMIN_KEY"] = "env-key"
         os.environ["AMAIL_SYS_ID"] = "myproject"
         os.environ["AMAIL_MX_DOMAIN"] = "mail.myproject.com"
-        cfg = _load_relay_config()
+        cfg = _load_gateway_config()
         t.check(cfg is not None, "config loaded")
         if cfg:
-            t.eq(cfg["relay_url"], mock.url)
+            t.eq(cfg["gateway_url"], mock.url)
             t.eq(cfg["tenant_id"], "myproject")
             t.eq(cfg["domain"], "mail.myproject.com")
         del os.environ["AMAIL_URL"]
@@ -535,11 +535,11 @@ def test_preprocess(mock: MockRelayServer):
         r = preprocess_mail_payload({"from": "a@b.com", "body": "Hi"}, {})
         t.eq(r["from"], "a@b.com")
 
-    with TestCase("attachments — no relay config") as t:
+    with TestCase("attachments — no gateway config") as t:
         r = preprocess_mail_payload({"attachments": [{"id": "abc", "filename": "t.txt"}]}, {})
         t.check(isinstance(r["attachments"], list), "attachments preserved as list")
 
-    with TestCase("attachments — with relay config") as t:
+    with TestCase("attachments — with gateway config") as t:
         os.environ["AMAIL_URL"] = mock.url
         os.environ["AMAIL_ADMIN_KEY"] = "test-key"
         payload = {"attachments": [{"attachment_id": "abc", "filename": "test.txt"}]}
@@ -563,7 +563,7 @@ def test_agent_tools(mock: MockRelayServer):
             _inject_profile_config(d, {
                 "email": "agent@test.com",
                 "api_key": "sk-test",
-                "relay_url": mock.url,
+                "gateway_url": mock.url,
                 "domain": "test.com",
                 "tenant_id": "t1",
             })
@@ -581,7 +581,7 @@ def test_agent_tools(mock: MockRelayServer):
             _inject_profile_config(d, {
                 "email": "agent@test.com",
                 "api_key": "sk-test",
-                "relay_url": mock.url,
+                "gateway_url": mock.url,
                 "domain": "test.com",
                 "tenant_id": "t1",
             })
@@ -595,7 +595,7 @@ def test_agent_tools(mock: MockRelayServer):
             _inject_profile_config(d, {
                 "email": "agent@test.com",
                 "api_key": "sk-test",
-                "relay_url": mock.url,
+                "gateway_url": mock.url,
                 "domain": "test.com",
                 "tenant_id": "t1",
             })
@@ -612,7 +612,7 @@ def test_hooks(mock: MockRelayServer):
         t.check(len(_profile_hooks.get("profile_created", [])) >= 1, "profile_created hooks")
         t.check(len(_profile_hooks.get("profile_deleted", [])) >= 1, "profile_deleted hooks")
 
-    with TestCase("trigger — no relay config") as t:
+    with TestCase("trigger — no gateway config") as t:
         with tempfile.TemporaryDirectory() as d:
             try:
                 trigger_profile_hooks("profile_created", "test", d)
@@ -620,7 +620,7 @@ def test_hooks(mock: MockRelayServer):
             except Exception as e:
                 t.check(False, f"raised: {e}")
 
-    with TestCase("trigger — with relay config") as t:
+    with TestCase("trigger — with gateway config") as t:
         os.environ["AMAIL_URL"] = mock.url
         os.environ["AMAIL_ADMIN_KEY"] = "test-key"
         os.environ["AMAIL_SYS_ID"] = "test"
@@ -667,7 +667,7 @@ def main():
 
     import argparse
     ap = argparse.ArgumentParser(description="Test amail_tools.py")
-    ap.add_argument("--live", help="Real relay URL for E2E")
+    ap.add_argument("--live", help="Real gateway URL for E2E")
     ap.add_argument("--key", help="API key for live testing")
     ap.add_argument("--test", help="Test filter: client,activation,init,activate,config,preprocess,tools,hooks")
     args = ap.parse_args()
@@ -678,14 +678,14 @@ def main():
     live_key = args.key
 
     if live_url:
-        print(f"Using live relay: {live_url}")
+        print(f"Using live gateway: {live_url}")
         mock_server = None
         # Override env vars for live testing
         os.environ["AMAIL_URL"] = live_url
         os.environ["AMAIL_ADMIN_KEY"] = live_key or ""
         mock = type("obj", (object,), {"url": live_url})()
     else:
-        print("Starting mock relay server...")
+        print("Starting mock gateway server...")
         mock_server = MockRelayServer()
         mock = mock_server
         print(f"  Mock server on port {mock.port}")

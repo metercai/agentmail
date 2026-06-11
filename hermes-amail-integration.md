@@ -62,7 +62,7 @@ bash integrate.sh
 #   [2/10] auth method       — enter admin_key or product code
 #   [3/10] domain            — select or enter agent email domain (admin_key only)
 #   [4/10] basic config      — save snapshots? + default manager email address
-#   [5/10] save config       — writes ~/.hermes/amail_relay.json (or activates system)
+#   [5/10] save config       — writes ~/.hermes/amail_gateway.json (or activates system)
 #   [6/10] install tools     — copies amail_tools.py + registers in toolsets.py
 #   [7/10] patch webhook     — injects preprocessor support
 #   [8/10] patch profiles    — injects profile lifecycle hooks
@@ -131,7 +131,7 @@ When a Hermes profile is created, the **profile hook** fires automatically:
 {
   "email": "alice@admin.relay",
   "activation_code": "addr-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx",
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "domain": "admin.relay",
   "system_id": "admin",
   "manager_address": "admin@admin.relay",
@@ -318,13 +318,13 @@ SMTP → relay
 
 ## Configuration Reference
 
-### Relay Config (`~/.hermes/amail_relay.json`)
+### Gateway Config (`~/.hermes/amail_gateway.json`)
 
 Standalone file — does NOT pollute `config.yaml`:
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "admin_key": "sk-...",
   "system_id": "admin",
   "domain": "admin.relay",
@@ -345,7 +345,7 @@ relay uses to POST webhook callbacks to the Hermes gateway:
 | Public internet | External IP (or LAN fallback) |
 | Docker (manual) | Set `AMAIL_WEBHOOK_HOST` env var |
 
-Override with `AMAIL_WEBHOOK_HOST` env var or edit `amail_relay.json` directly.
+Override with `AMAIL_WEBHOOK_HOST` env var or edit `amail_gateway.json` directly.
 
 **Optional `bridge_url` — amail-bridge push mode:**
 
@@ -371,7 +371,7 @@ SMTP mail will be stored in relay pending queue instead of POSTed to webhook.
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "api_key": "sk-...",
   "email": "alice@admin.relay",
   "system_id": "admin",

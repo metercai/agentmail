@@ -86,7 +86,7 @@ if [ "$LANG_CHOICE" = "zh" ]; then
     T_SNAP_OFF="save_raw_snapshots = false (不在本地保存邮件快照)"
     T_SNAP_CONFIG="基本配置"
     T_MANAGER_PROMPT="默认管理员邮箱: "
-    T_SAVE="保存配置到 ~/.hermes/amail_relay.json"
+    T_SAVE="保存配置到 ~/.hermes/amail_gateway.json"
     T_CONFIG_FAIL="配置写入失败"
     T_ACTIVATED="系统激活成功！"
     T_ACT_FAIL="激活失败 — 未能提取 admin_key（可稍后手动查询）"
@@ -182,7 +182,7 @@ else
     T_SNAP_OFF="save_raw_snapshots = false (no local snapshot storage)"
     T_SNAP_CONFIG="Basic configuration"
     T_MANAGER_PROMPT="Default manager email address: "
-    T_SAVE="Save config to ~/.hermes/amail_relay.json"
+    T_SAVE="Save config to ~/.hermes/amail_gateway.json"
     T_CONFIG_FAIL="Config write failed"
     T_ACTIVATED="System activated!"
     T_ACT_FAIL="Activation failed — could not extract admin_key (retry manually later)"
@@ -239,10 +239,10 @@ else
 fi
 
 # ── Idempotent config helpers ──────────────────────────────────
-# Read existing value from ~/.hermes/amail_relay.json
+# Read existing value from ~/.hermes/amail_gateway.json
 read_config() {
     local key="$1"
-    python3 -c "import sys,json,os; d={}; p=os.path.expanduser('~/.hermes/amail_relay.json');
+    python3 -c "import sys,json,os; d={}; p=os.path.expanduser('~/.hermes/amail_gateway.json');
     d=json.load(open(p)) if os.path.exists(p) else {}; print(d.get('$key',''))" 2>/dev/null || echo ""
 }
 
@@ -524,7 +524,7 @@ if $USE_PRODUCT_CODE; then
     fi
 fi
 
-CONFIG_FILE="$HOME/.hermes/amail_relay.json"
+CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
 if [ -f "$CONFIG_FILE" ]; then
     step_ok "$T_CONFIG_OK $CONFIG_FILE"
 else
@@ -605,10 +605,10 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
             echo "unreachable (pull mode, reason: $PROBE_ERR)"
         fi
 
-        # ── Write bridge_url to amail_relay.json (used by _auto_register_email) ──
+        # ── Write bridge_url to amail_gateway.json (used by _auto_register_email) ──
         python3 -c "
 import json, os
-p = os.path.expanduser('~/.hermes/amail_relay.json')
+p = os.path.expanduser('~/.hermes/amail_gateway.json')
 cfg = json.load(open(p)) if os.path.exists(p) else {}
 cfg['bridge_url'] = 'http://${BRIDGE_ADDR}/webhooks/amail-inbound'
 json.dump(cfg, open(p, 'w'), indent=2)
@@ -768,8 +768,8 @@ else
     REG_OUTPUT=$(python3 << PYEOF
 import sys, os
 sys.path.insert(0, "$SCRIPT_DIR/tools")
-from amail_tools import _auto_register_email, _load_relay_config
-config = _load_relay_config()
+from amail_tools import _auto_register_email, _load_gateway_config
+config = _load_gateway_config()
 if not config or not config.get("admin_key"):
     print("no_config")
 else:

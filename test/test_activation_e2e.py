@@ -32,8 +32,8 @@ sys.modules["tools"] = MockMod()
 sys.modules["tools.registry"] = MockMod()
 
 from amail_tools import (
-    _RelayClient, init_tenant, agent_startup_activate,
-    _load_relay_config, _load_profile_config, _inject_profile_config,
+    _GatewayClient, init_tenant, agent_startup_activate,
+    _load_gateway_config, _load_profile_config, _inject_profile_config,
     _auto_register_email, _auto_deregister_email, _profile_hooks,
 )
 
@@ -47,7 +47,7 @@ def check(cond, msg): ok(msg) if cond else nok(msg)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class MockBackend(BaseHTTPRequestHandler):
-    """Simulates the amail-relay backend for activation flow testing."""
+    """Simulates the amail-gateway backend for activation flow testing."""
 
     def log_message(self, *a): pass
 
@@ -210,13 +210,13 @@ def create_server():
 # Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_flow_a_new_tenant(relay_url: str):
+def test_flow_a_new_tenant(gateway_url: str):
     """流程 A：新租户 — product_code → activate-tenant → admin_key"""
     print("\n═══════════ 流程 A：新租户激活 ═══════════")
 
     # ── A.1: _RelayClient.activate_tenant() ──
     print("\n── A.1: 直接调用 _RelayClient.activate_tenant() ──")
-    client = _RelayClient(relay_url, "")  # No auth — code is credential
+    client = _GatewayClient(gateway_url, "")  # No auth — code is credential
     r = client.activate_tenant(
         code="prod-mock-team-001",
         tenant_id="my-team",
@@ -236,12 +236,12 @@ def test_flow_a_new_tenant(relay_url: str):
 
     # ── A.2: init_tenant() ──
     print("\n── A.2: init_tenant() 高层函数 ──")
-    os.environ["AMAIL_URL"] = relay_url
+    os.environ["AMAIL_GATEWAY_URL"] = gateway_url
     r2 = init_tenant(
         product_code="prod-mock-team-001",
         tenant_id="my-team-2",
         tenant_name="My Second Team",
-        relay_url=relay_url,
+        gateway_url=gateway_url,
     )
     del os.environ["AMAIL_URL"]
 
@@ -252,21 +252,21 @@ def test_flow_a_new_tenant(relay_url: str):
     check(r2.get("tenant_id") == "my-team-2",
           f"A.2.3: tenant_id = {r2.get('tenant_id')}")
 
-    # ── A.3: init_tenant() without relay_url (should fail) ──
+    # ── A.3: init_tenant() without gateway_url (should fail) ──
     print("\n── A.3: init_tenant() 参数验证 ──")
     for k in list(os.environ.keys()):
         if k.startswith("AMAIL") or k.startswith("AMR"):
             del os.environ[k]
     r3 = init_tenant(product_code="x", tenant_id="x", tenant_name="x")
     check(not r3.get("success"),
-          f"A.3.1: init_tenant fails without relay_url (success={r3.get('success')})")
-    check("relay_url" in r3.get("error", "").lower(),
-          f"A.3.2: error mentions relay_url") if not r3.get("success") else ok("skip")
+          f"A.3.1: init_tenant fails without gateway_url (success={r3.get('success')})")
+    check("gateway_url" in r3.get("error", "").lower(),
+          f"A.3.2: error mentions gateway_url") if not r3.get("success") else ok("skip")
 
     return "my-team"  # Return tenant_id for subsequent tests
 
 
-def test_flow_b_existing_tenant(relay_url: str):
+def test_flow_b_existing_tenant(gateway_url: str):
     """流程 B：已有租户 — 直接提供 admin_key → 验证授权"""
     print("\n═══════════ 流程 B：已有租户直接配置 ═══════════")
 
@@ -275,7 +275,7 @@ def test_flow_b_existing_tenant(relay_url: str):
 
     # ── B.1: 验证 admin_key 可用于生成 address codes ──
     print("\n── B.1: tenant_admin key 可以生成 address codes ──")
-    client = _RelayClient(relay_url, admin_key)
+    client = _GatewayClient(gateway_url, admin_key)
     r = client.generate_address_codes(
         tenant_id=tenant_id,
         domain="mail.existing.io",
@@ -288,7 +288,7 @@ def test_flow_b_existing_tenant(relay_url: str):
 
     # ── B.2: 验证 address code 可由 agent 激活 ──
     print("\n── B.2: address code 可被 agent 激活 ──")
-    agent_client = _RelayClient(relay_url, "")  # no auth
+    agent_client = _GatewayClient(gateway_url, "")  # no auth
     r2 = agent_client.activate_address(
         code=activation_code,
         email_address="agent@mail.existing.io",
@@ -300,7 +300,7 @@ def test_flow_b_existing_tenant(relay_url: str):
 
     # ── B.3: 验证错误的 key 会被拒绝 ──
     print("\n── B.3: 错误 key 验证 ──")
-    bad_client = _RelayClient(relay_url, "sk-fake-key")
+    agent_client = _GatewayClient(gateway_url, "")
     r3 = bad_client.generate_address_codes(
         tenant_id="x", domain="x", count=1,
     )
@@ -318,13 +318,13 @@ def test_flow_b_existing_tenant(relay_url: str):
     ok("B.3: 权限验证依赖具体 mock 实现")
 
 
-def test_flow_c_agent_activation(relay_url: str, tenant_id: str, admin_key: str):
+def test_flow_c_agent_activation(gateway_url: str, tenant_id: str, admin_key: str):
     """流程 C：Agent 激活 — 获取 address code → agent 自激活 → api_key"""
     print("\n═══════════ 流程 C：Agent Profile 激活 ═══════════")
 
     # ── C.1: list_address_codes() bool serialization ──
     print("\n── C.1: list_address_codes() 查询可用 codes ──")
-    client = _RelayClient(relay_url, admin_key)
+    client = _GatewayClient(gateway_url, admin_key)
     r = client.list_address_codes(
         tenant_id=tenant_id,
         claimed=False,  # ← This must serialize as lowercase "false"
@@ -354,7 +354,7 @@ def test_flow_c_agent_activation(relay_url: str, tenant_id: str, admin_key: str)
         cfg = {
             "email": "agent@test.com",
             "activation_code": raw_codes[0],  # ← NOT the api_key!
-            "relay_url": relay_url,
+            "gateway_url": gateway_url,
             "domain": "test.com",
             "tenant_id": tenant_id,
         }
@@ -390,7 +390,7 @@ def test_flow_c_agent_activation(relay_url: str, tenant_id: str, admin_key: str)
         _inject_profile_config(d, {
             "email": "agent@test.com",
             "api_key": "sk-already-activated",
-            "relay_url": relay_url,
+            "gateway_url": gateway_url,
             "domain": "test.com",
             "tenant_id": tenant_id,
         })
@@ -405,14 +405,14 @@ def test_flow_c_agent_activation(relay_url: str, tenant_id: str, admin_key: str)
     print("\n── C.6: profile hook → register → activate 全流程 ──")
     with tempfile.TemporaryDirectory() as d:
         os.environ["HERMES_PROFILE_DIR"] = d
-        os.environ["AMAIL_URL"] = relay_url
+        os.environ["AMAIL_GATEWAY_URL"] = gateway_url
         os.environ["AMAIL_ADMIN_KEY"] = admin_key
         os.environ["AMAIL_SYS_ID"] = tenant_id
         os.environ["AMAIL_MX_DOMAIN"] = "test.com"
 
         # Simulate profile creation: _auto_register_email
         profile_name = "test-agent"
-        global_cfg = _load_relay_config()
+        global_cfg = _load_gateway_config()
         check(global_cfg is not None,
               "C.6.1: global config loaded")
 
@@ -504,7 +504,7 @@ def test_security_constraints():
 def main():
     global PASS, FAIL
     server, port, thread = create_server()
-    relay_url = f"http://127.0.0.1:{port}"
+    gateway_url = f"http://127.0.0.1:{port}"
 
     print("╔══════════════════════════════════════════════════════════════╗")
     print("║      两级激活流程 E2E 验证                                   ║")
@@ -516,14 +516,14 @@ def main():
         test_api_endpoint_existence()
 
         # 2. 流程 A：新租户激活
-        tenant_id = test_flow_a_new_tenant(relay_url)
+        tenant_id = test_flow_a_new_tenant(gateway_url)
 
         # 3. 流程 B：已有租户直接配置
-        test_flow_b_existing_tenant(relay_url)
+        test_flow_b_existing_tenant(gateway_url)
 
         # 4. 流程 C：Agent Profile 创建 + 激活
         test_flow_c_agent_activation(
-            relay_url, tenant_id, "sk-tenant-admin-mock"
+            gateway_url, tenant_id, "sk-tenant-admin-mock"
         )
 
         # 5. 安全边界

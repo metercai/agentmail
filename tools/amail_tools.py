@@ -45,12 +45,12 @@ _RELAY_CONFIG_KEY = "amail"
 # _RelayClient -- HTTP client for amail API
 # ═══════════════════════════════════════════════════════════════
 
-class _RelayClient:
+class _GatewayClient:
     """Thin HTTP wrapper around amail gateway REST API.
     No process-level side effects. Safe to instantiate anywhere."""
 
-    def __init__(self, relay_url: str, api_key: str, timeout: int = 30):
-        self.relay_url = relay_url.rstrip("/")
+    def __init__(self, gateway_url: str, api_key: str, timeout: int = 30):
+        self.gateway_url = gateway_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
 
@@ -62,8 +62,8 @@ class _RelayClient:
         raw_body: Optional[bytes] = None,
         headers: Optional[dict] = None,
     ) -> dict:
-        """Make an HTTP request to the gateway API. Returns parsed JSON or error dict."""
-        url = f"{self.relay_url}{path}"
+        ""Make an HTTP request to the gateway API. Returns parsed JSON or error dict."""
+        url = f"{self.gateway_url}{path}"
         req_headers = {"Accept": "application/json"}
         if self.api_key:
             req_headers["X-Api-Key"] = self.api_key
@@ -160,7 +160,7 @@ class _RelayClient:
 
     def download_attachment(self, attachment_id: str) -> Optional[bytes]:
         """GET /api/v1/attachments/{id} -- download attachment bytes."""
-        url = f"{self.relay_url}/api/v1/attachments/{attachment_id}"
+        url = f"{self.gateway_url}/api/v1/attachments/{attachment_id}"
         req = urllib.request.Request(
             url,
             headers={"X-Api-Key": self.api_key},
@@ -403,24 +403,24 @@ class _RelayClient:
 # Config helpers
 # ═══════════════════════════════════════════════════════════════
 
-def _relay_config_path() -> Path:
+def _gateway_config_path() -> Path:
     """Return the path to the standalone amail gateway config file.
     
-    Always uses ~/.hermes/amail_relay.json — gateway config is global,
+    Always uses ~/.hermes/amail_gateway.json — gateway config is global,
     not per-profile."""
-    return Path.home() / ".hermes" / "amail_relay.json"
+    return Path.home() / ".hermes" / "amail_gateway.json"
 
 
-def _load_relay_config() -> Optional[dict]:
+def _load_gateway_config() -> Optional[dict]:
     load amail gateway connection config
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
-    2. ~/.hermes/amail_relay.json (standalone, no config.yaml pollution [gateway config])
+    2. ~/.hermes/amail_gateway.json (standalone, no config.yaml pollution [gateway config])
     3. ~/.hermes/config.yaml platforms.amail (legacy fallback)
     """
     # Try environment variables first
-    relay_url = os.environ.get("AMAIL_URL", "")
+    gateway_url = os.environ.get("AMAIL_GATEWAY_URL", "")
     admin_key = os.environ.get("AMAIL_ADMIN_KEY", "")
     product_code = os.environ.get("AMAIL_PRODUCT_CODE", "")
     sys_id = os.environ.get("AMAIL_SYS_ID", "")
@@ -428,9 +428,9 @@ def _load_relay_config() -> Optional[dict]:
     mx_domain = os.environ.get("AMAIL_MX_DOMAIN", "amail.token.tm")
     domain = mx_domain or os.environ.get("AMAIL_DOMAIN", "")
     bridge_url = os.environ.get("AMAIL_BRIDGE_URL", "")
-    if relay_url and (admin_key or product_code):
+    if gateway_url and (admin_key or product_code):
         return {
-            "relay_url": relay_url,
+            "gateway_url": gateway_url,
             "admin_key": admin_key,
             "product_code": product_code,
             "system_id": system_id,
@@ -442,13 +442,13 @@ def _load_relay_config() -> Optional[dict]:
             "mx_domain": mx_domain,
         }
 
-    # Try standalone amail_relay.json
-    relay_path = _relay_config_path()
-    if relay_path.exists():
+    # Try standalone amail_gateway.json
+    gateway_path = _gateway_config_path()
+    if gateway_path.exists():
         try:
-            with open(relay_path) as f:
+            with open(gateway_path) as f:
                 cfg = json.load(f)
-            if cfg.get("relay_url") and (cfg.get("admin_key") or cfg.get("product_code")):
+            if cfg.get("gateway_url") and (cfg.get("admin_key") or cfg.get("product_code")):
                 return cfg
         except Exception:
             pass
@@ -457,11 +457,11 @@ def _load_relay_config() -> Optional[dict]:
     try:
         from gateway.config import load_config
         cfg = load_config()
-        relay_cfg = cfg.get("platforms", {}).get(_RELAY_CONFIG_KEY, {})
-        if relay_cfg.get("relay_url") and (relay_cfg.get("admin_key") or relay_cfg.get("product_code")):
-            result = dict(relay_cfg)
-            result.setdefault("system_id", relay_cfg.get("sys_id", ""))
-            result.setdefault("domain", relay_cfg.get("mx_domain", ""))
+        gateway_cfg = cfg.get("platforms", {}).get(_RELAY_CONFIG_KEY, {})
+        if gateway_cfg.get("gateway_url") and (gateway_cfg.get("admin_key") or relay_cfg.get("product_code")):
+            result = dict(gateway_cfg)
+            result.setdefault("system_id", gateway_cfg.get("sys_id", ""))
+            result.setdefault("domain", gateway_cfg.get("mx_domain", ""))
             return result
     except Exception:
         pass
@@ -470,13 +470,13 @@ def _load_relay_config() -> Optional[dict]:
 
 
 def _load_profile_config() -> Optional[dict]:
-    """Load per-profile relay config from profile directory."""
+    """Load per-profile gateway config from profile directory."""
     profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
     if not profile_dir:
         return None
 
-    # Try amail.json first (primary), then amail_relay.json (legacy)
-    for fname in ("amail.json", "amail_relay.json"):
+    # Try amail.json first (primary), then amail_gateway.json (legacy)
+    for fname in ("amail.json", "amail_gateway.json"):
         config_path = Path(profile_dir) / fname
         if config_path.is_file():
             try:
@@ -488,7 +488,7 @@ def _load_profile_config() -> Optional[dict]:
 
 
 def _inject_profile_config(profile_dir: str, config: dict) -> None:
-    """Write per-profile relay config to profile directory."""
+    """Write per-profile gateway config to profile directory."""
     config_path = Path(profile_dir) / "amail.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, indent=2))
@@ -499,7 +499,7 @@ def _inject_profile_config(profile_dir: str, config: dict) -> None:
 # ═══════════════════════════════════════════════════════════════
 
 def setup(
-    relay_url: str,
+    gateway_url: str,
     system_id: str,
     admin_key: str = "",
     product_code: str = "",
@@ -513,11 +513,11 @@ def setup(
 ) -> dict:
     """Unified integration entry point.
 
-    Provide relay_url + system_id + ONE of (admin_key, product_code).
+    Provide gateway_url + system_id + ONE of (admin_key, product_code).
     The function auto-detects the path and saves config.
 
     Args:
-        relay_url:         amail relay server URL (required)
+        gateway_url:         amail gateway server URL (required)
         system_id:         System identifier (auto-generated by server from product code)
         admin_key:         Existing system_admin API key
         product_code:      Product activation code (one-time; creates system if new)
@@ -531,22 +531,22 @@ def setup(
         {\"success\": True, \"system_id\": \"...\", \"path\": \"admin_key\"|\"activation\", ...}
         {\"success\": False, \"error\": \"...\"}
     """
-    if not relay_url:
-        return {"success": False, "error": "relay_url is required"}
+    if not gateway_url:
+        return {"success": False, "error": "gateway_url is required"}
 
     # Auto-detect webhook callback host (parameter > env var > auto-detect)
     if not webhook_host:
         webhook_host = os.environ.get("AMAIL_WEBHOOK_HOST", "")
     if not webhook_host:
-        webhook_host = _detect_webhook_host(relay_url)
+        webhook_host = _detect_webhook_host(gateway_url)
 
     # ── Path A: admin_key provided (already-activated system) ──
     if admin_key:
         if not system_id:
             return {"success": False, "error": "system_id is required for admin_key path"}
         # Save directly to Hermes config
-        _save_relay_config(
-            relay_url=relay_url,
+        _save_gateway_config(
+            "gateway_url": gateway_url
             admin_key=admin_key,
             system_id=system_id,
             domain=domain or "admin.relay",
@@ -568,7 +568,7 @@ def setup(
             system_id=system_id,
             system_name=system_name,
             domain=domain,
-            relay_url=relay_url,
+            "gateway_url": gateway_url
             save_raw_snapshots=save_raw_snapshots,
             manager_address=manager_address,
             webhook_host=webhook_host,
@@ -580,15 +580,15 @@ def setup(
     return {"success": False, "error": "Either admin_key or product_code is required"}
 
 
-def verify_integration(relay_url: str = "", admin_key: str = "") -> dict:
+def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
     """Diagnostic: verify all integration points are correctly configured.
 
-    Checks relay connectivity, admin_key validity, webhook route existence,
+    Checks gateway connectivity, admin_key validity, webhook route existence,
     preprocessor registration, and profile hooks. Returns a dict with
     per-check pass/fail status and suggestions for remediation.
 
     Args:
-        relay_url: Relay server URL (auto-detected from config if empty)
+        gateway_url: Relay server URL (auto-detected from config if empty)
         admin_key: Admin API key (auto-detected from config if empty)
     """
     results = {"checks": [], "all_pass": True}
@@ -599,28 +599,28 @@ def verify_integration(relay_url: str = "", admin_key: str = "") -> dict:
             results["all_pass"] = False
 
     # Resolve config
-    config = _load_relay_config()
-    relay_url = relay_url or (config.get("relay_url", "") if config else "")
+    config = _load_gateway_config()
+    gateway_url = gateway_url or (config.get("gateway_url", "") if config else "")
     admin_key = admin_key or (config.get("admin_key", "") if config else "")
 
     # 1. Relay connectivity
-    if not relay_url:
-        add("relay_connectivity", False, "No relay_url configured", "Run integrate.sh or set AMAIL_URL env var")
+    if not gateway_url:
+        add("gateway_connectivity", False, "No gateway_url configured", "Run integrate.sh or set AMAIL_GATEWAY_URL env var")
     else:
         try:
-            req = urllib.request.Request(f"{relay_url.rstrip('/')}/health")
+            req = urllib.request.Request(f"{gateway_url.rstrip('/')}/health")
             with urllib.request.urlopen(req, timeout=5) as r:
-                add("relay_connectivity", r.status == 200,
-                    f"HTTP {r.status}", "Start amail-relay service")
+                add("gateway_connectivity", r.status == 200,
+                    f"HTTP {r.status}", "Start amail-gateway service")
         except Exception as e:
-            add("relay_connectivity", False, str(e), "Start amail-relay service")
+            add("gateway_connectivity", False, str(e), "Start amail-gateway service")
 
     # 2. Admin key validity
     if not admin_key:
         add("admin_key", False, "No admin_key configured", "Run integrate.sh with admin_key")
     else:
         try:
-            req = urllib.request.Request(f"{relay_url.rstrip('/')}/api/v1/whoami",
+            req = urllib.request.Request(f"{gateway_url.rstrip('/')}/api/v1/whoami",
                 headers={"X-Api-Key": admin_key})
             with urllib.request.urlopen(req, timeout=5) as r:
                 data = json.loads(r.read())
@@ -628,7 +628,7 @@ def verify_integration(relay_url: str = "", admin_key: str = "") -> dict:
                 add("admin_key", "platform" in scope or "system" in scope,
                     f"scope={scope}", "Use a key with platform or system scope")
         except Exception as e:
-            add("admin_key", False, str(e), "Check admin_key is correct and relay is running")
+            add("admin_key", False, str(e), "Check admin_key is correct and gateway is running")
 
     # 3. Webhook route (check default + named profile subscriptions)
     has_amail = False
@@ -723,8 +723,8 @@ def verify_integration(relay_url: str = "", admin_key: str = "") -> dict:
     return results
 
 
-def _save_relay_config(
-    relay_url: str,
+def _save_gateway_config(
+    gateway_url: str,
     admin_key: str,
     system_id: str,
     domain: str = "",
@@ -732,12 +732,12 @@ def _save_relay_config(
     manager_address: str = "",
     webhook_host: str = "",
 ) -> None:
-    """Save amail relay connection config to standalone JSON file.
+    """Save amail gateway connection config to standalone JSON file.
 
-    Writes to ~/.hermes/amail_relay.json — does NOT pollute config.yaml.
+    Writes to ~/.hermes/amail_gateway.json — does NOT pollute config.yaml.
     Webhook config is gateway-managed, not stored here."""
     cfg = {
-        "relay_url": relay_url,
+        "gateway_url": gateway_url,
         "admin_key": admin_key,
         "system_id": system_id,
         "save_raw_snapshots": save_raw_snapshots,
@@ -749,9 +749,9 @@ def _save_relay_config(
     if webhook_host:
         cfg["webhook_host"] = webhook_host
 
-    relay_path = _relay_config_path()
-    relay_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(relay_path, "w") as f:
+    gateway_path = _gateway_config_path()
+    gateway_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(gateway_path, "w") as f:
         json.dump(cfg, f, indent=2)
 
 
@@ -900,10 +900,10 @@ def _load_webhook_config() -> Optional[dict]:
 
 # ── Webhook host auto-detection ──────────────────────────────
 
-def _detect_webhook_host(relay_url: str) -> str:
-    """Determine the reachable host for relay → Hermes webhook callbacks.
+def _detect_webhook_host(gateway_url: str) -> str:
+    determine the reachable host for gateway → Hermes webhook callbacks
 
-    Compares ``relay_url``'s host against local interfaces to choose the
+    Compares ``gateway_url``'s host against local interfaces to choose the
     correct callback address:
 
     - Same machine (loopback or own IP) → ``127.0.0.1``
@@ -914,11 +914,11 @@ def _detect_webhook_host(relay_url: str) -> str:
     """
     from urllib.parse import urlparse
     try:
-        relay_host = urlparse(relay_url).hostname or ""
+        gateway_host = urlparse(gateway_url).hostname or ""
     except Exception:
-        relay_host = ""
+        gateway_host = ""
 
-    if not relay_host:
+    if not gateway_host:
         return "127.0.0.1"
 
     # ── Detect our primary LAN IP ────────────────────────────
@@ -955,7 +955,7 @@ def _detect_webhook_host(relay_url: str) -> str:
         except Exception:
             pass
 
-    # ── Classify relay host ──────────────────────────────────
+    # ── Classify gateway host ──────────────────────────────────
     import ipaddress as _ipaddr
 
     def _is_loopback(host: str) -> bool:
@@ -967,14 +967,14 @@ def _detect_webhook_host(relay_url: str) -> str:
         except ValueError:
             return False
 
-    if _is_loopback(relay_host):
+    if _is_loopback(gateway_host):
         return "127.0.0.1"
 
-    if lan_ip and relay_host == lan_ip:
+    if lan_ip and gateway_host == lan_ip:
         return lan_ip  # same machine via LAN — works for Docker containers too
 
-    if _is_private(relay_host):
-        # Same LAN — relay can reach us via our LAN IP
+    if _is_private(gateway_host):
+        # Same LAN — gateway can reach us via our LAN IP
         if lan_ip:
             return lan_ip
         return "127.0.0.1"  # fallback
@@ -983,7 +983,7 @@ def _detect_webhook_host(relay_url: str) -> str:
     try:
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
         with ThreadPoolExecutor(max_workers=1) as _dns:
-            resolved = _dns.submit(socket.gethostbyname, relay_host).result(timeout=5)
+            resolved = _dns.submit(socket.gethostbyname, gateway_host).result(timeout=5)
         if _is_loopback(resolved):
             return "127.0.0.1"
         if lan_ip and resolved == lan_ip:
@@ -1002,7 +1002,7 @@ def _detect_webhook_host(relay_url: str) -> str:
             if external_ip and not _is_private(external_ip):
                 logger.info(
                     "[amail_relay] Detected external IP %s for webhook callback "
-                    "(relay at %s is public)", external_ip, relay_host
+                    "(gateway at %s is public)", external_ip, relay_host
                 )
                 return external_ip
     except Exception:
@@ -1011,8 +1011,8 @@ def _detect_webhook_host(relay_url: str) -> str:
     if lan_ip:
         logger.warning(
             "[amail_relay] Relay at %s is public but cannot detect external IP. "
-            "Using LAN IP %s — relay must be able to reach this address. "
-            "Set AMAIL_WEBHOOK_HOST to override.", relay_host, lan_ip
+            "Using LAN IP %s — gateway must be able to reach this address. "
+            "Set AMAIL_WEBHOOK_HOST to override.", gateway_host, lan_ip
         )
         return lan_ip
 
@@ -1117,7 +1117,7 @@ def init_system(
     system_id: str,
     system_name: str,
     domain: str = "",
-    relay_url: str = "",
+    gateway_url: str = "",
     save_raw_snapshots: bool = False,
     manager_address: str = "",
     webhook_host: str = "",
@@ -1138,24 +1138,24 @@ def init_system(
         system_id: System identifier (ignored for product_code path; server auto-generates)
         system_name: Human-readable system name
         domain: Default mail domain (optional -- uses product-level default if omitted)
-        relay_url: amail relay server URL (required if not in config/env)
+        gateway_url: amail gateway server URL (required if not in config/env)
 
     Returns:
         {"success": True, "system_id": "...", "admin_key": "sk-...", ...}
         {"success": False, "error": "..."}
     """
-    # Resolve relay_url from config/env if not provided
-    if not relay_url:
-        cfg = _load_relay_config()
-        relay_url = cfg.get("relay_url", "") if cfg else ""
-    if not relay_url:
-        return {"success": False, "error": "relay_url is required (pass it or set AMAIL_URL / config)"}
+    # Resolve gateway_url from config/env if not provided
+    if not gateway_url:
+        cfg = _load_gateway_config()
+        gateway_url = cfg.get("gateway_url", "") if cfg else ""
+    if not gateway_url:
+        return {"success": False, "error": "gateway_url is required (pass it or set AMAIL_GATEWAY_URL / config)"}
 
     if not product_code:
         return {"success": False, "error": "product_code is required for system initialization"}
 
     # Backend auto-generates system_id/system_name/domain from product code
-    client = _RelayClient(relay_url, "")
+    client = _GatewayClient(gateway_url, "")
     result = client.activate_system(
         code=product_code,
     )
@@ -1172,9 +1172,9 @@ def init_system(
     if not admin_key:
         return {"success": False, "error": "No admin_key returned from server", "status": status}
 
-    # Save admin_key to standalone relay config
-    _save_relay_config(
-        relay_url=relay_url,
+    # Save admin_key to standalone gateway config
+    _save_gateway_config(
+        "gateway_url": gateway_url
         admin_key=admin_key,
         system_id=created_system_id,
         domain=created_domain,
@@ -1182,13 +1182,13 @@ def init_system(
         manager_address=manager_address,
         webhook_host=webhook_host,
     )
-    logger.info("[amail] Relay config saved to %s", _relay_config_path())
+    logger.info("[amail] Relay config saved to %s", _gateway_config_path())
 
     return {
         "success": True,
         "system_id": created_system_id,
         "admin_key": admin_key,
-        "relay_url": relay_url,
+        "gateway_url": gateway_url,
         "domain": created_domain,
     }
 
@@ -1239,7 +1239,7 @@ async def send_mail(
     if not base_email:
         return {"success": False, "error": "amail email not configured for this profile — cannot send"}
 
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     # ── Resolve message metadata once (avoids duplicate HTTP round-trip) ──
     msg_meta = _load_message_meta(message_id) if message_id else None
@@ -1373,7 +1373,7 @@ async def manage_contacts(
     if not config:
         return {"success": False, "error": "amail not configured for this profile"}
 
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
     # Agent whitelist is per-amail, not per-domain.
     # domain_addr = amail address (agent-1@mail.project.com)
     amail = config.get("email", "")
@@ -1405,7 +1405,7 @@ async def manage_contacts(
         manager_addr = config.get("manager_address", "")
         if not manager_addr:
             return {"success": False, "error": "No manager_address configured — cannot send approval request"}
-        client_mgr = _RelayClient(config["relay_url"], config["api_key"])
+        client_mgr = _GatewayClient(config["gateway_url"], config["api_key"])
         description = kwargs.get("description", "") if kwargs else ""
         desc_line = f"\ndescription: {description}" if description else ""
         result = client_mgr.send_mail(
@@ -1478,7 +1478,7 @@ async def contact_profile(address: str = "", name: str = "") -> dict:
     config = _load_profile_config()
     if not config:
         return {"address": address, "profile": None}
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     # Search by address (exact match) — semantic endpoint
     if address:
@@ -1498,13 +1498,13 @@ async def contact_profile(address: str = "", name: str = "") -> dict:
 
 
 async def set_contact_profile(address: str, profile: str) -> dict:
-    """Store or update a contact profile. The relay handles JSON merge,
+    """Store or update a contact profile. The gateway handles JSON merge,
     name extraction, and name index maintenance atomically.
     """
     config = _load_profile_config()
     if not config:
         return {"success": False, "error": "amail not configured for this profile"}
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     result = client.put_contact(address, profile)
     if result.get("status") == 200:
@@ -1676,12 +1676,12 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     attachments = result.get("attachments")
 
     if attachments and isinstance(attachments, list) and len(attachments) > 0:
-        config = _load_relay_config()
+        config = _load_gateway_config()
         if not config:
             logger.warning("[amail_relay] Cannot download attachments: no relay config")
             return result
 
-        client = _RelayClient(config["relay_url"], config["admin_key"])
+        client = _GatewayClient(config["gateway_url"], config["admin_key"])
         local_paths = []
         for att in attachments:
             if not isinstance(att, dict):
@@ -1774,10 +1774,10 @@ def register_profile_hook(event: str, callback: Callable) -> None:
 def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> None:
     """Called by profiles.py to fire all registered hooks for an event.
 
-    Gracefully handles missing config -- if no relay is configured, hooks are
+    Gracefully handles missing config -- if no gateway is configured, hooks are
     simply skipped.
     """
-    config = _load_relay_config()
+    config = _load_gateway_config()
     if not config:
         logger.debug("[amail_relay] No relay config -- skipping hooks for %s", event)
         return
@@ -1819,12 +1819,12 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     handled at inbound time by parse_amail_persona() -- the amail skill
     extracts persona from the 'to' address (persona.profile@domain format).
     """
-    relay_url = config.get("relay_url", "")
+    gateway_url = config.get("gateway_url", "")
     admin_key = config.get("admin_key", "")
     domain = config.get("domain", "")
     system_id = config.get("system_id", "")
 
-    if not relay_url or not admin_key:
+    if not gateway_url or not admin_key:
         logger.warning("[amail_relay] Cannot auto-register: relay_url or admin_key not configured")
         return
     if not domain:
@@ -1834,7 +1834,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         logger.warning("[amail_relay] Cannot auto-register: system_id not configured")
         return
 
-    client = _RelayClient(relay_url, admin_key)
+    client = _GatewayClient(gateway_url, admin_key)
     email = f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
     delivery_mode = config.get("delivery_mode", "webhook")
@@ -1862,7 +1862,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
 
-    # Register the email as a per-recipient webhook route on relay
+    # Register the email as a per-recipient webhook route on gateway
     result = client.register_email(
         system_id=system_id,
         mx_domain=config["domain"],
@@ -1903,7 +1903,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         _inject_profile_config(profile_dir, {
             "email": email,
             "activation_code": activation_code,
-            "relay_url": config["relay_url"],
+            "gateway_url": gateway_url
             "domain": config["domain"],
             "system_id": system_id,
             "manager_address": manager_address,
@@ -1945,7 +1945,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
             json.dump(prof, f, indent=2)
         return
 
-    client = _RelayClient(config.get("relay_url", prof.get("relay_url", "")),
+    client = _GatewayClient(config.get("gateway_url", prof.get("gateway_url", "")),
                           "", timeout=5)
     result = client.activate_address(activation_code, email_address=prof.get("email", ""))
     if result.get("success") and result.get("raw_key"):
@@ -1956,7 +1956,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
             json.dump(prof, f, indent=2)
         logger.info("[amail_relay] Activated profile, api_key saved to %s", config_path)
     else:
-        # Rate-limit retries: skip if recently attempted (avoids spamming relay
+        # Rate-limit retries: skip if recently attempted (avoids spamming gateway
         # with a permanently invalid activation code)
         import time as _time
         now_ts = _time.time()
@@ -1990,7 +1990,7 @@ def agent_startup_activate() -> dict:
 
     # Check if profile config exists
     config_path = None
-    for fname in ("amail.json", "amail_relay.json"):
+    for fname in ("amail.json", "amail_gateway.json"):
         p = Path(profile_dir) / fname
         if p.is_file():
             config_path = p
@@ -2009,7 +2009,7 @@ def agent_startup_activate() -> dict:
     if not prof.get("activation_code"):
         return {"success": False, "error": "No activation_code found in profile config"}
 
-    # Activate using relay_url from the profile's own amail.json
+    # Activate using gateway_url from the profile's own amail.json
     _auto_activate_profile(profile_dir, prof)
 
     # Reload to verify
@@ -2027,15 +2027,15 @@ def agent_startup_activate() -> dict:
 
 def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
     """When a Profile is deleted, clean up its API key in amail."""
-    relay_url = config.get("relay_url", "")
+    gateway_url = config.get("gateway_url", "")
     admin_key = config.get("admin_key", "")
     domain = config.get("domain", "")
-    if not relay_url or not admin_key:
+    if not gateway_url or not admin_key:
         return
 
     # Read the profile's config to get the email address
     config_path = None
-    for fname in ("amail.json", "amail_relay.json"):
+    for fname in ("amail.json", "amail_gateway.json"):
         p = Path(profile_dir) / fname
         if p.is_file():
             config_path = p
@@ -2053,7 +2053,7 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
         return
 
     # Find and delete the API key by email address
-    client = _RelayClient(relay_url, admin_key)
+    client = _GatewayClient(gateway_url, admin_key)
     list_result = client._request("GET", "/api/v1/api-keys")
     entries = list_result.get("entries", list_result.get("data", []))
     if isinstance(entries, list):
@@ -2295,7 +2295,7 @@ registry.register(
 )
 
 # ═══════════════════════════════════════════════════════════════
-# Message Metadata — stored in relay agent_state (internal), keyed msg:{message_id}
+# Message Metadata — stored in gateway agent_state (internal), keyed msg:{message_id}
 #    value: {"references": [...], "thread_id": "..."}
 # ═══════════════════════════════════════════════════════════════
 
@@ -2524,13 +2524,13 @@ def store_inbound_message(
 ) -> Optional[str]:
     """Called by the gateway preprocessor when an inbound email arrives.
 
-    Always: stores message metadata to relay agent_state keyed msg:{mid}.
+    Always: stores message metadata to gateway agent_state keyed msg:{mid}.
     Optionally (save_raw_snapshots=true): saves the AGENT-VISIBLE JSON snapshot
     (AFTER preprocessing) to raw_email/{agent_addr}/{yyyymm}/.
 
     IMPORTANT: preprocessed_payload must be the output of preprocess_mail_payload()
     — the agent-visible format with sender/recipients/my_amail_addr/direct_message fields.
-    Do NOT pass the relay RAW webhook payload.
+    Do NOT pass the gateway RAW webhook payload.
     """
     if not message_id or not message_id.strip():
         return None
@@ -2538,7 +2538,7 @@ def store_inbound_message(
     refs = [r.strip() for r in (references or []) if r.strip()]
     thread_id = refs[0] if refs else mid
 
-    # ── Store message metadata to relay ─────────────────────────
+    # ── Store message metadata to gateway ─────────────────────────
     msg_value = json.dumps({
         "references": refs,
         "thread_id": thread_id,
@@ -2546,7 +2546,7 @@ def store_inbound_message(
     })
     config = _load_profile_config()
     if config:
-        client = _RelayClient(config["relay_url"], config["api_key"])
+        client = _GatewayClient(config["gateway_url"], config["api_key"])
         client.agent_state_put(f"msg:{mid}", msg_value)
 
     # ── Optionally save agent-visible snapshot ──────────────────
@@ -2563,10 +2563,10 @@ def store_inbound_message(
 
     snapshot_saved = False
     if preprocessed_payload:
-        # Guard: detect relay RAW format (has 'mail_id' field — relay-internal UUID)
+        # Guard: detect gateway RAW format (has 'mail_id' field — gateway-internal UUID)
         if "mail_id" in preprocessed_payload and "recipients" not in preprocessed_payload:
             logger.warning(
-                "store_inbound_message received relay RAW payload instead of preprocessed agent-visible JSON. "
+                "store_inbound_message received gateway RAW payload instead of preprocessed agent-visible JSON. "
                 "Call preprocess_mail_payload() first. Snapshot may contain wrong format."
             )
         try:
@@ -2596,11 +2596,11 @@ def store_inbound_message(
 
 
 def _load_message_meta(message_id: str) -> Optional[dict]:
-    """Load message metadata from relay agent_state. Returns None if not found."""
+    """Load message metadata from gateway agent_state. Returns None if not found."""
     config = _load_profile_config()
     if not config:
         return None
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
     value = client.agent_state_get(f"msg:{message_id.strip()}")
     if not value:
         return None
@@ -2611,7 +2611,7 @@ def _load_message_meta(message_id: str) -> Optional[dict]:
 
 
 def _store_message_meta(message_id: str, references: Optional[str] = None) -> None:
-    """Store outbound message metadata to relay for future replies."""
+    """Store outbound message metadata to gateway for future replies."""
     if not message_id or not message_id.strip():
         return
     mid = message_id.strip()
@@ -2620,7 +2620,7 @@ def _store_message_meta(message_id: str, references: Optional[str] = None) -> No
     msg_value = json.dumps({"references": refs, "thread_id": thread_id})
     config = _load_profile_config()
     if config:
-        client = _RelayClient(config["relay_url"], config["api_key"])
+        client = _GatewayClient(config["gateway_url"], config["api_key"])
         client.agent_state_put(f"msg:{mid}", msg_value)
 
 
@@ -2638,7 +2638,7 @@ async def email_summary(message_id: str) -> dict:
     config = _load_profile_config()
     if not config:
         return {"thread_id": "", "summary": ""}
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
     result = client.get_thread_summary(message_id)
     if result:
         # get_thread_summary returns the summary string on success
@@ -2649,7 +2649,7 @@ async def email_summary(message_id: str) -> dict:
 async def set_email_summary(message_id: str, summary: str) -> dict:
     """Store or update the summary for the email thread containing this message.
 
-    Resolves message_id → thread_id, then writes the summary to relay
+    Resolves message_id → thread_id, then writes the summary to gateway
     agent_state keyed 'thread:{thread_id}'.
     """
     if not message_id or not message_id.strip():
@@ -2662,7 +2662,7 @@ async def set_email_summary(message_id: str, summary: str) -> dict:
     config = _load_profile_config()
     if not config:
         return {"success": False, "error": "amail not configured for this profile"}
-    client = _RelayClient(config["relay_url"], config["api_key"])
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     result = client.put_thread_summary(message_id, summary)
     if result.get("status") == 200:

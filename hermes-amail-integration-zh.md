@@ -58,7 +58,7 @@ bash integrate.sh
 #   [2/10] 认证方式        — 输入 admin_key 或产品激活码
 #   [3/10] domain          — 选择或输入 agent 邮件域 (仅 admin_key 路径)
 #   [4/10] 基本配置        — 是否保存快照？+ 默认管理员邮箱
-#   [5/10] 保存配置        — 写入 ~/.hermes/amail_relay.json（或激活系统）
+#   [5/10] 保存配置        — 写入 ~/.hermes/amail_gateway.json（或激活系统）
 #   [6/10] 安装工具        — 复制 amail_tools.py + 注册到 toolsets.py
 #   [7/10] patch webhook   — 注入预处理器支持
 #   [8/10] patch profiles  — 注入 profile 生命周期 hooks
@@ -127,7 +127,7 @@ product_code 路径自动跳过 Step 3（domain 由服务器生成）。
 {
   "email": "alice@admin.relay",
   "activation_code": "addr-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx",
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "domain": "admin.relay",
   "system_id": "admin",
   "manager_address": "admin@admin.relay",
@@ -309,13 +309,13 @@ SMTP → relay
 
 ## 配置参考
 
-### Relay 配置 (`~/.hermes/amail_relay.json`)
+### Relay 配置 (`~/.hermes/amail_gateway.json`)
 
 独立文件，不污染 `config.yaml`：
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "admin_key": "sk-...",
   "system_id": "admin",
   "domain": "admin.relay",
@@ -335,7 +335,7 @@ SMTP → relay
 | 公网 | 外网 IP（或 LAN fallback） |
 | Docker（手动） | 设置 `AMAIL_WEBHOOK_HOST` 环境变量 |
 
-可通过 `AMAIL_WEBHOOK_HOST` 环境变量覆盖，或直接编辑 `amail_relay.json`。
+可通过 `AMAIL_WEBHOOK_HOST` 环境变量覆盖，或直接编辑 `amail_gateway.json`。
 
 **可选 `bridge_url` — amail-bridge push 模式：**
 
@@ -361,7 +361,7 @@ SMTP 邮件存入 relay 待投递队列，不主动 POST webhook。
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "api_key": "sk-...",
   "email": "alice@admin.relay",
   "system_id": "admin",
