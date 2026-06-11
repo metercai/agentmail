@@ -4,7 +4,7 @@ amail_tools.py -- amail Hermes Agent 集成模块
 三进程共用文件（Gateway / Agent / CLI），通过 try/except 隔离进程特定逻辑。
 
 Provides:
-  - _RelayClient           : HTTP client for amail API
+  - _GatewayClient         : HTTP client for amail API
   - send_mail()            : Agent tool -- send email via gateway
   - manage_contacts()      : Agent tool -- manage address whitelist
   - preprocess_mail_payload() : Gateway preprocessor -- download attachments
@@ -458,7 +458,7 @@ def _load_gateway_config() -> Optional[dict]:
         from gateway.config import load_config
         cfg = load_config()
         gateway_cfg = cfg.get("platforms", {}).get(_RELAY_CONFIG_KEY, {})
-        if gateway_cfg.get("gateway_url") and (gateway_cfg.get("admin_key") or relay_cfg.get("product_code")):
+        if gateway_cfg.get("gateway_url") and (gateway_cfg.get("admin_key") or gateway_cfg.get("product_code")):
             result = dict(gateway_cfg)
             result.setdefault("system_id", gateway_cfg.get("sys_id", ""))
             result.setdefault("domain", gateway_cfg.get("mx_domain", ""))
@@ -1002,7 +1002,7 @@ def _detect_webhook_host(gateway_url: str) -> str:
             if external_ip and not _is_private(external_ip):
                 logger.info(
                     "[amail_relay] Detected external IP %s for webhook callback "
-                    "(gateway at %s is public)", external_ip, relay_host
+                    "(gateway at %s is public)", external_ip, gateway_host
                 )
                 return external_ip
     except Exception:
@@ -1825,7 +1825,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     system_id = config.get("system_id", "")
 
     if not gateway_url or not admin_key:
-        logger.warning("[amail_relay] Cannot auto-register: relay_url or admin_key not configured")
+        logger.warning("[amail_relay] Cannot auto-register: gateway_url or admin_key not configured")
         return
     if not domain:
         logger.warning("[amail_relay] Cannot auto-register: domain not configured")
