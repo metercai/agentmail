@@ -679,12 +679,51 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
     fi
 
     if [ -x "$BRIDGE_LINK" ]; then
-        # ── Resolve bridge addr from webhook_host ──
+        # ── Resolve bridge addr: WEBHOOK_HOST > amail_gateway.json > auto-detect ──
         BRIDGE_ADDR="${WEBHOOK_HOST:-$(read_config webhook_host)}"
-        BRIDGE_ADDR="${BRIDGE_ADDR:-127.0.0.1:80}"
-        # Ensure port: append 80 if bare IP (best firewall pass-through)
+        if [ -z "$BRIDGE_ADDR" ]; then
+            echo -n "  Auto-detecting bridge address... "
+            BRIDGE_ADDR=$(python3 -c "
+import socket
+# Find first non-loopback IPv4 address
+for name in ('eth0','ens5','enp0s1','enp0s3','enp0s8','eth1','wlan0'):
+    try:
+        import ctypes, fcntl, struct
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        iface = struct.pack('256s', name[:15].encode())
+        info = fcntl.ioctl(s.fileno(), 0x8927, iface)
+        addr = socket.inet_ntoa(info[20:24])
+        if not addr.startswith('127.'):
+            s.close()
+            print(f'{addr}:38081')
+            break
+        s.close()
+    except:
+        pass
+else:
+    # Fallback: connect to a known host and read local addr
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        addr = s.getsockname()[0]
+        s.close()
+        if not addr.startswith('127.'):
+            print(f'{addr}:38081')
+        else:
+            print('')
+    except:
+        print('')
+" 2>/dev/null || echo "")
+            if [ -n "$BRIDGE_ADDR" ]; then
+                echo "$BRIDGE_ADDR"
+            else
+                echo "fallback to 127.0.0.1"
+                BRIDGE_ADDR="127.0.0.1:38081"
+            fi
+        fi
+        # Ensure port: append 38081 if bare IP
         if ! echo "${BRIDGE_ADDR}" | grep -q ":"; then
-            BRIDGE_ADDR="${BRIDGE_ADDR}:80"
+            BRIDGE_ADDR="${BRIDGE_ADDR}:38081"
         fi
 
         # ── Probe gateway → agent reachability to pick push vs pull ──
