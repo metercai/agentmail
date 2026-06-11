@@ -695,6 +695,7 @@ json.dump(cfg, open(p, 'w'), indent=2)
         # Write bridge config
         if [ "$BRIDGE_MODE" = "push" ]; then
             cat > "$HOME/.hermes/amail_bridge.toml" << EOF
+addr = "${BRIDGE_ADDR}"
 mode = "push"
 
 [push]
@@ -702,6 +703,7 @@ bind_addr = "${BRIDGE_ADDR}"
 EOF
         else
             cat > "$HOME/.hermes/amail_bridge.toml" << EOF
+addr = "127.0.0.1:38081"
 mode = "pull"
 
 [pull]
