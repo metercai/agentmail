@@ -697,18 +697,7 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
         add("profiles_patch", False, "profiles.py not found",
             "Set HERMES_DIR or check Hermes installation")
 
-    # 6. Preprocessor module registered (check if Hermes import would succeed)
-    try:
-        from gateway.platforms.webhook import register_preprocessor  # noqa: F811
-        add("preprocessor", True,
-            "amail_gateway preprocessor available (gateway import OK)",
-            "")
-    except ImportError:
-        add("preprocessor", False,
-            "Hermes gateway not available in this process",
-            "Preprocessor auto-registers when imported in gateway process")
-
-    # 7. Profile hooks installed in module
+    # 6. Profile hooks installed in module
     hooks_ok = (
         _auto_register_email in _profile_hooks.get("profile_created", [])
         and _auto_deregister_email in _profile_hooks.get("profile_deleted", [])
