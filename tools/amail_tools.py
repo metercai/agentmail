@@ -5,7 +5,7 @@ amail_tools.py -- amail Hermes Agent 集成模块
 
 Provides:
   - _RelayClient           : HTTP client for amail API
-  - send_mail()            : Agent tool -- send email via relay
+  - send_mail()            : Agent tool -- send email via gateway
   - manage_contacts()      : Agent tool -- manage address whitelist
   - preprocess_mail_payload() : Gateway preprocessor -- download attachments
   - register_profile_hook()   : Profile lifecycle hook registry
@@ -46,7 +46,7 @@ _RELAY_CONFIG_KEY = "amail"
 # ═══════════════════════════════════════════════════════════════
 
 class _RelayClient:
-    """Thin HTTP wrapper around amail relay REST API.
+    """Thin HTTP wrapper around amail gateway REST API.
     No process-level side effects. Safe to instantiate anywhere."""
 
     def __init__(self, relay_url: str, api_key: str, timeout: int = 30):
@@ -62,7 +62,7 @@ class _RelayClient:
         raw_body: Optional[bytes] = None,
         headers: Optional[dict] = None,
     ) -> dict:
-        """Make an HTTP request to the relay API. Returns parsed JSON or error dict."""
+        """Make an HTTP request to the gateway API. Returns parsed JSON or error dict."""
         url = f"{self.relay_url}{path}"
         req_headers = {"Accept": "application/json"}
         if self.api_key:
@@ -404,19 +404,19 @@ class _RelayClient:
 # ═══════════════════════════════════════════════════════════════
 
 def _relay_config_path() -> Path:
-    """Return the path to the standalone amail relay config file.
+    """Return the path to the standalone amail gateway config file.
     
-    Always uses ~/.hermes/amail_relay.json — relay config is global,
+    Always uses ~/.hermes/amail_relay.json — gateway config is global,
     not per-profile."""
     return Path.home() / ".hermes" / "amail_relay.json"
 
 
 def _load_relay_config() -> Optional[dict]:
-    """Load amail relay connection config.
+    load amail gateway connection config
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
-    2. ~/.hermes/amail_relay.json (standalone, no config.yaml pollution)
+    2. ~/.hermes/amail_relay.json (standalone, no config.yaml pollution [gateway config])
     3. ~/.hermes/config.yaml platforms.amail (legacy fallback)
     """
     # Try environment variables first

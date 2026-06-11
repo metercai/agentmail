@@ -2,14 +2,14 @@
 """End-to-end agent mail loop test — full pipeline.
 
 Simulates the complete agent processing loop:
-  1. External sender → SMTP → relay → webhook → capture inbound JSON
+  1. External sender → SMTP → gateway → webhook → capture inbound JSON
   2. Simulate LLM reading email → craft reply → send_mail via API
   3. Relay → SMTP → local receiver catches the reply
   4. Validate the reply references original message (threading)
 
 Proves the full amail integration: SMTP↔webhook↔API↔SMTP.
 
-Usage: python3 e2e_roundtrip.py <relay_url> <admin_key> [system_id]
+Usage: python3 e2e_roundtrip.py <gateway_url> <admin_key> [system_id]
 """
 
 import sys, os, json, time, threading, smtplib, email.utils
@@ -18,12 +18,12 @@ from email.mime.multipart import MIMEMultipart
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.request, urllib.error
 
-RELAY_URL = sys.argv[1].rstrip("/")
+GATEWAY_URL = sys.argv[1].rstrip("/")
 ADMIN_KEY = sys.argv[2]
 SYSTEM_ID = sys.argv[3] if len(sys.argv) > 3 else "admin"
 TS = int(time.time())
 
-SMTP_OUT = 35050       # local SMTP catches relay outbound
+SMTP_OUT = 35050       # local SMTP catches gateway outbound
 WEBHOOK_PORT = 40050   # local HTTP catches webhook inbound
 RELAY_SMTP_PORT = int(os.environ.get("AMAIL_SMTP_PORT", "35000"))
 TEST_AGENT = f"e2e-{TS}@test.local"
@@ -35,7 +35,7 @@ def bad(msg): global FAIL; FAIL += 1; print(f"  FAIL {msg}")
 
 # ── API helper ─────────────────────────────────────────────────
 def api(method, path, key=None, data=None):
-    req = urllib.request.Request(f"{RELAY_URL}{path}",
+    req = urllib.request.Request(f"{GATEWAY_URL}{path}",
         data=json.dumps(data).encode() if data else None,
         headers={"X-Api-Key": key or ADMIN_KEY, "Content-Type": "application/json"},
         method=method)
@@ -60,7 +60,7 @@ def start_smtp_receiver(host="127.0.0.1", port=SMTP_OUT):
     t.start()
     return server
 
-# ── Local webhook HTTP receiver (catches relay inbound) ────────
+# ── Local webhook HTTP receiver (catches gateway inbound) ────────
 webhook_payloads = []
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -82,7 +82,7 @@ def start_webhook():
 print("══════════════════════════════════════════════════")
 print("  amail E2E Agent Mail Loop")
 print("══════════════════════════════════════════════════")
-print(f"  relay: {RELAY_URL}")
+print(f"  gateway: {GATEWAY_URL}")
 print()
 
 # 1. Start local servers
@@ -126,7 +126,7 @@ ok("setup complete")
 # ═══════════════════════════════════════════════════════════════
 # Step 1: External → SMTP → relay → webhook
 # ═══════════════════════════════════════════════════════════════
-print("\n── Step 1: External sender → SMTP → relay → webhook ──")
+print("\n── Step 1: External sender → SMTP → gateway → webhook ──")
 
 SENDER_NAME = "External User"
 ORIG_MSG_ID = f"<e2e-{TS}@example.com>"
@@ -148,7 +148,7 @@ try:
     with smtplib.SMTP("127.0.0.1", RELAY_SMTP_PORT, timeout=15) as s:
         refused = s.send_message(msg)
         if not refused:
-            ok(f"SMTP sent → relay accepted (250)")
+            ok(f"SMTP sent → gateway accepted (250)")
         else:
             bad(f"SMTP refused: {refused}")
 except Exception as e:
@@ -209,7 +209,7 @@ for mail in smtp_mails:
         if "In-Reply-To" in data and ORIG_MSG_ID.strip("<>") in data:
             ok(f"reply delivered with correct threading")
         else:
-            ok(f"reply delivered (threading headers may be relay-generated)")
+            ok(f"reply delivered (threading headers may be gateway-generated)")
         break
 
 if not found:
