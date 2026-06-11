@@ -494,7 +494,25 @@ print(entries[$DOMAIN_CHOICE-1]['domain'])
         fi
     fi
     if [ -n "$AMAIL_DOMAIN" ]; then
-        step_ok "domain = $AMAIL_DOMAIN"
+        # Create bare domain on gateway if it doesn't already exist
+        echo -n "  Creating bare domain on gateway... "
+        DOMAIN_RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" \
+            -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
+            -d "{\"id\":\"dom-$(echo "$AMAIL_DOMAIN" | tr -c 'a-zA-Z0-9' '-')-$(date +%s)\",\"domain\":\"$AMAIL_DOMAIN\"}" 2>/dev/null || echo "{\"error\":\"curl_failed\"}\n000")
+        DOMAIN_HTTP=$(echo "$DOMAIN_RESP" | tail -1)
+        DOMAIN_BODY=$(echo "$DOMAIN_RESP" | head -n -1)
+        if [ "$DOMAIN_HTTP" = "201" ] || [ "$DOMAIN_HTTP" = "200" ]; then
+            echo -e "${GREEN}$T_OK${NC}"
+            step_ok "domain = $AMAIL_DOMAIN"
+        elif echo "$DOMAIN_BODY" | grep -qi "quota_exceeded\|already exists\|UNIQUE.*domain"; then
+            echo -e "${YELLOW}$AMAIL_DOMAIN already exists${NC}"
+            step_ok "domain = $AMAIL_DOMAIN (existing)"
+        else
+            echo -e "${RED}$T_FAILED ($DOMAIN_HTTP)${NC}"
+            echo "  Domain creation failed: $(echo "$DOMAIN_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail','?'))" 2>/dev/null || echo '?')"
+            step_warn "Will continue, but agent registration may fail"
+        fi
     else
         step_ok "$T_DOMAIN_UNSET"
     fi
