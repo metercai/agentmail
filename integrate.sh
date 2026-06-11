@@ -350,6 +350,27 @@ step_begin "$T_AUTH"
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
 
+# ── Reuse existing config if key is still valid ──
+REUSED_KEY=false
+if [ -f "$HOME/.hermes/amail_gateway.json" ]; then
+    STORED_KEY=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('admin_key',''))" 2>/dev/null || echo "")
+    STORED_URL=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('gateway_url',''))" 2>/dev/null || echo "")
+    if [ -n "$STORED_KEY" ] && [ "$STORED_URL" = "$GATEWAY_URL" ]; then
+        echo -n "  $T_VERIFY "
+        WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $STORED_KEY" 2>/dev/null || echo '{}')
+        SCOPE=$(echo "$WHOAMI" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scope','') or ','.join(d.get('scopes',[])))" 2>/dev/null || echo "")
+        if echo "$SCOPE" | grep -qE "platform|system"; then
+            echo -e "${GREEN}$T_OK${NC}"
+            ADMIN_KEY="$STORED_KEY"
+            REUSED_KEY=true
+            step_ok "$T_DETECT_KEY — reusable (scope: $SCOPE)"
+        else
+            echo -e "${YELLOW}stale${NC} (invalid scope: $SCOPE)"
+        fi
+    fi
+fi
+
+if ! $REUSED_KEY; then
 if $AUTO_MODE; then
     ADMIN_KEY="${AMAIL_ADMIN_KEY:-}"
     PRODUCT_CODE="${AMAIL_PRODUCT_CODE:-}"
@@ -407,9 +428,15 @@ else
         fi
     fi
 fi
+fi
 
 if $USE_PRODUCT_CODE; then
     step_ok "$T_PC_USING (prefix: ${PRODUCT_CODE:0:8}...)"
+elif $REUSED_KEY; then
+    # Key already verified above — just extract SYSTEM_ID for downstream steps
+    SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
+    [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
+    step_ok "$T_ADMIN_KEY_OK (prefix: ${ADMIN_KEY:0:8}..., system_id: $SYSTEM_ID)"
 else
     [ -z "$ADMIN_KEY" ] && step_fail "admin_key cannot be empty"
 
