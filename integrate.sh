@@ -696,7 +696,7 @@ EOF
         fi
 
         # Start bridge
-        nohup "$BRIDGE_LINK" > "$HOME/.hermes/bridge.log" 2>&1 &
+        nohup "$BRIDGE_LINK" -c "$HOME/.hermes/amail_bridge.toml" > "$HOME/.hermes/bridge.log" 2>&1 &
         BRIDGE_PID=$!
         echo $BRIDGE_PID > "$HOME/.hermes/bridge.pid"
         sleep 2
