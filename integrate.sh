@@ -697,9 +697,6 @@ json.dump(cfg, open(p, 'w'), indent=2)
             cat > "$HOME/.hermes/amail_bridge.toml" << EOF
 addr = "${BRIDGE_ADDR}"
 mode = "push"
-
-[push]
-bind_addr = "${BRIDGE_ADDR}"
 EOF
         else
             cat > "$HOME/.hermes/amail_bridge.toml" << EOF
