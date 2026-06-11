@@ -517,11 +517,20 @@ print(entries[$DOMAIN_CHOICE-1]['domain'])
         step_ok "$T_DOMAIN_UNSET"
     fi
 else
-    # product_code: skip Step 3 entirely
-    step_begin "$T_DOMAIN (skipped for product_code)"
-    step_ok "domain = ${AMAIL_DOMAIN:-$T_DOMAIN_UNSET}"
+    # product_code: prompt for domain (server requires it, no auto-generation)
+    step_begin "$T_DOMAIN"
+    if [ -z "$AMAIL_DOMAIN" ]; then
+        if $AUTO_MODE; then
+            step_fail "AMAIL_DOMAIN is required for product_code activation"
+        fi
+        read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
+    fi
+    if [ -n "$AMAIL_DOMAIN" ]; then
+        step_ok "domain = $AMAIL_DOMAIN"
+    else
+        step_fail "Domain is required — activate_system requires a valid bare domain"
+    fi
     SYSTEM_ID=""
-    AMAIL_DOMAIN=""
 fi
 
 # ═══════════════════════════════════════════════════════════════
