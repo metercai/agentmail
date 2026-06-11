@@ -71,7 +71,7 @@ POST /api/v1/activate-tenant
   "code": "pro-basi-a1b2-c3d4-...",
   "tenant_id": "my-team",
   "tenant_name": "My Team",
-  "domain": "myteam.amrelay.io",          // optional, defaults to {tenant_id}.amrelay.io
+  "domain": "myteam.amgateway.io",          // optional, defaults to {tenant_id}.amgateway.io
   "webhook_url": "http://gateway:8080/webhooks",  // optional
   "webhook_secret": "hmac-secret"                 // optional
 }
@@ -81,7 +81,7 @@ POST /api/v1/activate-tenant
     "raw_key": "sk-tenant-admin-xxxx",      # ← field name is "raw_key", not "admin_key"
     "tenant_id": "my-team",
     "tenant_name": "My Team",
-    "domain": "myteam.amrelay.io"
+    "domain": "myteam.amgateway.io"
   }
 ```
 
@@ -89,7 +89,7 @@ POST /api/v1/activate-tenant
 
 ### What this creates:
 - Tenant record with webhook_url + webhook_secret
-- Default domain (`{tenant_id}.amrelay.io` or custom)
+- Default domain (`{tenant_id}.amgateway.io` or custom)
 - Tenant quota (from product definition)
 - tenant_admin API key (email_address = "")
 
@@ -102,7 +102,7 @@ result = init_tenant(
     product_code="pro-basi-a1b2-c3d4-...",
     tenant_id="my-team",
     tenant_name="My Team",
-    relay_url="http://localhost:38080",
+    gateway_url="http://localhost:38080",
 )
 # → {"success": True, "tenant_id": "my-team", "admin_key": "sk-tenant-admin-xxxx", ...}
 ```
@@ -124,7 +124,7 @@ bash integrate.sh
 export AMAIL_URL=http://localhost:38080
 export AMAIL_ADMIN_KEY=sk-tenant-admin-xxxx
 export AMAIL_TENANT_ID=my-team
-export AMAIL_DOMAIN=myteam.amrelay.io
+export AMAIL_DOMAIN=myteam.amgateway.io
 ```
 
 ---
@@ -149,7 +149,7 @@ X-Api-Key: sk-tenant-admin-xxxx
         "claimed": false,
         "code_type": "address",
         "tenant_id": "my-team",
-        "domain": "myteam.amrelay.io",
+        "domain": "myteam.amgateway.io",
         "email_address": null,
         ...
       }
@@ -167,8 +167,8 @@ X-Api-Key: sk-tenant-admin-xxxx
 {
   "code_type": "address",
   "tenant_id": "my-team",
-  "domain": "myteam.amrelay.io",
-  "email_address": "agent-1@myteam.amrelay.io",  // optional, pre-bind to address
+  "domain": "myteam.amgateway.io",
+  "email_address": "agent-1@myteam.amgateway.io",  // optional, pre-bind to address
   "count": 1,
   "expires_in_mins": 10080
 }
@@ -177,7 +177,7 @@ X-Api-Key: sk-tenant-admin-xxxx
     "status": "created",
     "code_type": "address",
     "tenant_id": "my-team",
-    "domain": "myteam.amrelay.io",
+    "domain": "myteam.amgateway.io",
     "count": 1,
     "raw_codes": ["myteam-a1b2-c3d4-..."]
   }
@@ -191,14 +191,14 @@ POST /api/v1/activate-address
 
 {
   "code": "myteam-a1b2-c3d4-...",
-  "email_address": "agent-1@myteam.amrelay.io",
+  "email_address": "agent-1@myteam.amgateway.io",
   "scopes": ["send"]
 }
 
 → {
     "status": "activated",
     "raw_key": "sk-agent-xxxx",
-    "email_address": "agent-1@myteam.amrelay.io",
+    "email_address": "agent-1@myteam.amgateway.io",
     "tenant_id": "my-team",
     "scopes": ["send"]
   }
@@ -216,34 +216,34 @@ POST /api/v1/activate-address
 ### Client Code
 
 ```python
-from amail_tools import _RelayClient
+from amail_tools import _GatewayClient
 
 # Tenant admin generates address codes
-client = _RelayClient("http://localhost:38080", "sk-tenant-admin-xxxx")
+client = _GatewayClient("http://localhost:38080", "sk-tenant-admin-xxxx")
 result = client.list_address_codes(tenant_id="my-team")
 if not result.get("codes"):
     result = client.generate_address_codes(
         tenant_id="my-team",
-        domain="myteam.amrelay.io",
+        domain="myteam.amgateway.io",
         count=1,
-        email_address="agent-1@myteam.amrelay.io",
+        email_address="agent-1@myteam.amgateway.io",
     )
     activation_code = result["raw_codes"][0]
 
 # Write to profile config (BEFORE activation — contains activation_code, not api_key)
 profile_config = {
-    "email": "agent-1@myteam.amrelay.io",
+    "email": "agent-1@myteam.amgateway.io",
     "activation_code": activation_code,  # ← NOT the api_key!
-    "relay_url": "http://localhost:38080",
+    "gateway_url": "http://localhost:38080",
     "tenant_id": "my-team",
-    "domain": "myteam.amrelay.io",
+    "domain": "myteam.amgateway.io",
 }
 
 # Agent process activates on startup
-agent_client = _RelayClient("http://localhost:38080", "")  # no auth
+agent_client = _GatewayClient("http://localhost:38080", "")  # no auth
 activate_result = agent_client.activate_address(
     code=activation_code,
-    email_address="agent-1@myteam.amrelay.io",
+    email_address="agent-1@myteam.amgateway.io",
 )
 print(activate_result)
 # → {"success": True, "raw_key": "sk-agent-xxxx", "api_key_id": 0, ...}
@@ -259,7 +259,7 @@ print(activate_result)
 ```yaml
 platforms:
   amail:
-    relay_url: http://localhost:38080
+    gateway_url: http://localhost:38080
     product_code: pro-basi-a1b2-c3d4-...
 ```
 
@@ -267,10 +267,10 @@ platforms:
 ```yaml
 platforms:
   amail:
-    relay_url: http://localhost:38080
+    gateway_url: http://localhost:38080
     admin_key: sk-tenant-admin-xxxx
     tenant_id: my-team
-    domain: myteam.amrelay.io
+    domain: myteam.amgateway.io
 ```
 
 ### Profile Config (amail.json) — Agent Level
@@ -278,23 +278,23 @@ platforms:
 **Before agent activation:**
 ```json
 {
-  "email": "agent-1@myteam.amrelay.io",
+  "email": "agent-1@myteam.amgateway.io",
   "activation_code": "myteam-a1b2-c3d4-...",
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "tenant_id": "my-team",
-  "domain": "myteam.amrelay.io"
+  "domain": "myteam.amgateway.io"
 }
 ```
 
 **After agent activation:**
 ```json
 {
-  "email": "agent-1@myteam.amrelay.io",
+  "email": "agent-1@myteam.amgateway.io",
   "api_key": "sk-agent-xxxx",
   "api_key_id": 123,
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "tenant_id": "my-team",
-  "domain": "myteam.amrelay.io"
+  "domain": "myteam.amgateway.io"
 }
 ```
 
@@ -302,7 +302,7 @@ The activation_code field is removed and replaced with api_key when the agent ac
 
 ---
 
-## `_RelayClient` Methods
+## `_GatewayClient` Methods
 
 | Method | Auth | Scope | Purpose |
 |--------|------|-------|---------|

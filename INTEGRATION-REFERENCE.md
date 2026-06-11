@@ -74,7 +74,7 @@ updated: 2026-05-29
 
 ### 2.1 前置条件
 
-1. 启动 amail-relay 服务
+1. 启动 amail-gateway 服务
 2. 从启动日志获取 `admin_key`（双重身份：platform + system）
 
 ### 2.2 一键接入
@@ -83,13 +83,13 @@ updated: 2026-05-29
 from amail_tools import setup
 
 setup(
-    relay_url="http://localhost:38080",
+    gateway_url="http://localhost:38080",
     admin_key="sk-...",
 )
 ```
 
 `setup()` 自动完成：
-1. 保存 relay 连接配置到 `~/.hermes/config.yaml`
+1. 保存 gateway 连接配置到 `~/.hermes/config.yaml`
 2. 启用 webhook 平台
 3. 生成 HMAC secret
 4. 创建 `amail-inbound` webhook 路由
@@ -136,7 +136,7 @@ POST /api/v1/api-keys
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "api_key": "sk-...",
   "email": "alice@agent.example.com"
 }
@@ -150,7 +150,7 @@ POST /api/v1/api-keys
 外部发件人
     │ SMTP
     ▼
-amail-relay (Rust)
+amail-gateway (Rust)
     │ 1. 查询 system_domains WHERE domain_addr = 收件地址
     │ 2. 回退: 查 bare domain
     │ 3. 匹配 webhook_url + webhook_secret
@@ -166,7 +166,7 @@ Hermes Gateway (webhook 平台)
     │    ├─ 下载附件到本地缓存
     │    └─ 剥离后端字段
     │ 3. store_inbound_message():
-    │    ├─ 写入 msg:{mid} 元数据到 relay agent_state
+    │    ├─ 写入 msg:{mid} 元数据到 gateway agent_state
     │    ├─ references → 构建 thread_id
     │    └─ save_raw_snapshots=true → 保存原始邮件快照
     │ 4. /personality {persona}（切换 SOUL）
@@ -180,7 +180,7 @@ Agent 处理
     │ Round 5: Reply（send_mail）
     │ Round 6: Remember（set_email_summary + set_contact_profile）
     ▼
-回复通过 send_mail → relay POST /api/v1/send → SMTP 发出
+回复通过 send_mail → gateway POST /api/v1/send → SMTP 发出
 ```
 
 ### 入站 JSON 结构
@@ -233,21 +233,21 @@ Agent 调用 send_mail
     │
     ├─ 1. 如果传了 message_id:
     │      load_message_metadata(mid)
-    │      → relay.agent_state_get("msg:{mid}")
+    │      → gateway.agent_state_get("msg:{mid}")
     │      → 获取 references + thread_id
     │      → 构建 In-Reply-To + References headers
     │
     ├─ 2. 联系人检查:
     │      manage_contacts(action="check", ...)
-    │      → relay GET /admin/whitelists/check
+    │      → gateway GET /admin/whitelists/check
     │      → 确认 to/cc 在白名单
     │
     ├─ 3. 附件上传:
-    │      relay POST /api/v1/upload
+    │      gateway POST /api/v1/upload
     │      → 获得 attachment_id
     │
     ├─ 4. 发送:
-    │      relay POST /api/v1/send
+    │      gateway POST /api/v1/send
     │      {
     │        "to": [...],
     │        "cc": [...],
@@ -257,11 +257,11 @@ Agent 调用 send_mail
     │        "references": "...",
     │        "attachments": [...]
     │      }
-    │      → relay 通过 SMTP 发出
+    │      → gateway 通过 SMTP 发出
     │      → 返回 { "message_id": "<outbound-xyz@mx>" }
     │
     ├─ 5. 存储出站元数据:
-    │      relay.agent_state_put("msg:{out-mid}", ...)
+    │      gateway.agent_state_put("msg:{out-mid}", ...)
     │      → 后续回复可追踪
     │
     └─ 6. (可选) 保存快照:
@@ -272,13 +272,13 @@ Agent 调用 send_mail
 ### 4.3 SMTP 发送路径
 
 ```
-send_mail → relay POST /api/v1/send
+send_mail → gateway POST /api/v1/send
     │ auth: X-Api-Key (scope: agent/send)
     │ whitelist check: to/cc 是否在白名单
     │ persona stripping: persona.profile@domain → profile@domain
     ▼
-relay SMTP client → 外部 SMTP 服务器
-    │ Message-ID 由 relay 生成
+gateway SMTP client → 外部 SMTP 服务器
+    │ Message-ID 由 gateway 生成
     │ From: 使用 agent 的 email_address
     ▼
 外部收件人
@@ -290,10 +290,10 @@ relay SMTP client → 外部 SMTP 服务器
 
 | 凭据 | 持有者 | 权限 |
 |------|--------|------|
-| `admin_key` | relay 管理员 | platform + system: 管理域名、创建 key、生成激活码 |
+| `admin_key` | gateway 管理员 | platform + system: 管理域名、创建 key、生成激活码 |
 | 激活码 | profile 配置 | 一次性：兑换为 agent API key |
 | agent API key | agent profile | agent: 收发邮件、管理联系人、读写联系人/摘要 |
-| HMAC secret | gateway + relay | 系统间信任，验签 webhook 请求 |
+| HMAC secret | gateway | 系统间信任，验签 webhook 请求 |
 
 **安全原则：**
 - 激活码创建者看不到 raw API key（激活码兑换时由 agent 自己拿到）
@@ -306,11 +306,11 @@ relay SMTP client → 外部 SMTP 服务器
 
 | 存储位置 | 内容 | 访问方式 |
 |----------|------|----------|
-| relay `agent_state` | `profile:{addr}` — 联系人 JSON | 语义端点 PUT/GET `/contacts/:addr` |
-| relay `agent_state` | `name:{name}` — 姓名索引 | 语义端点内部维护 |
-| relay `agent_state` | `thread:{tid}` — 线程摘要 | 语义端点 PUT/GET `/thread-summary/:mid` |
-| relay `agent_state` | `msg:{mid}` — 消息元数据 | 内部，自动写入 |
-| relay `api_keys` | API key hash + scope | `/api-keys` CRUD |
-| relay `system_domains` | 域名/地址路由 + webhook | `/admin/systems/.../domains` |
-| relay `whitelists` | 联系人白名单 | `/admin/whitelists` CRUD |
+| gateway `agent_state` | `profile:{addr}` — 联系人 JSON | 语义端点 PUT/GET `/contacts/:addr` |
+| gateway `agent_state` | `name:{name}` — 姓名索引 | 语义端点内部维护 |
+| gateway `agent_state` | `thread:{tid}` — 线程摘要 | 语义端点 PUT/GET `/thread-summary/:mid` |
+| gateway `agent_state` | `msg:{mid}` — 消息元数据 | 内部，自动写入 |
+| gateway `api_keys` | API key hash + scope | `/api-keys` CRUD |
+| gateway `system_domains` | 域名/地址路由 + webhook | `/admin/systems/.../domains` |
+| gateway `whitelists` | 联系人白名单 | `/admin/whitelists` CRUD |
 | 本地 `raw_email/` | 原始邮件快照（可选） | `save_raw_snapshots: true` 时写入 |

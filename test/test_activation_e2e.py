@@ -71,7 +71,7 @@ class MockBackend(BaseHTTPRequestHandler):
             "raw_key": f"sk-tenant-admin-{tid[:8]}",  # ← field name is raw_key, NOT admin_key
             "tenant_id": tid,
             "tenant_name": tname,
-            "domain": body.get("domain", f"{tid}.amrelay.io"),
+            "domain": body.get("domain", f"{tid}.amgateway.io"),
         })
 
     # ── Level 2: Address Code generation (authenticated, tenant_admin) ──
@@ -214,8 +214,8 @@ def test_flow_a_new_tenant(gateway_url: str):
     """流程 A：新租户 — product_code → activate-tenant → admin_key"""
     print("\n═══════════ 流程 A：新租户激活 ═══════════")
 
-    # ── A.1: _RelayClient.activate_tenant() ──
-    print("\n── A.1: 直接调用 _RelayClient.activate_tenant() ──")
+    # ── A.1: _GatewayClient.activate_tenant() ──
+    print("\n── A.1: 直接调用 _GatewayClient.activate_tenant() ──")
     client = _GatewayClient(gateway_url, "")  # No auth — code is credential
     r = client.activate_tenant(
         code="prod-mock-team-001",

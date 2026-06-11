@@ -9,7 +9,7 @@ so they appear in every Hermes session and can be called from SKILL files.
 ## Quick Install (one command)
 
 ```bash
-bash /home/ubuntu/agent-mail-relay/integrations/hermes/install-tools.sh
+bash /home/ubuntu/agent-mail-gateway/integrations/hermes/install-tools.sh
 ```
 
 This script:
@@ -24,7 +24,7 @@ This script:
 ### Step 1: Copy the tool file
 
 ```bash
-cp /home/ubuntu/agent-mail-relay/integrations/hermes/tools/amail_tools.py \
+cp /home/ubuntu/agent-mail-gateway/integrations/hermes/tools/amail_tools.py \
    ~/.hermes/hermes-agent/tools/amail_tools.py
 ```
 
@@ -100,19 +100,19 @@ hermes tools list | grep -E "send_mail|contact_profile|manage_contacts|email_sum
   - Contacts: `PUT/GET /api/v1/admin/contacts/:address`, `GET /api/v1/admin/contacts?name=...`
   - Thread summaries: `PUT/GET /api/v1/admin/thread-summary/:message_id`
   - Message metadata (internal): `PUT/GET /api/v1/admin/agent-state/msg:{mid}` — used by threading logic, not exposed to agents.
-- **Storage in relay**: all state is stored in the relay's `agent_state` table (internal key format: `profile:{addr}`, `name:{name}`, `thread:{tid}`, `msg:{mid}`). Each agent's data is isolated by `api_key.email_address`. Clients should NOT use agent_state directly — use semantic endpoints instead.
+- **Storage in gateway**: all state is stored in the gateway's `agent_state` table (internal key format: `profile:{addr}`, `name:{name}`, `thread:{tid}`, `msg:{mid}`). Each agent's data is isolated by `api_key.email_address`. Clients should NOT use agent_state directly — use semantic endpoints instead.
 - **Thread resolution**: `thread_id = references[0]` (root message), falls back to `message_id` itself.
-- **Reply threading**: `send_mail(message_id=...)` internally looks up the original message's references from relay `msg:{mid}`, builds `In-Reply-To` + `References` headers, and stores the outbound message_id for future replies.
+- **Reply threading**: `send_mail(message_id=...)` internally looks up the original message's references from gateway `msg:{mid}`, builds `In-Reply-To` + `References` headers, and stores the outbound message_id for future replies.
 - **Email snapshots**: optional local storage. When `save_raw_snapshots: true`, the preprocessor saves snapshots to `raw_email/{agent_addr}/{yyyymm}/`.
 
 ### Storage
 
 | Location | Key | Content |
 |----------|-----|---------|
-| Relay `agent_state` (internal) | `profile:{address}` | Contact profile JSON |
-| Relay `agent_state` (internal) | `name:{name}` | `{"addresses": [...]}` index |
-| Relay `agent_state` (internal) | `thread:{thread_id}` | Summary text |
-| Relay `agent_state` (internal) | `msg:{message_id}` | `{"references": [...], "thread_id": "..."}` |
+| Gateway `agent_state` (internal) | `profile:{address}` | Contact profile JSON |
+| Gateway `agent_state` (internal) | `name:{name}` | `{"addresses": [...]}` index |
+| Gateway `agent_state` (internal) | `thread:{thread_id}` | Summary text |
+| Gateway `agent_state` (internal) | `msg:{message_id}` | `{"references": [...], "thread_id": "..."}` |
 | Local (optional) | `raw_email/{agent_addr}/{yyyymm}/{mid}.json` | Raw email snapshot |
 
 ### Preprocessor Integration
@@ -134,14 +134,14 @@ store_inbound_message(
 The tool reads config from, in order of priority:
 
 1. **Per-profile** `{profile_dir}/amail.json` — set automatically on profile creation
-2. **Environment variables**: `AMAIL_URL`, `AMAIL_SYS_ID`, `AMAIL_MX_DOMAIN`
+2. **Environment variables**: `AMAIL_GATEWAY_URL`, `AMAIL_SYS_ID`, `AMAIL_MX_DOMAIN`
 3. **Global Hermes config**: `~/.hermes/config.yaml` → `platforms.amail`
 
 Minimal agent profile config (`{profile_dir}/amail.json`):
 
 ```json
 {
-  "relay_url": "http://localhost:38080",
+  "gateway_url": "http://localhost:38080",
   "api_key": "sk-...",
   "email": "agent@amail.example.com",
   "system_id": "admin",
@@ -154,7 +154,7 @@ Minimal agent profile config (`{profile_dir}/amail.json`):
 | Symptom | Fix |
 |---------|-----|
 | Tool not appearing in `hermes tools list` | Check `_HERMES_CORE_TOOLS` has the tool name; run `/reset` |
-| "amail not configured" error | Set `AMAIL_URL` + `AMAIL_SYS_ID` env vars, or ensure `amail.json` exists |
+| "amail not configured" error | Set `AMAIL_GATEWAY_URL` + `AMAIL_SYS_ID` env vars, or ensure `amail.json` exists |
 | "address not in contacts" on `set_contact_profile` | Contact must exist first — use `manage_contacts(action="add", ...)` |
 | Email send fails with 403 | Confirm API key has `send` scope. AgentAdmin keys can't send. |
 | `email_summary` returns empty summary | No summary stored yet. Use `set_email_summary` first. |

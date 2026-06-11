@@ -1,6 +1,6 @@
 # AgentMail
 
-Integration toolkit to give AI agents email capabilities via amail-gateway or agent-mail-relay.
+Integration toolkit to give AI agents email capabilities via amail-gateway or agent-mail-gateway.
 
 ## What it does
 
@@ -12,7 +12,7 @@ Integration toolkit to give AI agents email capabilities via amail-gateway or ag
 ## Quick Start
 
 ```bash
-# 1. Have amail-gateway or agent-mail-relay running
+# 1. Have amail-gateway or agent-mail-gateway running
 # 2. Run the integration script
 bash integrate.sh
 ```
@@ -31,6 +31,6 @@ bash integrate.sh
 
 ## Prerequisites
 
-- amail-gateway (base edition) or agent-mail-relay (advanced edition)
+- amail-gateway (base edition) or agent-mail-gateway (advanced edition)
 - Hermes Agent
 - Python 3.10+

@@ -38,11 +38,11 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════
 
 _TOOLSET = "amail"
-_RELAY_CONFIG_KEY = "amail"
+_GATEWAY_CONFIG_KEY = "amail"
 
 
 # ═══════════════════════════════════════════════════════════════
-# _RelayClient -- HTTP client for amail API
+# _GatewayClient -- HTTP client for amail API
 # ═══════════════════════════════════════════════════════════════
 
 class _GatewayClient:
@@ -457,7 +457,7 @@ def _load_gateway_config() -> Optional[dict]:
     try:
         from gateway.config import load_config
         cfg = load_config()
-        gateway_cfg = cfg.get("platforms", {}).get(_RELAY_CONFIG_KEY, {})
+        gateway_cfg = cfg.get("platforms", {}).get(_GATEWAY_CONFIG_KEY, {})
         if gateway_cfg.get("gateway_url") and (gateway_cfg.get("admin_key") or gateway_cfg.get("product_code")):
             result = dict(gateway_cfg)
             result.setdefault("system_id", gateway_cfg.get("sys_id", ""))
@@ -549,7 +549,7 @@ def setup(
             "gateway_url": gateway_url
             admin_key=admin_key,
             system_id=system_id,
-            domain=domain or "admin.relay",
+            domain=domain or "admin.local",
             save_raw_snapshots=save_raw_snapshots,
             manager_address=manager_address,
             webhook_host=webhook_host,
@@ -588,7 +588,7 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
     per-check pass/fail status and suggestions for remediation.
 
     Args:
-        gateway_url: Relay server URL (auto-detected from config if empty)
+        gateway_url: Gateway server URL (auto-detected from config if empty)
         admin_key: Admin API key (auto-detected from config if empty)
     """
     results = {"checks": [], "all_pass": True}
@@ -603,7 +603,7 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
     gateway_url = gateway_url or (config.get("gateway_url", "") if config else "")
     admin_key = admin_key or (config.get("admin_key", "") if config else "")
 
-    # 1. Relay connectivity
+    # 1. Gateway connectivity
     if not gateway_url:
         add("gateway_connectivity", False, "No gateway_url configured", "Run integrate.sh or set AMAIL_GATEWAY_URL env var")
     else:
@@ -704,7 +704,7 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
     try:
         from gateway.platforms.webhook import register_preprocessor  # noqa: F811
         add("preprocessor", True,
-            "amail_relay preprocessor available (gateway import OK)",
+            "amail_gateway preprocessor available (gateway import OK)",
             "")
     except ImportError:
         add("preprocessor", False,
@@ -830,7 +830,7 @@ def _ensure_profile_webhook(profile_dir: str) -> Optional[dict]:
                     "secret": extra.get("secret", ""),
                 }
         except Exception as e:
-            logger.warning("[amail_relay] Failed to read webhook config: %s", e)
+            logger.warning("[amail_gateway] Failed to read webhook config: %s", e)
     
     # Auto-generate
     port = _next_available_webhook_port()
@@ -851,9 +851,9 @@ def _ensure_profile_webhook(profile_dir: str) -> Optional[dict]:
         }
         merged = {**existing, "platforms": platforms}
         cfg_path.write_text(yaml.dump(merged, default_flow_style=False))
-        logger.info("[amail_relay] Auto-configured webhook for %s (port=%d)", profile_dir, port)
+        logger.info("[amail_gateway] Auto-configured webhook for %s (port=%d)", profile_dir, port)
     except Exception as e:
-        logger.error("[amail_relay] Failed to write webhook config for %s: %s", profile_dir, e)
+        logger.error("[amail_gateway] Failed to write webhook config for %s: %s", profile_dir, e)
         return None
     
     return {"enabled": True, "host": "0.0.0.0", "port": port, "secret": secret}
@@ -1001,7 +1001,7 @@ def _detect_webhook_host(gateway_url: str) -> str:
             external_ip = resp.read().decode().strip()
             if external_ip and not _is_private(external_ip):
                 logger.info(
-                    "[amail_relay] Detected external IP %s for webhook callback "
+                    "[amail_gateway] Detected external IP %s for webhook callback "
                     "(gateway at %s is public)", external_ip, gateway_host
                 )
                 return external_ip
@@ -1010,7 +1010,7 @@ def _detect_webhook_host(gateway_url: str) -> str:
 
     if lan_ip:
         logger.warning(
-            "[amail_relay] Relay at %s is public but cannot detect external IP. "
+            "[amail_gateway] Gateway at %s is public but cannot detect external IP. "
             "Using LAN IP %s — gateway must be able to reach this address. "
             "Set AMAIL_WEBHOOK_HOST to override.", gateway_host, lan_ip
         )
@@ -1061,7 +1061,7 @@ def _ensure_webhook_route(
         personas = list_personas()
         if persona not in personas:
             logger.warning(
-                "[amail_relay] Persona '%s' not found in agent.personalities. "
+                "[amail_gateway] Persona '%s' not found in agent.personalities. "
                 "Available: %s. Route will be created without persona.",
                 persona, ", ".join(personas.keys()) or "(none)"
             )
@@ -1086,7 +1086,7 @@ def _ensure_webhook_route(
         "description": f"amail inbound email route ({route_name})",
         "events": [],
         "secret": secret,
-        "preprocess": "amail_relay",    # triggers preprocess_mail_payload
+        "preprocess": "amail_gateway",    # triggers preprocess_mail_payload
         "prompt": "",
         "skills": skills or ["amail"],
         "deliver": deliver,
@@ -1103,7 +1103,7 @@ def _ensure_webhook_route(
         encoding="utf-8",
     )
     tmp_path.replace(subs_path)
-    logger.info("[amail_relay] %s webhook route: %s %s",
+    logger.info("[amail_gateway] %s webhook route: %s %s",
                 "Updated" if existed else "Created", route_name, subs_path)
     return not existed
 
@@ -1182,7 +1182,7 @@ def init_system(
         manager_address=manager_address,
         webhook_host=webhook_host,
     )
-    logger.info("[amail] Relay config saved to %s", _gateway_config_path())
+    logger.info("[amail] Gateway config saved to %s", _gateway_config_path())
 
     return {
         "success": True,
@@ -1549,7 +1549,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     agent_email = config.get("email", "") if config else ""
 
     if not agent_email:
-        logger.warning("[amail_relay] No email configured for this profile — inbound preprocessing skipped")
+        logger.warning("[amail_gateway] No email configured for this profile — inbound preprocessing skipped")
         # Still return a recognizable payload so the gateway continues
         result["_preprocess_error"] = "amail email not configured"
         return result
@@ -1636,7 +1636,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
         if persona in configured:
             result["my_amail_addr"] = my_to_addr
         else:
-            logger.warning("[amail_relay] Persona '%s' not found in agent.personalities — falling back to base address", persona)
+            logger.warning("[amail_gateway] Persona '%s' not found in agent.personalities — falling back to base address", persona)
     if not result.get("my_amail_addr"):
         result["my_amail_addr"] = my_to_addr or agent_email
 
@@ -1678,7 +1678,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     if attachments and isinstance(attachments, list) and len(attachments) > 0:
         config = _load_gateway_config()
         if not config:
-            logger.warning("[amail_relay] Cannot download attachments: no relay config")
+            logger.warning("[amail_gateway] Cannot download attachments: no gateway config")
             return result
 
         client = _GatewayClient(config["gateway_url"], config["admin_key"])
@@ -1745,7 +1745,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
 try:
     from gateway.platforms.webhook import register_preprocessor
 
-    register_preprocessor("amail_relay", preprocess_mail_payload)
+    register_preprocessor("amail_gateway", preprocess_mail_payload)
     logger.info("amail preprocessor registered with webhook gateway")
 except ImportError:
     # Agent process / CLI process — webhook module unavailable, expected
@@ -1779,14 +1779,14 @@ def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> No
     """
     config = _load_gateway_config()
     if not config:
-        logger.debug("[amail_relay] No relay config -- skipping hooks for %s", event)
+        logger.debug("[amail_gateway] No gateway config -- skipping hooks for %s", event)
         return
 
     for cb in _profile_hooks.get(event, []):
         try:
             cb(profile_name, profile_dir, config)
         except Exception as e:
-            logger.warning("[amail_relay] hook %s for '%s' failed: %s", event, profile_name, e)
+            logger.warning("[amail_gateway] hook %s for '%s' failed: %s", event, profile_name, e)
 
 
 # ── Hook: auto-register email on profile creation ──────────────
@@ -1825,13 +1825,13 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     system_id = config.get("system_id", "")
 
     if not gateway_url or not admin_key:
-        logger.warning("[amail_relay] Cannot auto-register: gateway_url or admin_key not configured")
+        logger.warning("[amail_gateway] Cannot auto-register: gateway_url or admin_key not configured")
         return
     if not domain:
-        logger.warning("[amail_relay] Cannot auto-register: domain not configured")
+        logger.warning("[amail_gateway] Cannot auto-register: domain not configured")
         return
     if not system_id:
-        logger.warning("[amail_relay] Cannot auto-register: system_id not configured")
+        logger.warning("[amail_gateway] Cannot auto-register: system_id not configured")
         return
 
     client = _GatewayClient(gateway_url, admin_key)
@@ -1842,7 +1842,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     # Auto-configure or read profile webhook config
     wh_config = _ensure_profile_webhook(profile_dir)
     if not wh_config:
-        logger.warning("[amail_relay] Failed to configure webhook for %s — inbound mail disabled", profile_dir)
+        logger.warning("[amail_gateway] Failed to configure webhook for %s — inbound mail disabled", profile_dir)
         webhook_url = ""
         webhook_secret = ""
     else:
@@ -1872,10 +1872,10 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         manager_address=manager_address,
         delivery_mode=delivery_mode,
     )
-    logger.info("[amail_relay] Registered email %s: %s", email, result)
+    logger.info("[amail_gateway] Registered email %s: %s", email, result)
 
     if result.get("status") not in (200, 201):
-        logger.error("[amail_relay] Failed to register email %s: %s — skipping activation code generation", email, result)
+        logger.error("[amail_gateway] Failed to register email %s: %s — skipping activation code generation", email, result)
         return
 
     # Allow agent to send email to its own manager (for contact approval requests)
@@ -1887,7 +1887,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             value=manager_address,
             description="Agent ↔ Manager (auto-created)",
         )
-        logger.info("[amail_relay] Whitelisted manager %s for agent %s", manager_address, email)
+        logger.info("[amail_gateway] Whitelisted manager %s for agent %s", manager_address, email)
 
     # Create address activation code (NOT the API key itself -- that happens in the agent process)
     code_result = client.generate_address_codes(
@@ -1911,9 +1911,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             "webhook_host": config.get("webhook_host", "127.0.0.1"),
             "bridge_url": config.get("bridge_url", ""),
         })
-        logger.info("[amail_relay] Created activation code for %s (must be activated by agent)", email)
+        logger.info("[amail_gateway] Created activation code for %s (must be activated by agent)", email)
     else:
-        logger.warning("[amail_relay] Failed to create activation code for %s: %s", email, code_result)
+        logger.warning("[amail_gateway] Failed to create activation code for %s: %s", email, code_result)
 
 
 # ── Hook: auto-activate profile on agent startup ─────────────────
@@ -1954,7 +1954,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         prof.pop("last_activation_attempt", None)
         with open(config_path, "w") as f:
             json.dump(prof, f, indent=2)
-        logger.info("[amail_relay] Activated profile, api_key saved to %s", config_path)
+        logger.info("[amail_gateway] Activated profile, api_key saved to %s", config_path)
     else:
         # Rate-limit retries: skip if recently attempted (avoids spamming gateway
         # with a permanently invalid activation code)
@@ -1962,13 +1962,13 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         now_ts = _time.time()
         last = prof.get("last_activation_attempt", 0)
         if last and (now_ts - last) < 300:
-            logger.debug("[amail_relay] Skipping activation retry for %s (last attempt %ds ago)",
+            logger.debug("[amail_gateway] Skipping activation retry for %s (last attempt %ds ago)",
                          config_path, int(now_ts - last))
         else:
             prof["last_activation_attempt"] = now_ts
             with open(config_path, "w") as f:
                 json.dump(prof, f, indent=2)
-            logger.warning("[amail_relay] Failed to activate profile %s: %s",
+            logger.warning("[amail_gateway] Failed to activate profile %s: %s",
                            config_path, result.get("error", result))
 
 
@@ -2062,7 +2062,7 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
                 api_key_id = entry.get("id")
                 if api_key_id:
                     client._request("DELETE", f"/api/v1/api-keys/{api_key_id}")
-                    logger.info("[amail_relay] Deleted API key for %s (id=%s)", profile_email, api_key_id)
+                    logger.info("[amail_gateway] Deleted API key for %s (id=%s)", profile_email, api_key_id)
                 break
 
     # Remove the profile config file
@@ -2299,7 +2299,7 @@ registry.register(
 #    value: {"references": [...], "thread_id": "..."}
 # ═══════════════════════════════════════════════════════════════
 
-# Local-only helpers for raw email snapshots (not relay data)
+# Local-only helpers for raw email snapshots (not gateway data)
 def _sanitize_message_id(message_id: str) -> str:
     mid = message_id.strip().lstrip("<").rstrip(">")
     for ch in "/\\:*?\"<>|@ ":

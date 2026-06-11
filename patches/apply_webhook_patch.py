@@ -27,7 +27,7 @@ if "PREPROCESS_REGISTRY" not in content:
 
 # ═══════════════════════════════════════════════════════════════
 # Preprocess Registry — allows tools modules to register payload
-# preprocessors that run before prompt rendering (AmailRelay)
+# preprocessors that run before prompt rendering (AmailGateway)
 # ═══════════════════════════════════════════════════════════════
 
 PREPROCESS_REGISTRY: Dict[str, Callable] = {}
@@ -52,7 +52,7 @@ def register_preprocessor(name: str, fn: Callable) -> None:
 # ── Patch 3: add preprocessor call in webhook handler ─────────
 if "PREPROCESS_REGISTRY.get" not in content:
     call_block = '''
-        # ── Preprocess payload (AmailRelay integration) ──────────
+        # ── Preprocess payload (AmailGateway integration) ──────────
         preprocess_name = route_config.get("preprocess")
         if preprocess_name:
             preprocessor = PREPROCESS_REGISTRY.get(preprocess_name)

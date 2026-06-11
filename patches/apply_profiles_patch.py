@@ -18,12 +18,12 @@ patched = False
 # ── Patch 1: profile creation hook ────────────────────────────
 if "trigger_profile_hooks" not in content:
     hook_created = '''
-    # ── Fire integration hooks (AmailRelay) ──
+    # ── Fire integration hooks (AmailGateway) ──
     try:
         from tools.amail_tools import trigger_profile_hooks
         trigger_profile_hooks("profile_created", canon, str(profile_dir))
     except ImportError:
-        pass  # AmailRelay tools not installed
+        pass  # AmailGateway tools not installed
 '''
     inserted = False
     # Match the line that logs "Profile ... created"
@@ -42,12 +42,12 @@ if "trigger_profile_hooks" not in content:
 # ── Patch 2: profile deletion hook ────────────────────────────
 if "trigger_profile_hooks(\"profile_deleted\"" not in content:
     hook_deleted = '''
-    # ── Fire integration hooks (AmailRelay) ──
+    # ── Fire integration hooks (AmailGateway) ──
     try:
         from tools.amail_tools import trigger_profile_hooks
         trigger_profile_hooks("profile_deleted", canon, str(profile_dir))
     except ImportError:
-        pass  # AmailRelay tools not installed
+        pass  # AmailGateway tools not installed
 '''
     inserted = False
     # Match shutil.rmtree with profile_dir context

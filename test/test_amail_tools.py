@@ -52,7 +52,7 @@ sys.modules["tools.registry"] = MockModule()
 
 # 现在可以安全导入 tools 模块
 from amail_tools import (
-    _RelayClient,
+    _GatewayClient,
     send_mail,
     manage_contacts,
     preprocess_mail_payload,
@@ -80,7 +80,7 @@ def route(methods, prefix):
         return fn
     return wrap
 
-class MockRelayHandler(BaseHTTPRequestHandler):
+class MockGatewayHandler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
     def _json(self, code, data):
@@ -217,7 +217,7 @@ def upload_attachment(h, p, b):
 
 
 # ── Unauthenticated routes (patched into do_POST) ──
-_original_do_POST = MockRelayHandler.do_POST
+_original_do_POST = MockGatewayHandler.do_POST
 def _patched_do_POST(self):
     p = urlparse(self.path)
     body = {}
@@ -236,7 +236,7 @@ def _patched_do_POST(self):
             return handler(self, p, body)
     return _original_do_POST(self)
 
-MockRelayHandler.do_POST = _patched_do_POST
+MockGatewayHandler.do_POST = _patched_do_POST
 
 def do_activate_tenant(h, p, b):
     code = b.get("code", "")
@@ -266,11 +266,11 @@ def do_activate_address(h, p, b):
     })
 
 
-class MockRelayServer:
+class MockGatewayServer:
     """管理 mock HTTP server 的生命周期"""
 
     def __init__(self):
-        self.server = HTTPServer(("127.0.0.1", 0), MockRelayHandler)
+        self.server = HTTPServer(("127.0.0.1", 0), MockGatewayHandler)
         self.port = self.server.server_port
         self.url = f"http://127.0.0.1:{self.port}"
         self.thread = Thread(target=self.server.serve_forever, daemon=True)
@@ -322,10 +322,10 @@ class TestCase:
 # Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_client_basics(mock: MockRelayServer):
+def test_client_basics(mock: MockGatewayServer):
     """核心 HTTP 客户端基础功能"""
     print("\n── Client Basics ──")
-    client = _RelayClient(mock.url, "test-key")
+    client = _GatewayClient(mock.url, "test-key")
 
     with TestCase("send_mail — correct payload") as t:
         r = client.send_mail(to="a@b.com", subject="Hi", body="Hello", sender="me@x.com")
@@ -387,11 +387,11 @@ def test_client_basics(mock: MockRelayServer):
         t.contains(str(r), "sk-rotated")
 
 
-def test_activation_flow(mock: MockRelayServer):
+def test_activation_flow(mock: MockGatewayServer):
     """Activation code flow: tenant activation, address codes, address activation"""
     print("\n── Activation Flow ──")
 
-    client = _RelayClient(mock.url, "")
+    client = _GatewayClient(mock.url, "")
 
     with TestCase("activate_tenant — unauthenticated") as t:
         r = client.activate_tenant("mock-product-code", "new-tenant", "New Team")
@@ -399,7 +399,7 @@ def test_activation_flow(mock: MockRelayServer):
         t.eq(r.get("tenant_id"), "new-tenant")
 
     with TestCase("generate_address_codes — unauthenticated batch") as t:
-        auth_client = _RelayClient(mock.url, "test-key")
+        auth_client = _GatewayClient(mock.url, "test-key")
         r = auth_client.generate_address_codes("t1", "test.com", count=1, email_address="agent@test.com")
         t.check(r.get("count") == 1, f"count={r.get('count')}")
         codes = r.get("raw_codes", [])
@@ -412,13 +412,13 @@ def test_activation_flow(mock: MockRelayServer):
 
     with TestCase("list_address_codes — authenticated") as t:
         # Use authenticated client for listing
-        auth_client = _RelayClient(mock.url, "test-key")
+        auth_client = _GatewayClient(mock.url, "test-key")
         r = auth_client.list_address_codes("t1")
         # Mock returns whatever — just check no exception
         t.check(r is not None, "list_address_codes returned result")
 
 
-def test_init_tenant(mock: MockRelayServer):
+def test_init_tenant(mock: MockGatewayServer):
     """init_tenant() — bootstrap a new tenant from product code"""
     print("\n── init_tenant ──")
 
@@ -444,7 +444,7 @@ def test_init_tenant(mock: MockRelayServer):
         t.check(not r.get("success", True), "should fail without gateway_url")
 
 
-def test_agent_startup_activate(mock: MockRelayServer):
+def test_agent_startup_activate(mock: MockGatewayServer):
     """agent_startup_activate() — activate profile on startup"""
     print("\n── agent_startup_activate ──")
 
@@ -495,11 +495,11 @@ def test_agent_startup_activate(mock: MockRelayServer):
         del os.environ["HERMES_PROFILE_DIR"]
 
 
-def test_config_loading(mock: MockRelayServer):
+def test_config_loading(mock: MockGatewayServer):
     """配置加载逻辑"""
     print("\n── Config Loading ──")
 
-    with TestCase("env var: AMAILRELAY_*") as t:
+    with TestCase("env var: AMAILGATEWAY_*") as t:
         os.environ["AMAIL_URL"] = mock.url
         os.environ["AMAIL_ADMIN_KEY"] = "env-key"
         os.environ["AMAIL_SYS_ID"] = "myproject"
@@ -527,7 +527,7 @@ def test_config_loading(mock: MockRelayServer):
         del os.environ["HERMES_PROFILE_DIR"]
 
 
-def test_preprocess(mock: MockRelayServer):
+def test_preprocess(mock: MockGatewayServer):
     """Webhook preprocessor"""
     print("\n── Preprocess ──")
 
@@ -549,7 +549,7 @@ def test_preprocess(mock: MockRelayServer):
         t.check(isinstance(r.get("attachments"), list), "attachments is array")
 
 
-def test_agent_tools(mock: MockRelayServer):
+def test_agent_tools(mock: MockGatewayServer):
     """Agent 工具函数（send_mail, manage_contacts）"""
     print("\n── Agent Tools ──")
 
@@ -604,7 +604,7 @@ def test_agent_tools(mock: MockRelayServer):
         del os.environ["HERMES_PROFILE_DIR"]
 
 
-def test_hooks(mock: MockRelayServer):
+def test_hooks(mock: MockGatewayServer):
     """Profile lifecycle hooks"""
     print("\n── Profile Hooks ──")
 
@@ -686,7 +686,7 @@ def main():
         mock = type("obj", (object,), {"url": live_url})()
     else:
         print("Starting mock gateway server...")
-        mock_server = MockRelayServer()
+        mock_server = MockGatewayServer()
         mock = mock_server
         print(f"  Mock server on port {mock.port}")
 
@@ -717,7 +717,7 @@ def main():
             mock_server.stop()
         # Clean up any env vars we set
         for k in list(os.environ.keys()):
-            if k.startswith("AMAILRELAY_") or k.startswith("AMAIL") or k == "HERMES_PROFILE_DIR":
+            if k.startswith("AMAILGATEWAY_") or k.startswith("AMAIL") or k == "HERMES_PROFILE_DIR":
                 del os.environ[k]
 
     print()

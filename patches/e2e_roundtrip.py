@@ -4,7 +4,7 @@
 Simulates the complete agent processing loop:
   1. External sender → SMTP → gateway → webhook → capture inbound JSON
   2. Simulate LLM reading email → craft reply → send_mail via API
-  3. Relay → SMTP → local receiver catches the reply
+  3. Gateway -> SMTP -> local receiver catches the reply
   4. Validate the reply references original message (threading)
 
 Proves the full amail integration: SMTP↔webhook↔API↔SMTP.
@@ -25,7 +25,7 @@ TS = int(time.time())
 
 SMTP_OUT = 35050       # local SMTP catches gateway outbound
 WEBHOOK_PORT = 40050   # local HTTP catches webhook inbound
-RELAY_SMTP_PORT = int(os.environ.get("AMAIL_SMTP_PORT", "35000"))
+GATEWAY_SMTP_PORT = int(os.environ.get("AMAIL_SMTP_PORT", "35000"))
 TEST_AGENT = f"e2e-{TS}@test.local"
 TEST_SENDER = f"sender-{TS}@example.com"
 
@@ -47,7 +47,7 @@ def api(method, path, key=None, data=None):
     except Exception as e:
         return {"status": 0, "error": str(e)}
 
-# ── Local SMTP receiver (catches relay outbound) ───────────────
+# ── Local SMTP receiver (catches gateway outbound) ───────────────
 smtp_mails = []
 def start_smtp_receiver(host="127.0.0.1", port=SMTP_OUT):
     import asyncore, smtpd
@@ -124,7 +124,7 @@ for d in [
 ok("setup complete")
 
 # ═══════════════════════════════════════════════════════════════
-# Step 1: External → SMTP → relay → webhook
+# Step 1: External -> SMTP -> gateway -> webhook
 # ═══════════════════════════════════════════════════════════════
 print("\n── Step 1: External sender → SMTP → gateway → webhook ──")
 
@@ -145,7 +145,7 @@ msg.attach(MIMEText(
 ))
 
 try:
-    with smtplib.SMTP("127.0.0.1", RELAY_SMTP_PORT, timeout=15) as s:
+    with smtplib.SMTP("127.0.0.1", GATEWAY_SMTP_PORT, timeout=15) as s:
         refused = s.send_message(msg)
         if not refused:
             ok(f"SMTP sent → gateway accepted (250)")

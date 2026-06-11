@@ -33,7 +33,7 @@ X-Api-Key: sk-admin-...
 
 ```python
 # amail_tools.py — init_tenant()
-client = _RelayClient(relay_url, "")  # No auth — code is credential
+client = _GatewayClient(gateway_url, "")  # No auth — code is credential
 
 result = client.activate_tenant(
     code=product_code,
@@ -55,7 +55,7 @@ admin_key = result.get("raw_key")
 
 ```python
 # amail_tools.py — _auto_register_email()
-client = _RelayClient(config["relay_url"], config["admin_key"])  # tenant_admin scope
+client = _GatewayClient(config["gateway_url"], config["admin_key"])  # tenant_admin scope
 
 # Step 1: Generate address activation code (NOT an API key directly)
 code_result = client.generate_address_codes(
@@ -70,7 +70,7 @@ activation_code = code_result["raw_codes"][0]
 _inject_profile_config(profile_dir, {
     "email": email,
     "activation_code": activation_code,
-    "relay_url": config["relay_url"],
+    "gateway_url": config["gateway_url"],
     "domain": config["domain"],
     "tenant_id": tenant_id,
 })
@@ -96,7 +96,7 @@ if prof.get("api_key"):
     return
 
 # Activate using a client with NO api_key (unauthenticated endpoint)
-client = _RelayClient(config.get("relay_url", prof.get("relay_url")), "")
+client = _GatewayClient(config.get("gateway_url", prof.get("gateway_url")), "")
 result = client.activate_address(
     code=activation_code,
     email_address=prof.get("email", ""),
