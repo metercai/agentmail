@@ -1155,6 +1155,7 @@ def init_system(
     client = _GatewayClient(gateway_url, "")
     result = client.activate_system(
         code=product_code,
+        domain=domain or None,
     )
 
     status = result.get("status", 0)
