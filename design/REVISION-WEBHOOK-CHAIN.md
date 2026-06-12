@@ -1,147 +1,138 @@
-# Webhook 配置链路修订方案
+# Webhook 配置链路修订方案（终稿）
 
 ## 1. 发现的问题
 
 ### 1.1 `delivery_mode` 冗余
 
-当前 gateway 同时依赖 `delivery_mode` 字段和 `webhook_url` 字段来判断推送模式：
+gateway 用 `delivery_mode` 字段 + `webhook_url` 字段共同决定推送模式：
 
-```rust
-// webhook.rs:210
-if d.delivery_mode == "pull" {
+```
+webhook.rs:210  if d.delivery_mode == "pull" {
 ```
 
-但 `delivery_mode` 与 `webhook_url` 有隐含的对应关系：
-
-| delivery_mode | webhook_url | 含义 |
-|---|---|---|
-| `"webhook"` | 有值 | push |
-| `"pull"` | 有值（实际不回调） | pull |
-
-`webhook_url` 空与否本身就是 pull/push 的充要条件，`delivery_mode` 是冗余的。
+但 `webhook_url` 空与否本身就是 pull/push 的充要条件。gateway 需要的是"是否回调这个 URL"，而不是一个额外的"模式"标签。"mode"应该在 bridge 内部消化，不需要流到 gateway 或 agent 侧。
 
 ### 1.2 `bridge_url` 与 `webhook_host` 语义重叠
 
-当前两个变量都存回调地址：
+两个变量都存回调地址，格式不同但含义相同。`_auto_register_email` 需要 if-else 两分支处理。
 
-| 变量 | 写入时机 | 格式 |
-|------|---------|------|
-| `webhook_host` | Step 4 | `"x.x.x.x:port"` |
-| `bridge_url` | Step 5.5 | `"http://x.x.x.x:port/webhooks/..."` |
+### 1.3 Step 4 与 Step 5.5 流程割裂
 
-`_auto_register_email` 里需要两分支处理，引入不必要的复杂度。
+Step 4 输入 webhook 地址，Step 5.5 部署 bridge、探测 push/pull、写配置。两者强相关却分两步。
 
-### 1.3 Step 4 与 Step 5.5 逻辑分离不合理
+### 1.4 Bridge `POST /api/v1/routes` 无反馈
 
-Step 4 输入 webhook 地址，Step 5.5 部署 bridge、探测模式、写配置。两者强相关却分两步，流程割裂。
+只返回 `"ok"`。调用方不知道 bridge 是 push 还是 pull、bridge 对外的地址是什么。所有三种模式（direct/internal/bridge）都调此 API 注册路由，但 bridge 的响应给不了结论。
 
-### 1.4 Bridge 无路由注册反馈
+### 1.5 `probe-webhook` API 的探测逻辑不适用于集成流程
 
-`POST /api/v1/routes` 只返回 `"ok"`，调用方无法知道 bridge 是否正常工作、bridge 对外地址是什么、bridge 是 push 还是 pull。
+集成脚本通过 `POST GATEWAY_URL/probe-webhook {"addr":"127.0.0.1:80"}` 探测——远端 gateway 连的是它自己的 localhost，不是 bridge 的地址。此 API 保留给其他场景使用，集成流程改用本地 `GET /health` 验证。
 
-### 1.5 `probe-webhook` API 设计缺陷
+### 1.6 GATEWAY_URL 本机判断缺失
 
-`probe-webhook` 无法准确判断 bridge 可达性（127.0.0.1 在远端 gateway 上被解析为 gateway 自己的 localhost）。且该探测实际上是在 bridge 已经部署启动之后，已经晚了——应该在部署阶段完成验证。
+`_auto_register_email` 不知道 gateway 在本机还是远程。本机 gateway 可以直接连 Hermes webhook（127.0.0.1:8644+N），不需要 bridge。
+
+---
 
 ## 2. 改进设计目标
 
-1. **消除冗余字段**：`delivery_mode` 整个删除，`bridge_url` 合并到 `webhook_host`
-2. **统一路由注册入口**：三种模式（direct/internal/bridge）都走 `POST /api/v1/routes`
-3. **Bridge 增强反馈**：`POST /api/v1/routes` 返回 `{"webhook_url": "..."}`，桥自身根据模式决定返回值
-4. **简化判断逻辑**：gateway 用 `webhook_url.is_empty()` 代替 `delivery_mode == "pull"`
-5. **Step 4 合并 Step 5.5**：一次完成模式选择与桥部署验证
-6. **配置文件各司其职**：
+1. **删除 `delivery_mode`**：从 gateway（DDL + storage + factory + types + http + webhook.rs）和 Python（`_auto_register_email`、`integrate.sh`）中完全移除
+2. **统一 `webhook_host`**：合并 `bridge_url`，格式统一为 `host:port`
+3. **Bridge `POST /api/v1/routes` 增强反馈**：调用方传 `email` + `host` + `port`，bridge 返回 `{"webhook_url": "..." 或 ""}`——bridge 自己决定 push 或 pull
+4. **Gateway 改判空**：`d.webhook_url.trim().is_empty()` 代替 `d.delivery_mode == "pull"`
+5. **Step 4 合并原 5.5**：一次完成：模式选择 → bridge 部署/验证 → 配置写入
+6. **`_auto_register_email` 简化**：本机 gateway → 直连 Hermes；远程 gateway → 调 bridge API 拿 `webhook_url`
+7. **配置文件各司其职**：
 
-| 文件 | 内容 | 用途 |
-|------|------|------|
-| `amail_gateway.json` | gateway 连接信息 + webhook_host | 全局配置 |
-| `amail_bridge.toml` | bridge 自身参数 | bridge 启动配置 |
-| `amail.json`（per-profile） | agent 邮箱凭证 | agent 激活 |
+| 文件 | 内容 |
+|------|------|
+| `amail_gateway.json` | `gateway_url` + `admin_key` + `system_id` + `domain` + `webhook_host` |
+| `amail_bridge.toml` | `addr` + `mode`（direct=push, bridge=pull） |
+| `amail.json`（per-profile） | agent 邮箱凭证 + 激活码 |
+
+---
 
 ## 3. 改进方法细节
 
-### 3.1 Gateway — 删除 delivery_mode，webhook_url 判空
+### 3.1 Gateway — 删除 `delivery_mode`，webhook_url 判空
 
-**文件**：`amail-gateway/src/core/api/webhook.rs`
+改动按调用层次分组：
+
+#### 3.1.1 存储层（`amail-gateway/src/core/storage.rs`）
+
+| 项 | 改动 |
+|---|------|
+| DDL CREATE TABLE | 删 `delivery_mode TEXT NOT NULL DEFAULT 'webhook'` 列 |
+| ALTER TABLE migration | 删 `ALTER TABLE system_domains ADD COLUMN delivery_mode` migration block |
+| `system_domain_row()` | 删 `delivery_mode: r.get(8).unwrap_or_else(…)` 行；后续列如有索引调整 |
+| `SystemDomainRecord` struct | 删 `delivery_mode: String` 字段 |
+| `insert_system_domain()` 签名 | 删 `delivery_mode: Option<&str>` 参数 |
+| `insert_system_domain()` 体 | 删 `let dm = …` 行；INSERT SQL 删 `delivery_mode` 列及对应 `?N` |
+| `update_system_domain()` 签名 | 删 `delivery_mode: Option<&str>` 参数 |
+| `update_system_domain()` 体 | 删 `let dm = …` 行；UPDATE SQL 删 `delivery_mode = ?4` |
+| 3 条 SELECT SQL | 删 `delivery_mode` 列名 |
+
+#### 3.1.2 工厂层（`amail-gateway/src/core/factory.rs`）
+
+| 函数 | 改动 |
+|------|------|
+| `create_domain()` | 签名删 `delivery_mode: Option<&str>`，调用 `insert_system_domain()` 时删对应实参 |
+| `update_domain()` | 签名删 `delivery_mode: Option<&str>`，调用 `update_system_domain()` 时删对应实参 |
+
+#### 3.1.3 类型层（`amail-gateway/src/core/api/types.rs`）
+
+| struct | 改动 |
+|--------|------|
+| `CreateSystemDomainRequest` | 删 `delivery_mode: Option<String>` |
+| `RegisterAddressRequest` | 删 `delivery_mode: Option<String>` |
+| `UpdateSystemDomainRequest` | 删 `delivery_mode: Option<String>` |
+
+#### 3.1.4 HTTP 层（`amail-gateway/src/core/api/http.rs`）
+
+| handler | 改动 |
+|---------|------|
+| `create_system_domain()` | 调 `factory.create_domain()` 删 `req.delivery_mode.as_deref()` |
+| `register_address()` | 同上 |
+
+#### 3.1.5 判决层（`amail-gateway/src/core/api/webhook.rs`）
 
 ```rust
 // 改前
 if d.delivery_mode == "pull" {
 
 // 改后
-if d.webhook_url.trim().is_empty() {
+if d.webhook_url.as_deref().map_or(true, |u| u.trim().is_empty()) {
 ```
 
-**文件**：`amail-gateway/src/core/api/types.rs`
+#### 3.1.6 检测方法
 
-`RegisterAddressRequest`、`CreateSystemDomainRequest`、`UpdateSystemDomainRequest` 中删除 `delivery_mode: Option<String>` 字段。
+- `cargo build --lib`（gateway）+ `cargo build --release`（advanced）编译通过
+- 可用性测试 85/85 通过
 
-**文件**：`amail-gateway/src/core/api/http.rs`
+---
 
-`register_address`、`create_system_domain` handler 中删除 `delivery_mode` 参数传参。
-
-**文件**：`amail-gateway/src/core/storage.rs`
-
-DDL `CREATE TABLE system_domains` 中删除 `delivery_mode TEXT NOT NULL DEFAULT 'webhook'` 列。
-
-**检测方法**：编译通过 + 可用性测试 85/85 通过。
-
-### 3.2 Bridge — 增强 POST /api/v1/routes 响应
+### 3.2 Bridge — `POST /api/v1/routes` 响应增强
 
 **文件**：`amail-bridge/src/admin.rs`
 
-**改前 handler**：
-
-```rust
-async fn create_route(...) -> impl IntoResponse {
-    state.router.update_route(&body.email, &body.host, body.port);
-    (StatusCode::OK, "ok").into_response()
-}
-```
-
-**改后 handler**：
-
-```rust
-#[derive(Serialize)]
-struct CreateRouteResponse {
-    webhook_url: String,
-}
-
-async fn create_route(
-    State(state): State<AdminState>,
-    Json(body): Json<CreateRouteBody>,
-) -> impl IntoResponse {
-    state.router.update_route(&body.email, &body.host, body.port);
-
-    let mode = &state.config.mode;  // "push" | "pull"
-    let webhook_url = if mode == "push" {
-        format!("http://{}/webhooks/amail-inbound", state.config.addr)
-    } else {
-        String::new()  // pull → 空串
-    };
-
-    (StatusCode::OK, Json(CreateRouteResponse { webhook_url })).into_response()
-}
-```
-
-**`AdminState` 新增 `config` 字段**：
+#### 3.2.1 `AdminState` 新增 `config` 字段
 
 ```rust
 pub struct AdminState {
     pub router: Arc<ProfileRouter>,
-    pub config: BridgeConfig,          // 新增
+    pub config: BridgeConfig,   // 新增 — handler 读 mode 和 addr
     pub allowed_ips: Vec<(std::net::IpAddr, u8)>,
     pub startup: std::time::Instant,
 }
 ```
 
-**`build_admin_router` 改造**：
+#### 3.2.2 `build_admin_router` 传 `config`
 
 ```rust
 pub fn build_admin_router(config: &BridgeConfig, router: Arc<ProfileRouter>) -> Router {
     let state = AdminState {
         router,
-        config: config.clone(),      // 新增
+        config: config.clone(),
         allowed_ips: ...,
         startup: Instant::now(),
     };
@@ -149,14 +140,45 @@ pub fn build_admin_router(config: &BridgeConfig, router: Arc<ProfileRouter>) -> 
 }
 ```
 
-**检测方法**：编译通过 + 启动 bridge 后 `curl POST /api/v1/routes` 返回 `{"webhook_url":"..."}`。
+#### 3.2.3 `create_route` handler
 
-### 3.3 `_auto_register_email` — 统一为 bridge 路由注册
+```rust
+#[derive(Serialize)]
+struct CreateRouteResponse { webhook_url: String }
+
+async fn create_route(State(state): State<AdminState>, Json(body): Json<CreateRouteBody>)
+    -> impl IntoResponse
+{
+    state.router.update_route(&body.email, &body.host, body.port);
+
+    let webhook_url = if state.config.mode == "push" {
+        format!("http://{}/webhooks/amail-inbound", state.config.addr)
+    } else {
+        String::new()
+    };
+
+    (StatusCode::OK, Json(CreateRouteResponse { webhook_url })).into_response()
+}
+```
+
+**请求体**（`CreateRouteBody`，不变）：`{ "email": "a@b.com", "host": "127.0.0.1", "port": 8645 }`
+
+**响应**：`{ "webhook_url": "http://192.168.1.100:38081/webhooks/amail-inbound" }` 或 `{ "webhook_url": "" }`
+
+#### 3.2.4 检测方法
+
+- `cargo build --release`（bridge）
+- 启动后：`curl -X POST http://{addr}/api/v1/routes -d '{"email":"t@t.com","host":"127.0.0.1","port":8644}'` 返回 `{"webhook_url":"..."}`
+
+---
+
+### 3.3 `_auto_register_email` — 重写
 
 **文件**：`amail_tools.py`
 
+#### 3.3.1 新增 `_is_local_url()`
+
 ```python
-# ── 判断 gateway 是否本机 ──
 def _is_local_url(url: str) -> bool:
     from urllib.parse import urlparse
     host = urlparse(url).hostname or ""
@@ -172,156 +194,163 @@ def _is_local_url(url: str) -> bool:
         return host == local_ip
     except:
         return False
+```
 
+#### 3.3.2 `_auto_register_email` 核心逻辑
 
-# ── _auto_register_email 核心逻辑 ──
+```
 config = _load_gateway_config()
 gateway_url = config.get("gateway_url", "")
-webhook_host = config.get("webhook_host", "")
-wh_port = wh_config["port"]   # profile 的 Hermes webhook 端口
+wh_port = wh_config["port"]
 
 if _is_local_url(gateway_url):
-    # 本机 gateway → 无 bridge，直连 Hermes webhook
     webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/amail-inbound"
 else:
-    # 远程 gateway → 经 bridge，调路由 API
+    webhook_host = config.get("webhook_host", "")
     if not webhook_host:
-        logger.error("[amail_gateway] Remote gateway but webhook_host not set")
-        return
+        fail("Remote gateway but webhook_host not set")
 
-    try:
-        r = requests.post(
-            f"http://{webhook_host}/api/v1/routes",
-            json={
-                "email": email,
-                "host": "127.0.0.1",
-                "port": wh_port,
-            },
-            timeout=5,
-        )
-        if r.status_code != 200:
-            logger.error("[amail_gateway] Bridge route creation failed: %s", r.status_code)
-            return
-        data = r.json()
-        # bridge 响应:
-        #   push → {"webhook_url": "http://bridge:port/webhooks/amail-inbound"}
-        #   pull → {"webhook_url": ""}
-        webhook_url = data.get("webhook_url", "")
-    except Exception as e:
-        logger.error("[amail_gateway] Bridge unreachable: %s", e)
-        return
+    r = POST http://{webhook_host}/api/v1/routes
+          body: { "email": email, "host": "127.0.0.1", "port": wh_port }
+    if r.status != 200:
+        fail
+    webhook_url = r.json()["webhook_url"]
 
-# 提交到 gateway（无 delivery_mode 参数）
-result = client.register_email(email=email, webhook_url=webhook_url)
+client.register_email(email=email, webhook_url=webhook_url)
 ```
 
 **删除**：
 - `delivery_mode` 参数所有引用
-- `bridge_url` 读取、处理、迁移代码
-- `_derive_webhook_url` 不再需要（bridge 直接返回正确值）
+- `bridge_url` 读取、处理、legacy 迁移代码
 
-**检测方法**：Python Import OK + 集成脚本诊断通过 + 地址注册成功。
+#### 3.3.3 检测方法
+
+- `python3 -c "import amail_tools"` OK
+- 集成脚本诊断 `webhook_route`、`profile_hooks` 通过
+
+---
 
 ### 3.4 `integrate.sh` — Step 4 合并原 4 + 5.5
 
-**流程**：
+#### 3.4.1 完整流程
 
 ```
 Step 4: Webhook 回调配置
 
-GATEWAY_URL 是否本机 (127/内网IP/localhost)?
-  │
-  ├─ YES → webhook_host=""，无 bridge
-  │       写入 amail_gateway.json: { webhook_host: "" }
-  │
-  └─ NO  → 输出 3 选项:
+1. GATEWAY_URL 是否本机?
 
-      [1] direct（公网直达）
-          输入公网 IP:port，验证非内网非回环
+   YES:
+     info "Gateway is local — no bridge needed"
+     WEBHOOK_HOST=""
+     写入 amail_gateway.json: { webhook_host: "" }  ← 覆盖
+
+   NO → 输出 3 选项:
+
+   ┌── [1] direct（公网直达）
+   │      输入公网 IP:port
+   │      验证: 非回环、非内网、非本机 IP
+   │      ── 部署 bridge ──
+   │      定位二进制 (AMAIL_BRIDGE_BIN env > 本地 > GitHub)
+   │      写入 amail_bridge.toml:  addr={公网IP:port}  mode=push
+   │      启动 bridge (nohup)
+   │      ── 验证 ──
+   │      curl GET http://{公网IP:port}/health → 200  否则报错退出
+   │      WEBHOOK_HOST={公网IP:port}
+
+   ├── [2] internal（远端已有 bridge）
+   │      输入内网 bridge IP:port
+   │      验证: 内网 IP
+   │      ── 验证 ──
+   │      curl GET http://{内网IP:port}/health → 200  否则报错退出
+   │      WEBHOOK_HOST={内网IP:port}
+
+   └── [3] bridge（自建无公网，固定 pull）
+          自动检测: 遍历 eth0/ens5/...
+          取首个非 127 IPv4，端口 38081
           ── 部署 bridge ──
-          检查 AMAIL_BRIDGE_BIN env → 下载/本地
-          写入 amail_bridge.toml: { addr: 公网IP:port, mode: push }
-          启动 bridge
+          定位二进制 (同上)
+          写入 amail_bridge.toml:  addr={检测IP:port}  mode=pull
+          启动 bridge (nohup)
           ── 验证 ──
-          curl GET http://{公网IP:port}/health → 200
-          ── 写入配置 ──
-          webhook_host = 公网IP:port
-
-      [2] internal（远端已有 bridge）
-          输入内网 bridge IP:port
-          ── 验证 ──
-          curl GET http://{内网IP:port}/health → 200
-          ── 写入配置 ──
-          webhook_host = 内网IP:port
-
-      [3] bridge（自建无公网）
-          ── 自动检测 ──
-          遍历 eth0/ens5/... 取首个非127 IPv4
-          端口固定 38081
-          ── 部署 bridge ──
-          写入 amail_bridge.toml: { addr: 检测IP:port, mode: pull }
-          启动 bridge
-          ── 验证 ──
-          curl GET http://{检测IP:port}/health → 200
-          ── 写入配置 ──
-          webhook_host = 检测IP:port
+          curl GET http://{检测IP:port}/health → 200  否则报错退出
+          WEBHOOK_HOST={检测IP:port}
 ```
 
-**写入 `amail_gateway.json` 的 Python 片段**：
+#### 3.4.2 写入 `amail_gateway.json`
 
-```bash
-python3 -c "
-import json, os
-p = os.path.expanduser('~/.hermes/amail_gateway.json')
-cfg = json.load(open(p)) if os.path.exists(p) else {}
-cfg['webhook_host'] = '${WEBHOOK_HOST}'
-json.dump(cfg, open(p, 'w'), indent=2)
-"
+```
+python3 -c "cfg['webhook_host']='${WEBHOOK_HOST}'"
 ```
 
-**删除**：
+#### 3.4.3 删除项
+
 - Step 5.5 整个 section
 - `BRIDGE_DEPLOY`、`BRIDGE_MODE`、`BRIDGE_NEEDED` 变量
 - `probe-webhook` 调用
 - `delivery_mode` 写入
 - `bridge_url` 写入
+- `amail_bridge.toml` 中 `[push]` section（只保留 `addr` + `mode`）
 
-**检测方法**：三种模式分别走一次，确认 bridge 启动、`/health` 200、`amail_gateway.json` 正确。
+#### 3.4.4 检测方法
 
-### 3.5 可用性测试更新
+- `bash -n integrate.sh` 语法 OK
+- 三种模式各跑一遍，逐项检查：输入提示、bridge 启动、`/health` 200、`amail_gateway.json` webhook_host 正确
+
+---
+
+### 3.5 可用性测试
 
 **文件**：`amail-gateway/tests/availability_test.sh`
 
-8.10a 的 probe loopback 测试改为测试 bridge 的 `/health` 端点（或直接删除，因为 probe-webhook 不再是集成流程的一部分）。
+- 8.10a-d 的 probe-webhook 测试保留（gateway API 本身仍需测试）— **无需改动**
+- 新增 `POST /addresses` 时 `delivery_mode` 参数已删除的覆盖（已在之前的测试更新中完成）
+
+---
 
 ### 3.6 文档更新
 
 **文件**：`hermes-amail-integration.md`、`hermes-amail-integration-zh.md`
 
-- 删除 `delivery_mode` 字段说明
-- 删除 `bridge_url` 字段说明
-- Step 4 更新为合并后的 3 选项
+- 删除 `delivery_mode`、`bridge_url` 字段说明
+- Step 4 更新为合并后流程
 - 删除 Step 5.5 文档
-- `amail_gateway.json` 配置表中删除过期字段
+- `amail_gateway.json` 配置表删除过期字段
+
+---
 
 ## 4. 执行步骤与依赖关系
 
 ```
 Phase 1（可并行）
-  ├── 1a: amail-bridge admin.rs 增强 POST /api/v1/routes 响应
-  └── 1b: amail-gateway 删 delivery_mode（types.rs + http.rs + storage.rs + webhook.rs）
+  ├── 1a: amail-bridge admin.rs
+  │        - AdminState 加 config 字段
+  │        - build_admin_router 传 config
+  │        - create_route 返回 {"webhook_url":"..."}
+  │        检测: cargo build --release + curl 验证新响应格式
+  │
+  └── 1b: amail-gateway 删 delivery_mode
+           - storage.rs: DDL + migration + row mapper + SQL + 函数签名（15+ 处）
+           - factory.rs: create_domain + update_domain 签名（2 处）
+           - types.rs: 3 个 struct 字段（3 处）
+           - http.rs: create_system_domain + register_address 传参（2 处）
+           - webhook.rs: 判空改法（1 处）
+           检测: cargo build --lib + cargo build --release(advanced) + 可用性测试 85/85
 
 Phase 2（依赖 Phase 1）
-  └── 2a: amail_tools.py 重写 _auto_register_email
-           + 新增 _is_local_url
-           + 删除 delivery_mode、bridge_url
+  └── 2a: amail_tools.py
+           - _is_local_url() 新增
+           - _auto_register_email 重写
+           - 删除 delivery_mode + bridge_url + legacy migration
+           检测: import OK + 集成脚本诊断
 
 Phase 3（依赖 Phase 2）
   ├── 3a: integrate.sh Step 4 合并 + 简化
-  └── 3b: 可用性测试更新
+  │        检测: bash -n + 三种模式各跑一遍
+  └── 3b: 可用性测试更新（无大改动，可选）
 
-Phase 4（最后）
+Phase 4
   └── 4a: 文档更新
+           检测: grep delivery_mode/bridge_url docs/ 无残留
 
 Phase 5（验证）
   └── 5a: 全部编译 + 可用性测试 85/85 + 集成脚本全流程
@@ -331,10 +360,9 @@ Phase 5（验证）
 
 | 阶段 | 检测方法 |
 |------|---------|
-| 1a | `cargo build --release`（bridge）；启动后 `curl -X POST /api/v1/routes -d '{"email":"t@t.com","host":"127.0.0.1","port":8644}'` 返回 `{"webhook_url":"..."}` |
-| 1b | `cargo build --lib`（gateway）；可用性测试 85/85 |
-| 2a | `python3 -c "import amail_tools"` OK |
-| 3a | `bash -n integrate.sh` 语法 OK；三种模式各跑一遍确认行为 |
-| 3b | 可用性测试 85/85 |
+| 1a | `cargo build --release`（bridge）；`curl POST /api/v1/routes` 返回 `{"webhook_url":"..."}` |
+| 1b | `cargo build --lib`（gateway）；`cargo build --release`（advanced）；可用性测试 85/85 |
+| 2a | `python3 -c "import amail_tools"` OK；集成脚本诊断通过 |
+| 3a | `bash -n integrate.sh` OK；三种模式各跑一遍 |
 | 4a | `grep -rn 'delivery_mode\|bridge_url' docs/` 无残留 |
-| 5a | 完整集成脚本跑通（从 Step 1 到 Step 10）|
+| 5a | 完整集成脚本（Step 1→10）跑通 |
