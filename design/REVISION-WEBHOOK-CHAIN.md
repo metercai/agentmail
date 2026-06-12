@@ -78,7 +78,20 @@ Bridge 有两套路由机制：
 API 注册写入 `amail_routes.toml`，bridge 启动时从该文件加载路由即可完整重建路由表。
 auto-discovery 的扫描路径和 API 注册路径**功能完全重叠**，且 auto-discovery 依赖 profile 的 config.yaml 格式——这增加了耦合和出错面。
 
-**决定删除 auto-discovery**。包括 `full_scan()` 函数、inotify watcher、`scan_profile_dir()` 以及所有 profile 扫描相关代码。bridge 启动时只从 `amail_routes.toml` 加载路由。
+**决定删除 auto-discovery**。包括 `full_scan()`、`scan_profile_dir()` 以及所有 profile 目录扫描代码。
+Bridge 启动时只从 `amail_routes.toml` 加载路由。
+
+**保留 `amail_routes.toml` 的 inotify 监听**：
+- 监听到文件变化（非自身写入）→ `load_routes_file()` 重载内存路由
+- 不再触发 `full_scan()`，不再扫描 profile 目录
+- `update_route()` 写入文件 + 更新内存（双写，即时生效）
+
+### 1.11 Agent 启动时 webhook 端口可能被手动修改
+
+`wh_config["port"]` 来自 profile 的 `config.yaml: platforms.webhook.extra.port`。
+用户手动修改 config.yaml 后重启 Hermes gateway，端口变化，但 bridge 路由表仍是旧端口。
+
+**修复**：在 `_auto_activate_profile`（agent 启动 hook）中，检查当前端口与 `amail.json` 中上次注册端口是否一致，不一致则重调 `POST /api/v1/routes` 更新 bridge 路由。
 
 ---
 
@@ -367,11 +380,55 @@ result = client.register_email(email=email, webhook_url=webhook_url)
 - `python3 -c "import amail_tools"` OK
 - 集成脚本诊断 `webhook_route`、`profile_hooks` 通过
 
+### 4.4 `_auto_activate_profile` — 新增端口变更检测
+
+**文件**：`amail_tools.py`
+
+```python
+def _auto_activate_profile(profile_dir: str, config: dict) -> None:
+    """Agent startup hook — activate + re-register bridge route if port changed."""
+    # ... existing activation logic ...
+
+    # 端口变更检测 (仅远程 gateway)
+    webhook_host = config.get("webhook_host", "")
+    if not webhook_host:
+        return  # 本机 gateway, 无 bridge
+
+    wh_config = _ensure_profile_webhook(profile_dir)
+    if not wh_config:
+        return
+
+    current_port = wh_config["port"]
+    # amail.json 中上次注册的端口
+    last_port = prof.get("_wh_port", 0)
+    if current_port == last_port:
+        return  # 端口未变
+
+    # 端口变了 → 更新 bridge 路由
+    try:
+        r = requests.post(
+            f"http://{webhook_host}/api/v1/routes",
+            json={"email": prof["email"], "host": "127.0.0.1", "port": current_port},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            prof["_wh_port"] = current_port
+            # 写回 amail.json
+            json.dump(prof, open(config_path, "w"), indent=2)
+    except Exception as e:
+        logger.warning("[amail_gateway] Bridge route refresh failed: %s", e)
+```
+
+#### 检测方法
+
+- `python3 -c "import amail_tools"` OK
+- 手动改 profile config.yaml 中 webhook port + 重启 agent → 确认 bridge 路由更新
+
 ---
 
-### 4.4 `integrate.sh` — Step 4 合并原 4 + 5.5
+### 4.5 `integrate.sh` — Step 4 合并原 4 + 5.5
 
-#### 4.4.1 完整流程
+#### 4.5.1 完整流程
 
 ```
 Step 4: Webhook 回调配置
@@ -433,7 +490,7 @@ Step 4: Webhook 回调配置
           BRIDGE_HOSTNAME=""（pull 模式，无对外地址）
 ```
 
-#### 4.4.2 写入 `amail_gateway.json`
+#### 4.5.2 写入 `amail_gateway.json`
 
 ```bash
 python3 -c "
@@ -445,7 +502,7 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 ```
 
-#### 4.4.3 可重复运行（幂等性）
+#### 4.5.3 可重复运行（幂等性）
 
 - 已有 `amail_gateway.json` → 读取 `webhook_host` 作为每个选项的默认值
 - 已有 `amail_bridge.toml` → 作为默认值，不重新部署
@@ -453,7 +510,7 @@ json.dump(cfg, open(p, 'w'), indent=2)
 - Step 1（gateway_url）/Step 2（auth）已有复用检测
 - **`webhook_host=""` 唯一语义**：入口 GATEWAY_URL 本机判断先行，写 `""`；所有 3 种 bridge 模式写非空值。不存在歧义
 
-#### 4.4.4 删除项
+#### 4.5.4 删除项
 
 - Step 5.5 整个 section
 - `BRIDGE_DEPLOY`、`BRIDGE_MODE`、`BRIDGE_NEEDED` 变量
@@ -461,20 +518,20 @@ json.dump(cfg, open(p, 'w'), indent=2)
 - `bridge_url` 写入
 - `amail_bridge.toml` 中 `[push]` section
 
-#### 4.4.5 检测方法
+#### 4.5.5 检测方法
 
 - `bash -n integrate.sh` 语法 OK
 - 三种模式各跑一遍
 
 ---
 
-### 4.5 可用性测试
+### 4.6 可用性测试
 
 **文件**：`amail-gateway/tests/availability_test.sh`
 
 - 8.10a-d 的 probe-webhook 测试保留（API 端点本身仍需测试）— **无需改动**
 
-### 4.6 文档更新
+### 4.7 文档更新
 
 **文件**：`hermes-amail-integration.md`、`hermes-amail-integration-zh.md`
 
@@ -495,7 +552,7 @@ Phase 1（可并行）
            - config.rs: `tls_cert`/`tls_key`/`acme_cache` 提升到顶层
            - config.rs: `has_tls()` 改为 `hostname.is_some() && !is_ip_address(hostname)`
            - admin.rs: AdminState 加 config, create_route 返回 `{"status":"ok","webhook_url":"..."}`
-           - router.rs: 删除 `full_scan()`、`scan_profile_dir()`、`start_watcher()` 及所有 profile 扫描代码；启动时仅从 `amail_routes.toml` 加载
+           - router.rs: 删除 `full_scan()`、`scan_profile_dir()`；启动时从 `amail_routes.toml` 加载；保留 watcher 监听 routes 文件变化（热加载）
            检测: cargo build --release + curl 验证
   │
   └── 1b: amail-gateway 删 delivery_mode
@@ -509,6 +566,7 @@ Phase 1（可并行）
 Phase 2（依赖 Phase 1）
   └── 2a: amail_tools.py
            - _auto_register_email 重写
+           - _auto_activate_profile: 新增端口变更检测 + bridge 路由更新
            - 删除: delivery_mode, bridge_url, legacy migration, _is_local_url
            检测: import OK + 集成脚本诊断
 
