@@ -104,7 +104,7 @@ product_code 路径自动跳过 Step 3（domain 由服务器生成）。
 | `AMAIL_MANAGER_ADDRESS` | 否 | 空 | Agent 的默认管理员邮箱 |
 | `AMAIL_LANG` | 否 | en | 语言选择 (`en` 或 `zh`) |
 | `AMAIL_WEBHOOK_HOST` | 否 | 自动探测 | 手动指定 webhook 回调地址（Docker、自定义网络） |
-| `AMAIL_BRIDGE_URL` | 否 | 空 | Push 模式 bridge 完整 URL（如 `https://bridge.example.com/webhooks/amail-inbound`） |
+| `AMAIL_WEBHOOK_HOST` | 否 | 空 | Webhook 回调地址（`host:port`），gateway → agent 投递 |
 
 脚本自动处理配置、工具安装、源码补丁、诊断和收发测试——一站式完成 amail 与 Hermes 的对接。
 
@@ -337,19 +337,19 @@ SMTP → gateway
 
 可通过 `AMAIL_WEBHOOK_HOST` 环境变量覆盖，或直接编辑 `amail_gateway.json`。
 
-**可选 `bridge_url` — amail-bridge push 模式：**
+**可选 `webhook_host` — amail-bridge push 模式：**
 
-使用 [amail-bridge](../docs/amail-bridge-design.md) push 模式时，添加
-`bridge_url` 将所有 webhook 回调路由到 bridge：
+使用 [amail-bridge](../docs/amail-bridge-design.md) push 模式时，设置
+`webhook_host` 将所有 webhook 回调路由到 bridge：
 
 ```json
 {
-  "bridge_url": "https://bridge.example.com/webhooks/amail-inbound"
+  "webhook_host": "192.168.1.100:38081"
 }
 ```
 
-存在 `bridge_url` 时，`webhook_host` 会被忽略。bridge 负责 TLS 终结和
-到各 profile gateway 端口的内部路由。
+`webhook_host` 直接作为 `host:port` 用于 webhook 回调 URL。
+bridge 负责 TLS 终结和到各 profile gateway 端口的内部路由。
 
 **可选 `delivery_mode` — amail-bridge pull 模式：**
 

@@ -424,7 +424,11 @@ def _load_gateway_config() -> Optional[dict]:
     system_id = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
     mx_domain = os.environ.get("AMAIL_MX_DOMAIN", "amail.token.tm")
     domain = mx_domain or os.environ.get("AMAIL_DOMAIN", "")
-    bridge_url = os.environ.get("AMAIL_BRIDGE_URL", "")
+    # Legacy: map AMAIL_BRIDGE_URL → webhook_host at the config level
+    raw_webhook = os.environ.get("AMAIL_WEBHOOK_HOST", "") or os.environ.get("AMAIL_BRIDGE_URL", "")
+    if raw_webhook:
+        # Strip protocol and /path to get host:port
+        raw_webhook = raw_webhook.replace("http://", "").replace("https://", "").split("/")[0]
     if gateway_url and (admin_key or product_code):
         return {
             "gateway_url": gateway_url,
@@ -433,8 +437,7 @@ def _load_gateway_config() -> Optional[dict]:
             "system_id": system_id,
             "domain": domain,
             "manager_address": os.environ.get("AMAIL_MANAGER_ADDRESS", ""),
-            "webhook_host": os.environ.get("AMAIL_WEBHOOK_HOST", ""),
-            "bridge_url": bridge_url,
+            "webhook_host": raw_webhook,
             "sys_id": sys_id,
             "mx_domain": mx_domain,
         }
@@ -446,6 +449,10 @@ def _load_gateway_config() -> Optional[dict]:
             with open(gateway_path) as f:
                 cfg = json.load(f)
             if cfg.get("gateway_url") and (cfg.get("admin_key") or cfg.get("product_code")):
+                # Legacy migration: map bridge_url → webhook_host
+                if "bridge_url" in cfg and not cfg.get("webhook_host"):
+                    raw = cfg["bridge_url"].replace("http://", "").replace("https://", "").split("/")[0]
+                    cfg["webhook_host"] = raw
                 return cfg
         except Exception:
             pass
