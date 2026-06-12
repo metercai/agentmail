@@ -549,10 +549,50 @@ if $AUTO_MODE; then
 else
     SAVE_SNAPSHOTS=$(ask_param "$T_SNAP_PROMPT (true/false)" "AMAIL_SAVE_SNAPSHOTS" "save_raw_snapshots" "false")
     MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
+    # Webhook callback address: pick mode
+    WEBHOOK_MODE="bridge"
+    WEBHOOK_HOST=""
     if [ -z "$AMAIL_WEBHOOK_HOST" ]; then
-        info "Webhook host (gateway callback address, leave empty for auto-detect)"
+        echo ""
+        info "Webhook callback address — where the gateway delivers inbound emails:"
+        info "  [1] Public address (gateway → your server via internet)"
+        info "  [2] Internal bridge address (gateway → bridge on your LAN)"
+        info "  [3] Self-hosted bridge (auto-detect, deploy bridge locally)"
+        echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
+        WH_MODE="${WH_MODE:-3}"
+        if [ "$WH_MODE" = "1" ]; then
+            WEBHOOK_MODE="direct"
+            read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
+            # Validate: must have port, must not be private IP
+            while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
+                  echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.'; do
+                info "  Must be public IP:port (not 127.x/10.x/172.16-31.x/192.168.x)"
+                read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
+            done
+            step_ok "public address = $WEBHOOK_HOST"
+        elif [ "$WH_MODE" = "2" ]; then
+            WEBHOOK_MODE="internal"
+            read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
+            # Validate: must have port, must be private IP
+            while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
+                  ! echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.'; do
+                info "  Must be internal IP:port (10.x/172.16-31.x/192.168.x)"
+                read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
+            done
+            step_ok "internal bridge address = $WEBHOOK_HOST"
+        else
+            WEBHOOK_MODE="bridge"
+            info "  Bridge will be auto-detected and deployed in Step 5.5"
+        fi
+    else
+        WEBHOOK_HOST="$AMAIL_WEBHOOK_HOST"
+        # Detect from value: private = internal, otherwise direct
+        if echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.|^::1$|^localhost'; then
+            WEBHOOK_MODE="internal"
+        else
+            WEBHOOK_MODE="direct"
+        fi
     fi
-    WEBHOOK_HOST=$(ask_param "  webhook_host [host:port]:" "AMAIL_WEBHOOK_HOST" "webhook_host" "")
 fi
 if [ "$SAVE_SNAPSHOTS" = "true" ]; then
     step_ok "snapshots = true (inbound/outbound mail will be persisted locally)"
@@ -628,10 +668,22 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════
-# Step 5.5: Bridge deployment (remote gateway only)
+# Step 5.5: Bridge deployment (remote gateway, or self-hosted bridge mode)
 # ═══════════════════════════════════════════════════════════════
 BRIDGE_NEEDED=false
-if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; then
+BRIDGE_DEPLOY=false
+if [ "$WEBHOOK_MODE" = "bridge" ]; then
+    BRIDGE_DEPLOY=true
+elif [ "$WEBHOOK_MODE" = "direct" ] || [ "$WEBHOOK_MODE" = "internal" ]; then
+    # Pre-configured webhook address — no bridge needed
+    BRIDGE_ADDR="$WEBHOOK_HOST"
+    BRIDGE_MODE="push"
+    echo ""
+    echo -e "${BOLD}${BLUE}[5.5]${NC} Webhook delivery"
+    echo "  Using pre-configured address: $BRIDGE_ADDR (mode=$WEBHOOK_MODE, no bridge)"
+fi
+
+if $BRIDGE_DEPLOY; then
     echo ""
     echo -e "${BOLD}${BLUE}[5.5]${NC} Auto-deploy amail-bridge"
     
@@ -688,8 +740,8 @@ if ! echo "$GATEWAY_URL" | grep -qE "127\.0\.0\.1|0\.0\.0\.0|localhost|::1"; the
     fi
 
     if [ -x "$BRIDGE_LINK" ]; then
-        # ── Resolve bridge addr: WEBHOOK_HOST > amail_gateway.json > auto-detect ──
-        BRIDGE_ADDR="${WEBHOOK_HOST:-$(read_config webhook_host)}"
+        # ── Resolve bridge addr: WEBHOOK_HOST (from Step 4) > env > auto-detect ──
+        BRIDGE_ADDR="${WEBHOOK_HOST:-${AMAIL_WEBHOOK_HOST:-$(read_config webhook_host)}}"
         if [ -z "$BRIDGE_ADDR" ]; then
             echo -n "  Auto-detecting bridge address... "
             BRIDGE_ADDR=$(python3 -c "
