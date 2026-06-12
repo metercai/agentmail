@@ -75,11 +75,10 @@ Bridge 有两套路由机制：
 | `full_scan()`（auto-discovery） | 启动 + inotify 监听 | 扫描本地 `~/.hermes/profiles/*/config.yaml` |
 | `POST /api/v1/routes`（API） | `_auto_register_email` 调用 | Agent 主动注册 |
 
-**确认保留 auto-discovery**。原因：
+API 注册写入 `amail_routes.toml`，bridge 启动时从该文件加载路由即可完整重建路由表。
+auto-discovery 的扫描路径和 API 注册路径**功能完全重叠**，且 auto-discovery 依赖 profile 的 config.yaml 格式——这增加了耦合和出错面。
 
-- 两条路径写入同一个数据源（`amail_routes.toml`），不会冲突——API 写入后，`full_scan` 的 file overrides step 会读取到相同值
-- auto-discovery 覆盖场景：bridge 重启（快速恢复）、用户手动创建 profile（不经 `_auto_register_email`）、internal 模式下 bridge 重启后重建路由表
-- **不冗余、且不会出错**。保留
+**决定删除 auto-discovery**。包括 `full_scan()` 函数、inotify watcher、`scan_profile_dir()` 以及所有 profile 扫描相关代码。bridge 启动时只从 `amail_routes.toml` 加载路由。
 
 ---
 
@@ -496,6 +495,7 @@ Phase 1（可并行）
            - config.rs: `tls_cert`/`tls_key`/`acme_cache` 提升到顶层
            - config.rs: `has_tls()` 改为 `hostname.is_some() && !is_ip_address(hostname)`
            - admin.rs: AdminState 加 config, create_route 返回 `{"status":"ok","webhook_url":"..."}`
+           - router.rs: 删除 `full_scan()`、`scan_profile_dir()`、`start_watcher()` 及所有 profile 扫描代码；启动时仅从 `amail_routes.toml` 加载
            检测: cargo build --release + curl 验证
   │
   └── 1b: amail-gateway 删 delivery_mode
