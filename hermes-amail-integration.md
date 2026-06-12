@@ -361,11 +361,8 @@ When using the [amail-bridge](../docs/amail-bridge-design.md) push mode, set
 `webhook_host` is used directly as `host:port` for the webhook callback URL.
 The bridge handles TLS termination and internal routing to per-profile gateway ports.
 
-**Optional `delivery_mode` — amail-bridge pull mode:**
-
-When using the bridge pull mode (no public IP), set per-domain on the gateway
-via `POST /api/v1/admin/systems/{sid}/domains` with `delivery_mode: "pull"`.
-SMTP mail will be stored in gateway pending queue instead of POSTed to webhook.
+Pull mode is handled automatically: when bridge returns `webhook_url: ""`, gateway stores
+mail in the pending queue for bridge to poll.
 
 ### Profile Config (`{profile_dir}/amail.json`)
 

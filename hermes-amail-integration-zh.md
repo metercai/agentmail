@@ -351,11 +351,8 @@ SMTP → gateway
 `webhook_host` 直接作为 `host:port` 用于 webhook 回调 URL。
 bridge 负责 TLS 终结和到各 profile gateway 端口的内部路由。
 
-**可选 `delivery_mode` — amail-bridge pull 模式：**
-
-使用 bridge pull 模式（无公网 IP）时，在 gateway 上通过
-`POST /api/v1/admin/systems/{sid}/domains` 设置 `delivery_mode: "pull"`。
-SMTP 邮件存入 gateway 待投递队列，不主动 POST webhook。
+Pull 模式由 bridge 自动处理：返回 `webhook_url: ""` 时，gateway 将邮件
+存入待投递队列，由 bridge 轮询拉取。
 
 ### Profile 配置 (`{profile_dir}/amail.json`)
 
