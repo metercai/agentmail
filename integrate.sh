@@ -552,7 +552,20 @@ else
     # Webhook callback address: pick mode
     WEBHOOK_MODE="bridge"
     WEBHOOK_HOST=""
-    if [ -z "$AMAIL_WEBHOOK_HOST" ]; then
+
+    # Check if gateway URL is local (same machine)
+    _gw_host="$(echo "$GATEWAY_URL" | sed 's|^https\?://||;s|:.*||;s|/.*||')"
+    if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
+        info "Gateway is local — no bridge needed"
+        WEBHOOK_HOST=""
+        python3 -c "
+import json, os
+p = os.path.expanduser('~/.hermes/amail_gateway.json')
+cfg = json.load(open(p)) if os.path.exists(p) else {}
+cfg['webhook_host'] = ''
+json.dump(cfg, open(p, 'w'), indent=2)
+"
+    elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
         echo ""
         info "Webhook callback address — where the gateway delivers inbound emails:"
         info "  [1] Public address (gateway → your server via internet)"
@@ -668,197 +681,6 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════
-# Step 5.5: Bridge deployment (remote gateway, or self-hosted bridge mode)
-# ═══════════════════════════════════════════════════════════════
-BRIDGE_NEEDED=false
-BRIDGE_DEPLOY=false
-if [ "$WEBHOOK_MODE" = "bridge" ]; then
-    BRIDGE_DEPLOY=true
-elif [ "$WEBHOOK_MODE" = "direct" ] || [ "$WEBHOOK_MODE" = "internal" ]; then
-    # Pre-configured webhook address — no bridge needed
-    BRIDGE_ADDR="$WEBHOOK_HOST"
-    BRIDGE_MODE="push"
-    echo ""
-    echo -e "${BOLD}${BLUE}[5.5]${NC} Webhook delivery"
-    echo "  Using pre-configured address: $BRIDGE_ADDR (mode=$WEBHOOK_MODE, no bridge)"
-fi
-
-if $BRIDGE_DEPLOY; then
-    echo ""
-    echo -e "${BOLD}${BLUE}[5.5]${NC} Auto-deploy amail-bridge"
-    
-    BRIDGE_DIR="$HOME/.hermes/bin"
-    BRIDGE_LINK="$BRIDGE_DIR/amail-bridge"
-    mkdir -p "$BRIDGE_DIR"
-
-    # ── Resolve bridge binary: env var > GitHub download ──
-    BRIDGE_BIN=""
-    if [ -n "${AMAIL_BRIDGE_BIN:-}" ] && [ -x "$AMAIL_BRIDGE_BIN" ]; then
-        BRIDGE_BIN="$AMAIL_BRIDGE_BIN"
-        echo "  Using local bridge: $BRIDGE_BIN"
-        ln -sf "$BRIDGE_BIN" "$BRIDGE_LINK"
-    else
-        # Download from GitHub if not specified locally
-        # TODO: multi-platform binaries — currently only linux-amd64 available
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-        RELEASE_API="https://api.github.com/repos/metercai/amail-bridge/releases/latest"
-
-        LATEST_TAG=$(curl -fsS "$RELEASE_API" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
-
-        BRIDGE_URL="https://github.com/metercai/amail-bridge/releases/download/${LATEST_TAG}/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
-
-        if [ -n "$LATEST_TAG" ]; then
-            BRIDGE_VERSIONED="$BRIDGE_DIR/amail-bridge-${OS}-${ARCH}-${LATEST_TAG}"
-
-            if [ -x "$BRIDGE_VERSIONED" ]; then
-                echo "  Bridge ${LATEST_TAG} up to date — skip download"
-            else
-                echo -n "  Downloading bridge (${LATEST_TAG})... "
-                if curl -fsSL "$BRIDGE_URL" -o "$BRIDGE_VERSIONED" 2>/dev/null; then
-                    chmod +x "$BRIDGE_VERSIONED"
-                    echo "$T_OK"
-                else
-                    echo "$T_FAILED"
-                    step_warn "Bridge download failed — will use webhook push mode"
-                fi
-            fi
-            # Symlink to current version (atomically replaces old target)
-            [ -x "$BRIDGE_VERSIONED" ] && ln -sf "$(basename "$BRIDGE_VERSIONED")" "$BRIDGE_LINK"
-        else
-            # API unavailable — use latest redirect, version unknown
-            FALLBACK_URL="https://github.com/metercai/amail-bridge/releases/latest/download/amail-bridge-${OS}-${ARCH}"
-            echo -n "  Downloading bridge (version unknown)... "
-            if curl -fsSL "$FALLBACK_URL" -o "$BRIDGE_LINK" 2>/dev/null; then
-                chmod +x "$BRIDGE_LINK"
-                echo "$T_OK"
-            else
-                echo "$T_FAILED"
-                step_warn "Bridge download failed — will use webhook push mode"
-            fi
-        fi
-    fi
-
-    if [ -x "$BRIDGE_LINK" ]; then
-        # ── Resolve bridge addr: WEBHOOK_HOST (from Step 4) > env > auto-detect ──
-        BRIDGE_ADDR="${WEBHOOK_HOST:-${AMAIL_WEBHOOK_HOST:-$(read_config webhook_host)}}"
-        if [ -z "$BRIDGE_ADDR" ]; then
-            echo -n "  Auto-detecting bridge address... "
-            BRIDGE_ADDR=$(python3 -c "
-import socket
-# Find first non-loopback IPv4 address
-for name in ('eth0','ens5','enp0s1','enp0s3','enp0s8','eth1','wlan0'):
-    try:
-        import ctypes, fcntl, struct
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        iface = struct.pack('256s', name[:15].encode())
-        info = fcntl.ioctl(s.fileno(), 0x8927, iface)
-        addr = socket.inet_ntoa(info[20:24])
-        if not addr.startswith('127.'):
-            s.close()
-            print(f'{addr}:38081')
-            break
-        s.close()
-    except:
-        pass
-else:
-    # Fallback: connect to a known host and read local addr
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        addr = s.getsockname()[0]
-        s.close()
-        if not addr.startswith('127.'):
-            print(f'{addr}:38081')
-        else:
-            print('')
-    except:
-        print('')
-" 2>/dev/null || echo "")
-            if [ -n "$BRIDGE_ADDR" ]; then
-                echo "$BRIDGE_ADDR"
-            else
-                echo "fallback to 127.0.0.1"
-                BRIDGE_ADDR="127.0.0.1:38081"
-            fi
-        fi
-        # Ensure port: append 38081 if bare IP
-        if ! echo "${BRIDGE_ADDR}" | grep -q ":"; then
-            BRIDGE_ADDR="${BRIDGE_ADDR}:38081"
-        fi
-
-        # ── Probe gateway → agent reachability to pick push vs pull ──
-        BRIDGE_MODE="push"
-        echo -n "  Probing gateway reachability to ${BRIDGE_ADDR}... "
-        # Loopback addresses can't be probed remotely — skip probe, default push
-        if echo "$BRIDGE_ADDR" | grep -qE "^127\\.|^0\\.|^::1$|^localhost"; then
-            echo "local (push mode)"
-        else
-        PROBE_RESULT=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/probe-webhook" \
-            -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-            -d "{\"addr\":\"${BRIDGE_ADDR}\"}" 2>/dev/null || echo '{"reachable":false,"error":"curl_failed"}')
-        if echo "$PROBE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('reachable',False))" 2>/dev/null | grep -q "True"; then
-            echo "OK (push mode)"
-        else
-            BRIDGE_MODE="pull"
-            PROBE_ERR=$(echo "$PROBE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','?'))" 2>/dev/null || echo "?")
-            echo "unreachable (pull mode, reason: $PROBE_ERR)"
-        fi
-        fi
-
-        # ── Write webhook address to amail_gateway.json (used by _auto_register_email) ──
-        python3 -c "
-import json, os
-p = os.path.expanduser('~/.hermes/amail_gateway.json')
-cfg = json.load(open(p)) if os.path.exists(p) else {}
-cfg['webhook_host'] = '${BRIDGE_ADDR}'
-cfg['delivery_mode'] = '${BRIDGE_MODE}'
-json.dump(cfg, open(p, 'w'), indent=2)
-"
-
-        # Write bridge config
-        if [ "$BRIDGE_MODE" = "push" ]; then
-            cat > "$HOME/.hermes/amail_bridge.toml" << EOF
-addr = "${BRIDGE_ADDR}"
-mode = "push"
-EOF
-        else
-            cat > "$HOME/.hermes/amail_bridge.toml" << EOF
-addr = "127.0.0.1:38081"
-mode = "pull"
-
-[pull]
-gateway_url = "$GATEWAY_URL"
-admin_key = "$ADMIN_KEY"
-system_id = "$SYSTEM_ID"
-poll_interval_sec = 10
-EOF
-        fi
-
-        # Kill old bridge if running (avoid duplicate listeners)
-        OLD_PID_FILE="$HOME/.hermes/bridge.pid"
-        if [ -f "$OLD_PID_FILE" ]; then
-            OLD_PID=$(cat "$OLD_PID_FILE" 2>/dev/null || echo "")
-            if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-                echo "  Stopping old bridge (pid $OLD_PID)..."
-                kill "$OLD_PID" 2>/dev/null && sleep 1
-            fi
-        fi
-
-        # Start bridge
-        nohup "$BRIDGE_LINK" -c "$HOME/.hermes/amail_bridge.toml" > "$HOME/.hermes/bridge.log" 2>&1 &
-        BRIDGE_PID=$!
-        echo $BRIDGE_PID > "$HOME/.hermes/bridge.pid"
-        sleep 2
-        
-        if kill -0 "$BRIDGE_PID" 2>/dev/null; then
-            step_ok "Bridge started (pid $BRIDGE_PID, ${BRIDGE_ADDR}, mode=${BRIDGE_MODE})"
-            BRIDGE_NEEDED=true
-        else
-            step_warn "Bridge failed to start — check $HOME/.hermes/bridge.log"
-        fi
-    fi
-fi
 
 # ═══════════════════════════════════════════════════════════════
 # Step 6: Install amail tools into Hermes
@@ -976,7 +798,6 @@ else
 
     # Register existing profiles that don't have amail.json yet
     info "$T_PROFILES_REGISTER"
-    export AMAIL_DELIVERY_MODE="${BRIDGE_MODE:-webhook}"
     REG_OUTPUT=$(python3 << PYEOF
 import sys, os
 sys.path.insert(0, "$SCRIPT_DIR/tools")
@@ -1165,7 +986,7 @@ echo "  ├─ domain:      ${AMAIL_DOMAIN:-$T_UNSET}"
 echo "  ├─ snapshots:   $SAVE_SNAPSHOTS"
 echo "  ├─ manager:     ${MANAGER_ADDRESS:-<not set>}"
 echo "  ├─ webhook:     ${WEBHOOK_HOST:-<auto-detect>}"
-echo "  ├─ bridge:      $( [ "$BRIDGE_NEEDED" = true ] && echo "deployed" || echo "not needed" )"
+echo "  ├─ bridge:      $( [ -n "$WEBHOOK_HOST" ] && echo "configured ($WEBHOOK_HOST)" || echo "not needed" )"
 echo "  └─ config:      $CONFIG_FILE"
 echo ""
 echo -e "  ${BOLD}$T_PATCH${NC}"
