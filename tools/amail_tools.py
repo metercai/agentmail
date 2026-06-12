@@ -268,7 +268,6 @@ class _GatewayClient:
         webhook_url: str,
         webhook_secret: str,
         manager_address: str = "",
-        delivery_mode: str = "webhook",
         generate_code: bool = False,
     ) -> dict:
         """POST /api/v1/admin/systems/:sid/addresses — register an agent address.
@@ -283,7 +282,6 @@ class _GatewayClient:
                 "webhook_url": webhook_url,
                 "webhook_secret": webhook_secret,
                 "manager_address": manager_address,
-                "delivery_mode": delivery_mode,
             },
         )
         return result
@@ -449,10 +447,6 @@ def _load_gateway_config() -> Optional[dict]:
             with open(gateway_path) as f:
                 cfg = json.load(f)
             if cfg.get("gateway_url") and (cfg.get("admin_key") or cfg.get("product_code")):
-                # Legacy migration: map bridge_url → webhook_host
-                if "bridge_url" in cfg and not cfg.get("webhook_host"):
-                    raw = cfg["bridge_url"].replace("http://", "").replace("https://", "").split("/")[0]
-                    cfg["webhook_host"] = raw
                 return cfg
         except Exception:
             pass
@@ -1849,7 +1843,6 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     client = _GatewayClient(gateway_url, admin_key)
     email = f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
-    delivery_mode = os.environ.get("AMAIL_DELIVERY_MODE") or config.get("delivery_mode", "webhook")
 
     # Auto-configure or read profile webhook config
     wh_config = _ensure_profile_webhook(profile_dir)
@@ -1859,14 +1852,39 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         webhook_secret = ""
     else:
         webhook_secret = wh_config["secret"]
-        # webhook_host from amail_gateway.json: user input or bridge auto-detect
-        wh_host = config.get("webhook_host", "127.0.0.1")
-        if ":" in wh_host:
-            # host:port format — bridge addr or user-supplied address
-            webhook_url = f"http://{wh_host}/webhooks/amail-inbound"
+        wh_port = wh_config["port"]
+
+        webhook_host = config.get("webhook_host", "")
+        if not webhook_host:
+            # integrate.sh set webhook_host="" → gateway is local
+            webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/amail-inbound"
         else:
-            # bare host — append auto-assigned gateway port
-            webhook_url = f"http://{wh_host}:{wh_config['port']}/webhooks/amail-inbound"
+            # Remote gateway → call bridge API to get webhook_url
+            # Protocol: IP:port → http, domain:port → https
+            if re.match(r'^\d+\.\d+\.\d+\.\d+:', webhook_host):
+                bridge_base = f"http://{webhook_host}"
+            else:
+                bridge_base = f"https://{webhook_host}"
+
+            try:
+                import json as _json
+                data = _json.dumps(
+                    {"email": email, "host": "127.0.0.1", "port": wh_port}
+                ).encode()
+                req = urllib.request.Request(
+                    f"{bridge_base}/api/v1/routes",
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    resp_data = _json.loads(r.read().decode())
+                webhook_url = resp_data.get("webhook_url", "")
+                logger.info("[amail_gateway] Bridge returned webhook_url=%s", webhook_url)
+            except Exception as e:
+                logger.error("[amail_gateway] Bridge unreachable: %s", e)
+                return
+
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
 
@@ -1878,7 +1896,6 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
         manager_address=manager_address,
-        delivery_mode=delivery_mode,
         generate_code=True,
     )
     logger.info("[amail_gateway] Registered email %s: %s", email, result)
@@ -1917,7 +1934,8 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             "system_id": system_id,
             "manager_address": manager_address,
             "save_raw_snapshots": config.get("save_raw_snapshots", False),
-            "webhook_host": config.get("webhook_host", "127.0.0.1"),
+            "webhook_host": config.get("webhook_host", ""),
+            "_wh_port": wh_port if wh_config else 0,
         })
 
 
@@ -1960,6 +1978,39 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         with open(config_path, "w") as f:
             json.dump(prof, f, indent=2)
         logger.info("[amail_gateway] Activated profile, api_key saved to %s", config_path)
+
+        # ── Port refresh: re-register bridge route if webhook port changed ──
+        webhook_host = config.get("webhook_host", "")
+        if webhook_host:
+            wh_config = _ensure_profile_webhook(profile_dir)
+            if wh_config:
+                current_port = wh_config["port"]
+                last_port = prof.get("_wh_port", 0)
+                if current_port != last_port:
+                    if re.match(r'^\d+\.\d+\.\d+\.\d+:', webhook_host):
+                        bridge_base = f"http://{webhook_host}"
+                    else:
+                        bridge_base = f"https://{webhook_host}"
+                    try:
+                        import json as _json
+                        data = _json.dumps(
+                            {"email": prof["email"], "host": "127.0.0.1", "port": current_port}
+                        ).encode()
+                        req = urllib.request.Request(
+                            f"{bridge_base}/api/v1/routes",
+                            data=data,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=5) as r:
+                            pass
+                        prof["_wh_port"] = current_port
+                        with open(config_path, "w") as f:
+                            json.dump(prof, f, indent=2)
+                        logger.info("[amail_gateway] Bridge route updated: port %s -> %s",
+                                    last_port, current_port)
+                    except Exception as e:
+                        logger.warning("[amail_gateway] Bridge route refresh failed: %s", e)
     else:
         # Rate-limit retries: skip if recently attempted (avoids spamming gateway
         # with a permanently invalid activation code)
