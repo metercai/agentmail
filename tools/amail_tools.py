@@ -1842,7 +1842,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     client = _GatewayClient(gateway_url, admin_key)
     email = f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
-    delivery_mode = config.get("delivery_mode", "webhook")
+    delivery_mode = os.environ.get("AMAIL_DELIVERY_MODE") or config.get("delivery_mode", "webhook")
 
     # Auto-configure or read profile webhook config
     wh_config = _ensure_profile_webhook(profile_dir)

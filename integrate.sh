@@ -760,6 +760,7 @@ import json, os
 p = os.path.expanduser('~/.hermes/amail_gateway.json')
 cfg = json.load(open(p)) if os.path.exists(p) else {}
 cfg['bridge_url'] = 'http://${BRIDGE_ADDR}/webhooks/amail-inbound'
+cfg['delivery_mode'] = '${BRIDGE_MODE}'
 json.dump(cfg, open(p, 'w'), indent=2)
 "
 
@@ -923,6 +924,7 @@ else
 
     # Register existing profiles that don't have amail.json yet
     info "$T_PROFILES_REGISTER"
+    export AMAIL_DELIVERY_MODE="${BRIDGE_MODE:-webhook}"
     REG_OUTPUT=$(python3 << PYEOF
 import sys, os
 sys.path.insert(0, "$SCRIPT_DIR/tools")
