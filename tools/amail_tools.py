@@ -1852,18 +1852,14 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         webhook_secret = ""
     else:
         webhook_secret = wh_config["secret"]
-        # If bridge_url is configured, use it instead of webhook_host + port
-        bridge_url = config.get("bridge_url", "")
-        if bridge_url:
-            webhook_url = bridge_url
+        # webhook_host from amail_gateway.json: user input or bridge auto-detect
+        wh_host = config.get("webhook_host", "127.0.0.1")
+        if ":" in wh_host:
+            # host:port format — bridge addr or user-supplied address
+            webhook_url = f"http://{wh_host}/webhooks/amail-inbound"
         else:
-            webhook_host = config.get("webhook_host", "127.0.0.1")
-            if ":" in webhook_host:
-                # host:port format — use directly (bridge or direct gateway)
-                webhook_url = f"http://{webhook_host}/webhooks/amail-inbound"
-            else:
-                # bare host — append auto-assigned gateway port
-                webhook_url = f"http://{webhook_host}:{wh_config['port']}/webhooks/amail-inbound"
+            # bare host — append auto-assigned gateway port
+            webhook_url = f"http://{wh_host}:{wh_config['port']}/webhooks/amail-inbound"
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
 
@@ -1915,7 +1911,6 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             "manager_address": manager_address,
             "save_raw_snapshots": config.get("save_raw_snapshots", False),
             "webhook_host": config.get("webhook_host", "127.0.0.1"),
-            "bridge_url": config.get("bridge_url", ""),
         })
 
 

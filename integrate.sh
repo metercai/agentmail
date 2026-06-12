@@ -806,12 +806,12 @@ else:
         fi
         fi
 
-        # ── Write bridge_url to amail_gateway.json (used by _auto_register_email) ──
+        # ── Write webhook address to amail_gateway.json (used by _auto_register_email) ──
         python3 -c "
 import json, os
 p = os.path.expanduser('~/.hermes/amail_gateway.json')
 cfg = json.load(open(p)) if os.path.exists(p) else {}
-cfg['bridge_url'] = 'http://${BRIDGE_ADDR}/webhooks/amail-inbound'
+cfg['webhook_host'] = '${BRIDGE_ADDR}'
 cfg['delivery_mode'] = '${BRIDGE_MODE}'
 json.dump(cfg, open(p, 'w'), indent=2)
 "
