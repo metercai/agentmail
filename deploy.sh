@@ -6,7 +6,7 @@
 #   export AMAIL_DEPLOY_PORT="22"
 #   export AMAIL_DEPLOY_USER="root"
 #   # SSH key 路径（可选，默认 ~/.ssh/id_rsa）
-#   export AMAIL_DEPLOY_KEY="~/.ssh/id_deploy"
+#   export AMAIL_DEPLOY_KEY="$HOME/.ssh/id_deploy"
 #
 #   bash amail-deploy.sh upload      # 上传二进制
 #   bash amail-deploy.sh start       # 启动服务
@@ -22,11 +22,15 @@ HOST="${AMAIL_DEPLOY_HOST:?AMAIL_DEPLOY_HOST not set}"
 PORT="${AMAIL_DEPLOY_PORT:-22}"
 USER="${AMAIL_DEPLOY_USER:-root}"
 KEY="${AMAIL_DEPLOY_KEY:-}"
-SSH_OPTS="-p $PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# 自动检测部署密钥（无密码）
+if [ -z "$KEY" ] && [ -f "$HOME/.ssh/id_deploy" ]; then
+    KEY="$HOME/.ssh/id_deploy"
+fi
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 [ -n "$KEY" ] && SSH_OPTS="$SSH_OPTS -i $KEY"
 
-SSH="ssh $SSH_OPTS ${USER}@${HOST}"
-SCP="scp $SSH_OPTS"
+SSH="ssh -p $PORT $SSH_OPTS ${USER}@${HOST}"
+SCP="scp -P $PORT $SSH_OPTS"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ADVANCED_BIN="${SCRIPT_DIR}/../amail-advanced/target/release/amail-advanced"
@@ -104,6 +108,6 @@ systemctl daemon-reload && echo 'systemd unit installed'"
 }
 
 case "$1" in
-    upload|start|stop|restart|status|logs|health|setup-systemd) "$1" ;;
+    upload|start|stop|restart|status|logs|health|setup-systemd) setup_systemd ;;
     *) echo "Usage: $0 {upload|start|stop|restart|status|logs|health|setup-systemd}" ;;
 esac
