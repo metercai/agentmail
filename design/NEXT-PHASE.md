@@ -87,17 +87,29 @@ POST /api/v1/admin/pending {"limit":50, "emails":["a1@x.com",...,"a999@x.com"]}
 
 ### 3.2 方案
 
-**gateway 侧**：`POST /api/v1/admin/pending` 的 `filter` 参数支持混合列表，逐条按格式判定：
+**gateway 侧**：`POST /api/v1/admin/pending` 的 `filter` 参数支持混合列表。
+收到后先预处理合并同类项，再构建 SQL。
 
-| 格式 | 示例 | gateway SQL |
-|------|------|------------|
-| 含 `@` | `"alice@x.com"` | `email = 'alice@x.com'` |
-| 裸域（无 `@`） | `"x.com"` | `domain_addr LIKE '%@x.com'` |
-| 正则字符 | `".*@y.com"` | `email REGEXP '.*@y.com'` |
-
-```json
-{"filter": ["alice@x.com", "x.com", ".*@y.com"]}
 ```
+输入: ["alice@x.com", "x.com", "bob@x.com", ".*@y.com", "z.com"]
+
+预处理:
+  x.com 裸域 → 覆盖 alice@x.com 和 bob@x.com（丢弃）
+  最终: ["x.com", ".*@y.com", "z.com"]
+
+SQL:
+  domain_addr LIKE '%@x.com' OR
+  email REGEXP '.*@y.com' OR
+  domain_addr LIKE '%@z.com'
+```
+
+合并规则：
+
+| 格式 | 优先级 | 行为 |
+|------|--------|------|
+| 裸域 | 最高 | 吸收同域的所有精确地址和正则 |
+| 正则 | 中 | 保留（无同域裸域时独立） |
+| 精确地址 | 最低 | 仅无同域裸域时保留 |
 
 **bridge 侧**：当前只上传域名——从路由表提取唯一域名，传 `filter: ["x.com", "y.com"]`。
 
