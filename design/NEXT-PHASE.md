@@ -121,8 +121,8 @@ bridge 拉回后 `router.lookup(email)` 精确匹配 → 转发 + ACK → 不匹
 
 | 文件 | 改动 |
 |------|------|
-| gateway `http.rs` | `emails` 参数改为 `filter: Vec<String>`，逐条按格式判定 |
-| gateway `storage.rs` | `list_pending_deliveries` 按 filter 构建 `=` / `LIKE` / `REGEXP` |
+| gateway `http.rs` | `emails` 参数改为 `filter: Vec<String>`，预处理合并后构建 SQL |
+| gateway `storage.rs` | `list_pending_deliveries` 按吸收后的 filter 构建 `LIKE` / `REGEXP` |
 | bridge `pull.rs` | `fetch_pending` 从路由表提取唯一域名，传 `filter` |
 | bridge `pull.rs` | `process_batch` 逐条 `router.lookup(email)` 兜底过滤 |
 
@@ -147,9 +147,11 @@ if !key.email_address.contains('@') {
 
 ## 5. 实施顺序
 
-| 阶段 | 内容 | 改动量 |
-|------|------|--------|
-| 1 | Pull 性能优化 | bridge 5 行 |
-| 2 | category 契约 + 配额修复 + 创建校验 | ~30 行 |
-| 3 | 域级管理员裸域匹配 | auth.rs 8 行 |
-| 4 | bridge 独立 API key | integrate.sh + bridge 3 文件 |
+| 阶段 | 内容 | 依赖 | 改动量 |
+|------|------|------|--------|
+| 1 | category 契约 + 配额修复 + 创建校验 | 无 | ~30 行 |
+| 2 | Pull 性能优化（filter 预处理 + bridge 域名上传） | 无 | gateway 15 行 + bridge 5 行 |
+| 3 | require_domain_match 裸域匹配扩展 | 阶段 1 | auth.rs 8 行 |
+| 4 | bridge 独立 API key | 阶段 1 | integrate.sh + bridge 3 文件 |
+
+阶段 1 和 2 无依赖，可并行。阶段 3 和 4 依赖阶段 1 的 category 契约。
