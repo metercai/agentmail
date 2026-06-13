@@ -538,82 +538,67 @@ step_begin "$T_SNAP_CONFIG"
 if $AUTO_MODE; then
     SAVE_SNAPSHOTS="${AMAIL_SAVE_SNAPSHOTS:-false}"
     SAVE_SNAPSHOTS=$(echo "$SAVE_SNAPSHOTS" | tr '[:upper:]' '[:lower:]')
-    info "$T_SNAP_ENV: $SAVE_SNAPSHOTS"
     MANAGER_ADDRESS="${AMAIL_MANAGER_ADDRESS:-}"
-    info "manager_address: ${MANAGER_ADDRESS:-<empty>}"
-    WEBHOOK_HOST="${AMAIL_WEBHOOK_HOST:-}"
-    info "webhook_host: ${WEBHOOK_HOST:-<empty>}"
-    # Detect webhook mode from env or default to bridge
-    WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-}"
-    if [ -z "$WEBHOOK_MODE" ]; then
-        if [ -z "$WEBHOOK_HOST" ]; then
-            WEBHOOK_MODE="bridge"
-        elif echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.|^::1$|^localhost'; then
-            WEBHOOK_MODE="internal"
-        else
-            WEBHOOK_MODE="direct"
-        fi
-    fi
-    info "webhook_mode: $WEBHOOK_MODE"
+    info "read from env: snapshots=$SAVE_SNAPSHOTS manager_address=$MANAGER_ADDRESS"
 else
     SAVE_SNAPSHOTS=$(ask_param "$T_SNAP_PROMPT (true/false)" "AMAIL_SAVE_SNAPSHOTS" "save_raw_snapshots" "false")
     MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
-    # Webhook callback address: pick mode
-    WEBHOOK_MODE="bridge"
-    WEBHOOK_HOST=""
+fi
+# Webhook callback: both modes use same logic
+WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"
+WEBHOOK_HOST="${AMAIL_WEBHOOK_HOST:-}"
 
-    # Check if gateway URL is local (same machine)
-    _gw_host="$(echo "$GATEWAY_URL" | sed 's|^https\?://||;s|:.*||;s|/.*||')"
-    if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
-        info "Gateway is local — no bridge needed"
-        WEBHOOK_HOST=""
-        python3 -c "
+# Check if gateway URL is local (same machine)
+_gw_host="$(echo "$GATEWAY_URL" | sed 's|^https\?://||;s|:.*||;s|/.*||')"
+if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
+    info "Gateway is local — no bridge needed"
+    WEBHOOK_HOST=""
+    python3 -c "
 import json, os
 p = os.path.expanduser('~/.hermes/amail_gateway.json')
 cfg = json.load(open(p)) if os.path.exists(p) else {}
 cfg['webhook_host'] = ''
 json.dump(cfg, open(p, 'w'), indent=2)
 "
-    elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
-        echo ""
-        info "Webhook callback address — where the gateway delivers inbound emails:"
-        info "  [1] Public address (gateway → your server via internet)"
-        info "  [2] Internal bridge address (gateway → bridge on your LAN)"
-        info "  [3] Self-hosted bridge (auto-detect, deploy bridge locally)"
-        echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
-        WH_MODE="${WH_MODE:-3}"
-        if [ "$WH_MODE" = "1" ]; then
-            WEBHOOK_MODE="direct"
+elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
+    echo ""
+    info "Webhook callback address — where the gateway delivers inbound emails:"
+    info "  [1] Public address (gateway → your server via internet)"
+    info "  [2] Internal bridge address (gateway → bridge on your LAN)"
+    info "  [3] Self-hosted bridge (auto-detect, deploy bridge locally)"
+    echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
+    WH_MODE="${WH_MODE:-3}"
+    if [ "$WH_MODE" = "1" ]; then
+        WEBHOOK_MODE="direct"
+        read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
+        # Validate: must have port, must not be private IP
+        while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
+              echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.'; do
+            info "  Must be public IP:port (not 127.x/10.x/172.16-31.x/192.168.x)"
             read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
-            # Validate: must have port, must not be private IP
-            while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
-                  echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.'; do
-                info "  Must be public IP:port (not 127.x/10.x/172.16-31.x/192.168.x)"
-                read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
-            done
-            step_ok "public address = $WEBHOOK_HOST"
-        elif [ "$WH_MODE" = "2" ]; then
-            WEBHOOK_MODE="internal"
+        done
+        step_ok "public address = $WEBHOOK_HOST"
+    elif [ "$WH_MODE" = "2" ]; then
+        WEBHOOK_MODE="internal"
+        read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
+        # Validate: must have port, must be private IP
+        while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
+              ! echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.'; do
+            info "  Must be internal IP:port (10.x/172.16-31.x/192.168.x)"
             read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
-            # Validate: must have port, must be private IP
-            while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
-                  ! echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.'; do
-                info "  Must be internal IP:port (10.x/172.16-31.x/192.168.x)"
-                read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
-            done
-            step_ok "internal bridge address = $WEBHOOK_HOST"
-        else
-            WEBHOOK_MODE="bridge"
-            info "  Bridge will be auto-detected and deployed in Step 5a"
-        fi
+        done
+        step_ok "internal bridge address = $WEBHOOK_HOST"
     else
-        WEBHOOK_HOST="$AMAIL_WEBHOOK_HOST"
-        # Detect from value: private = internal, otherwise direct
-        if echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.|^::1$|^localhost'; then
-            WEBHOOK_MODE="internal"
-        else
-            WEBHOOK_MODE="direct"
-        fi
+        WEBHOOK_MODE="bridge"
+        info "  Bridge will be auto-detected and deployed in Step 5a"
+    fi
+else
+    WEBHOOK_HOST="$AMAIL_WEBHOOK_HOST"
+    # Detect from value: private = internal, otherwise direct
+    if echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.|^::1$|^localhost'; then
+        WEBHOOK_MODE="internal"
+    else
+        WEBHOOK_MODE="direct"
     fi
 fi
 
