@@ -91,10 +91,12 @@ POST /api/v1/admin/pending {"limit":50, "emails":["a1@x.com",...,"a999@x.com"]}
 收到后先预处理合并同类项，再构建 SQL。
 
 ```
-输入: ["alice@x.com", "x.com", "bob@x.com", ".*@y.com", "z.com"]
+输入: ["alice@x.com", "x.com", "bob@y.com", ".*@y.com", "charlie@y.com", "z.com"]
 
 预处理:
-  x.com 裸域 → 覆盖 alice@x.com 和 bob@x.com（丢弃）
+  x.com 裸域 → 吸收 alice@x.com（丢弃）
+  .*@y.com 正则 → 吸收 bob@y.com 和 charlie@y.com（丢弃）
+  z.com 裸域 → 无吸收
   最终: ["x.com", ".*@y.com", "z.com"]
 
 SQL:
@@ -103,13 +105,13 @@ SQL:
   domain_addr LIKE '%@z.com'
 ```
 
-合并规则：
+吸收规则：
 
-| 格式 | 优先级 | 行为 |
-|------|--------|------|
-| 裸域 | 最高 | 吸收同域的所有精确地址和正则 |
-| 正则 | 中 | 保留（无同域裸域时独立） |
-| 精确地址 | 最低 | 仅无同域裸域时保留 |
+| 优先级 | 格式 | 行为 |
+|--------|------|------|
+| 1 | 裸域 | 吸收同域的所有精确地址和正则 |
+| 2 | 正则 | 吸收匹配该模式的精确地址 |
+| 3 | 精确地址 | 仅未被域或正则覆盖时保留 |
 
 **bridge 侧**：当前只上传域名——从路由表提取唯一域名，传 `filter: ["x.com", "y.com"]`。
 
