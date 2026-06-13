@@ -36,43 +36,32 @@ if let Err(e) = require_domain_match(&api_key, &req.email_address) {
 ```
 Step 1:  gateway_url 发现/输入
 Step 2:  认证方式 (admin_key 或 product_code)
-Step 3:  域名输入 — 两种路径统一入口
-           admin_key 路径:  输入 → POST /domains 立即创建
-           product_code 路径: 输入 → 存储 $AMAIL_DOMAIN，Step 5 激活时创建
-           (若 $AMAIL_DOMAIN 已从 env 传入，跳过交互)
+Step 3:  域名输入
+           admin_key:   查询已有域列表 → 选择或输入新域名 → POST /domains 创建
+           product_code: 直接输入新域名 → 存储 $AMAIL_DOMAIN（无 $SYSTEM_ID 无法查询）
+           (若 $AMAIL_DOMAIN 已从 env 传入，跳过交互；product_code 删除 step_fail)
 Step 4:  配置收集 (snapshot / manager_address / webhook 模式)
-           ← 仅收集变量，不部署 bridge
+           仅收集变量，不部署 bridge
 Step 5:  系统激活 + 域创建 + 配置保存
-           admin_key 路径:  写入 amail_gateway.json
-           product_code 路径: activate_system(domain=$AMAIL_DOMAIN) → 提取 SYSTEM_KEY/SYSTEM_ID/DOMAIN
-           ← 此时 $ADMIN_KEY/$SYSTEM_ID/$DOMAIN 均就绪
+           admin_key:   写入 amail_gateway.json
+           product_code: activate_system(domain=$AMAIL_DOMAIN) → 提取 SYSTEM_KEY/SYSTEM_ID/DOMAIN
+           此时 $ADMIN_KEY/$SYSTEM_ID/$DOMAIN 均就绪
 Step 5a: 桥接部署 + 域级 key 创建
            1. 创建域级 admin key:
               POST /api/v1/api-keys {
-                system_id, email_address=$DOMAIN,
+                system_id=$SYSTEM_ID, email_address=$DOMAIN,
                 scopes=["system"], category="system"
               } → DOMAIN_ADMIN_KEY
-           2. 替换 $ADMIN_KEY = DOMAIN_ADMIN_KEY
-           3. 部署 bridge 二进制 + 写入 amail_bridge.toml (用域级 key)
-           4. 创建 bridge API key (用域级 key)
+           2. 替换全局配置: $ADMIN_KEY=DOMAIN_ADMIN_KEY, amail_gateway.json, amail_bridge.toml
+           3. 部署 bridge 二进制 + 写入 amail_bridge.toml (域级 key)
+           4. 创建 bridge API key (域级 key)
            5. 保存 SYSTEM_KEY:
-              admin_key 路径 → 不保存（用户自己持有）
+              admin_key 路径 → 不保存（用户自行持有）
               product_code 路径 → 写入 ~/.hermes/amail_system.key（不进自动化）
 Step 6-10: 工具安装 + webhook patch + profile hooks + diagnostics + 测试
 ```
 
-### 2.3 Step 3 域名输入
-
-**两种路径无法统一**——product_code 路径此时没有 `$SYSTEM_ID`（系统尚未激活），无法查询已有域。
-
-| 路径 | 行为 | 原因 |
-|------|------|------|
-| admin_key | 查询已有域列表 → 选择或输入新域名 → `POST /domains` 创建 | 已有 $ADMIN_KEY + $SYSTEM_ID |
-| product_code | 直接输入新域名 → 存储 $AMAIL_DOMAIN | 无 $SYSTEM_ID，系统在 Step 5 才创建 |
-
-**修正**：product_code 路径删除 `step_fail`，改为交互式 fallback（和 admin_key 的新域名输入一致）。不需要查询已有域。
-
-### 2.4 系统级 key 存储
+### 2.3 系统级 key 存储
 
 | 路径 | 存储位置 | 原因 |
 |------|---------|------|
@@ -81,7 +70,7 @@ Step 6-10: 工具安装 + webhook patch + profile hooks + diagnostics + 测试
 
 `amail_system.key` 不被 `_load_gateway_config` 读取，仅备人工排查。
 
-### 2.5 影响面
+### 2.4 影响面
 
 | 位置 | 当前 | 改为 |
 |------|------|------|
@@ -91,7 +80,7 @@ Step 6-10: 工具安装 + webhook patch + profile hooks + diagnostics + 测试
 | `_auto_activate_profile` | SYSTEM_KEY | DOMAIN_KEY (激活不校验) |
 | bridge API key 创建 | SYSTEM_KEY | DOMAIN_KEY (system scope 可造 key) |
 
-### 2.6 配额影响
+### 2.5 配额影响
 
 域级 admin key 的 category="system"，quota 不统计 `AND category='agent'`，不消耗配额。
 
@@ -102,7 +91,7 @@ Step 6-10: 工具安装 + webhook patch + profile hooks + diagnostics + 测试
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
 | 1 | `create_api_key` 加 `require_domain_match` | 无 |
-| 2 | Step 3 域名统一（删除 product_code 跳过+step_fail） | 无 |
-| 3 | Step 4 桥接部署迁至 Step 5a（先合并回 Step 4 的桥接代码移除） | 无 |
+| 2 | Step 3 product_code 路径删除 `step_fail`，改为交互 fallback | 无 |
+| 3 | Step 4 桥接部署代码迁至 Step 5a | 无 |
 | 4 | Step 5a 创建域级 key + 替换全局配置 + system key 存储 | 阶段 1,2,3 |
 | 5 | 验证：域级 key → _auto_register_email → 地址注册 |
