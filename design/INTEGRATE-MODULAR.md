@@ -3,6 +3,13 @@
 ## 目标
 
 将 1100+ 行的单文件拆分为主脚本 + 子模块，降低复杂度，提高可维护性。
+同时删除 `--auto` 模式——`ask_param` 已支持 env 优先，交互模式 + 默认值足以覆盖 CI/CD。
+
+## 改动清单
+
+1. **删除 AUTO_MODE**：移除 `--auto` flag、`AUTO_MODE` 变量及所有 `if $AUTO_MODE` 分支
+2. **模块化拆分**：提取 8 个子脚本
+3. **代码净减少**：主脚本约 1100 → ~350 行
 
 ## 分解结构
 
@@ -63,3 +70,29 @@ agentmail/
 - `source` 需要子脚本和主脚本在同一目录树下
 - 子脚本数量增加，打包/分发需注意完整性
 - 需要验证所有 `source` 路径在 `curl | bash` 模式下也能工作
+
+## AUTO_MODE 删除细则
+
+当前 `if $AUTO_MODE` 共 9 处。每次都是简化版的 `else` 分支内容——删除包装后行为不变：
+
+| 位置 | 当前 | 删除后 |
+|------|------|--------|
+| `--auto` arg 解析 + `AUTO_MODE=false` | 删除 | — |
+| 语言选择 `if ! $AUTO_MODE` / `elif` | 删除 | 始终交互（env fallback） |
+| `ask_param` 内 `if AUTO_MODE; then echo; return` | 删除 | `read -r` 在非 TTY 时自然 EOF |
+| Step 1 网关 URL | `.then..else..fi` | 仅保留 `else` 体 |
+| Step 2 认证 | `.then..else..fi` | 仅保留 `else` 体 |
+| Step 3 域名 | `.then..else..fi` | 仅保留 `else` 体 |
+| Step 4 配置 | `.then..else..fi` | 仅保留 `else` 体 |
+
+`ask_param` 天然支持 env 优先级 → CI/CD 设置 env vars 即可，无需 `--auto`。
+
+## 实施顺序
+
+| 阶段 | 内容 | 涉及文件 |
+|------|------|---------|
+| 1 | 创建 `lib/` 目录 + `lib/helpers.sh` + `lib/i18n.sh` | 2 新文件 |
+| 2 | 源出 Step 6-10 → `lib/install-tools.sh` 等 | 5 新文件 |
+| 3 | 源出 Step 5a → `lib/deploy-bridge.sh` | 1 新文件 |
+| 4 | 删除 AUTO_MODE + 精简主脚本 | integrate.sh |
+| 5 | 语法 + 路径验证 | 全量 |
