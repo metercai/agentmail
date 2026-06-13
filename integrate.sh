@@ -683,7 +683,7 @@ fi
 # Step 5a: Domain-level admin key + bridge deployment
 # ═══════════════════════════════════════════════════════════════
 
-if [ -n "$DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -n "$SYSTEM_ID" ]; then
+if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -n "$SYSTEM_ID" ]; then
 
     # Create domain-level admin key
     step_begin "Create domain-level admin key"
@@ -696,7 +696,7 @@ if [ -n "$DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -n "$SY
     if [ -n "$DOMAIN_ADMIN_KEY" ]; then
         SYSTEM_ADMIN_KEY="$ADMIN_KEY"
         ADMIN_KEY="$DOMAIN_ADMIN_KEY"
-        step_ok "domain admin key created ($DOMAIN)"
+        step_ok "domain admin key created ($AMAIL_DOMAIN)"
 
         python3 -c '
 import json, os
