@@ -1,67 +1,129 @@
-# Bridge Security and Performance Plan
+# Bridge 安全管理 & 性能优化方案
 
-## 1. Multi-Bridge Independent API Keys
+## 1. 配额分析：为什么 bridge key 会占用 max_addresses
 
-Current: all bridges share admin_key with system scope.
-Risk: one key leak affects all bridges.
+### 1.1 api_keys 表结构
 
-Solution: each bridge gets its own bridge-scope API key.
+```
+CREATE TABLE api_keys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id     TEXT NOT NULL,
+    domain_addr   TEXT NOT NULL,
+    key_hash      TEXT NOT NULL UNIQUE,
+    scopes        TEXT NOT NULL DEFAULT '["send"]',
+    category      TEXT NOT NULL DEFAULT 'system',
+    ...
+    UNIQUE(system_id, domain_addr)
+);
+```
 
-Before:
-  bridge-A admin_key = SYSTEM_ADMIN_KEY (system scope)
-  bridge-B admin_key = SYSTEM_ADMIN_KEY (same)
+一行 = 一个邮箱地址 = 一个配额槽位。`UNIQUE(system_id, domain_addr)` 保证同一系统下每个地址唯一。
 
-After:
-  bridge-A api_key = key_001 (bridge scope)
-  bridge-B api_key = key_002 (bridge scope)
+### 1.2 当前各 key 类型
 
-Changes needed:
-  integrate.sh Step: call POST /api/v1/api-keys { scopes: ["bridge"] }
-  write bridge api_key to amail_bridge.toml [pull] api_key field
-  gateway: pending/ack endpoints already accept bridge scope
+| key 类型 | category | 创建路径 | 是否过 check_key_quota |
+|----------|----------|---------|----------------------|
+| admin key | "platform" | `server.rs setup_admin_key()` → 直接 `factory.create_api_key()` | **否**（bootstrap 绕过） |
+| agent key | "agent" | `POST /api/v1/api-keys` → `check_key_quota()` | 是 |
+| （未来）bridge key | "bridge" | `POST /api/v1/api-keys` → `check_key_quota()` | 是 |
 
-Quota: each bridge key consumes one max_addresses slot.
-Mitigation: add per-system max_bridge_keys config or exclude bridge from count.
+### 1.3 check_key_quota 统计口径
 
-## 2. Large Email List in Pull Query
+```sql
+SELECT COUNT(*) FROM api_keys WHERE system_id = ?1
+```
 
-Current: bridge sends all known emails in POST /api/v1/admin/pending body.
-Problem: 1000 addresses = 30KB JSON per poll, SQLite 999 param limit.
+**不过滤 category。** admin key 用 `system_id="admin"`，不在用户系统 ID 中，所以不计入用户系统的配额。
 
-Option A: Domain filter
-  bridge extracts unique domains from routes: dom1.com, dom2.com
-  sends domains list instead of emails
-  gateway: WHERE domain_addr LIKE '%@dom1.com' OR domain_addr LIKE '%@dom2.com'
-  pro: short param list, scales to any route count
-  con: LIKE queries are slower than IN, needs index
+但 bridge key 用 `system_id="base-xxx"`，和 agent key 同系统，计入同一个 `max_addresses` 计数器。这就是 bridge key 会消耗地址配额的原因。
 
-Option B: Remove filter entirely
-  bridge pulls all pending for system_id, filters locally by router.lookup()
-  unmatched deliveries stay pending, cleaned by TTL
-  pro: minimal gateway changes, no SQL limit
-  con: repeated wasted polls for unmatched deliveries
+### 1.4 解决方案
 
-Option C: Cursor-based pagination
-  bridge stores last_poll_id, gateway returns pending WHERE id > last_poll_id
-  bridge ACKs only matched deliveries
-  pro: no filter params at all
-  con: requires tracking cursor state per bridge
+**方案 A**：`count_api_keys_by_system_id` 增加 `category` 排除条件：
 
-Recommendation: Option A for scale; Option B as simpler first pass.
+```sql
+SELECT COUNT(*) FROM api_keys WHERE system_id = ?1 AND category != 'bridge'
+```
 
-## 3. Implementation Order
+bridge key 不占 `max_addresses`。简单 1 行改动。但无法独立限制 bridge key 数量。
 
-Phase 1: Option B (remove email filter)
-  gateway: accept pending request without emails param
-  bridge: remove emails from fetch_pending body
-  router: filter pending deliveries locally before forwarding
-  cleanup: TTL handles stale pending deliveries
+**方案 B**：新增 `max_bridge_keys` 配额字段 + 独立计数器：
 
-Phase 2: Independent bridge keys
-  integrate.sh: create bridge-scope key during Step (merged Step 4)
-  gateway: bridge scope quota exemption or separate quota
-  bridge: api_key in config instead of admin_key
+```sql
+SELECT COUNT(*) FROM api_keys WHERE system_id = ?1 AND category = 'bridge'
+```
 
-Phase 3: Option A domain filter (if needed after Phase 1 testing)
-  bridge: extract domains from route table
-  gateway: domain filter SQL
+bridge key 和 address 各自限额。更细粒度，但改动面大。
+
+**推荐方案 A**。bridge 是基础设施组件，不应该计费。
+
+---
+
+## 2. 多 bridge 独立 API key
+
+### 2.1 现状
+
+```
+system_id = base-xxx
+  ├─ bridge-A ──── admin_key = "abc123..."  (system scope, 共享)
+  ├─ bridge-B ──── admin_key = "abc123..."  (同一把 key)
+  └─ agent-alice ─ api_key  = "xxx..."       (独立)
+```
+
+问题：一把 key 泄露 → 全部 bridge 失陷，无法单独吊销。
+
+### 2.2 改进
+
+```
+system_id = base-xxx
+  ├─ bridge-A ──── api_key_001  (scope: bridge, category: bridge, 不计 max_addresses)
+  ├─ bridge-B ──── api_key_002  (scope: bridge, category: bridge)
+  └─ agent-alice ─ api_key_xxx  (scope: agent)
+```
+
+### 2.3 实施改动
+
+| 模块 | 改动 |
+|------|------|
+| `integrate.sh` | bridge 部署时调 `POST /api/v1/api-keys {domain_addr:"bridge-xxx", scopes:["bridge"], category:"bridge"}` |
+| `amail_bridge.toml` | `[pull] admin_key` → `[pull] api_key` |
+| `bridge pull.rs` | `X-Api-Key: state.config.pull.api_key`（字段名改） |
+| `advanced storage.rs` | `count_api_keys_by_system_id` 加 `AND category != 'bridge'`（方案 A） |
+| gateway 无改动 | `pending/ack` 已接受 bridge scope |
+
+---
+
+## 3. Pull 大 email 列表性能优化
+
+### 3.1 现状
+
+```json
+POST /api/v1/admin/pending
+{"limit": 50, "emails": ["a1@x.com", "a2@x.com", ..., "a999@x.com"]}
+```
+
+问题：1000 地址 → 30KB JSON/次, SQLite 最多 999 绑定参数。
+
+### 3.2 方案 B：移除 email 过滤
+
+bridge 不传 `emails` → gateway 返回该系统所有 pending → bridge 本地用 `router.lookup()` 过滤 → 匹配的才 ACK → 不匹配的留在队列被 TTL 清理。
+
+| 改动 | 文件 |
+|------|------|
+| gateway 接受空 emails 参数 | `http.rs list_pending_deliveries` 处理 `emails:[]` 情况 |
+| bridge 移除 emails 过滤 | `pull.rs fetch_pending()` 删除 `emails` 构建 |
+| bridge 本地过滤 | `pull.rs` 对拉取结果调 `router.lookup()` |
+
+### 3.3 方案 A（如果需要）：域名过滤
+
+bridge 从 route table 提取唯一域名 → `["x.com", "y.com"]` → gateway 用 `domain_addr LIKE '%@x.com'` 过滤。
+
+---
+
+## 4. 实施顺序
+
+| 阶段 | 内容 | 风险 |
+|------|------|------|
+| Phase 1 | 移除 email 过滤（方案 B） | 低，gateway 2 行 + bridge 5 行 |
+| Phase 2 | 独立 bridge key + 配额豁免（方案 A） | 中，涉及 integrate.sh 和配额逻辑 |
+| Phase 3 | 域名过滤（方案 A，按需） | 低，仅当方案 B 不够时启用 |
