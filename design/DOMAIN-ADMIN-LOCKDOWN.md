@@ -61,23 +61,29 @@ Step 5a: 桥接部署 + 域级 key 创建
 Step 6-10: 工具安装 + webhook patch + profile hooks + diagnostics + 测试
 ```
 
-### 2.3 Step 3 域名统一
+### 2.3 Step 3 域名输入统一
 
-删除 product_code 路径的 Step 3 跳过逻辑和 `step_fail`：
+**当前 admin_key 路径**：
+1. 查询 `GET /api/v1/admin/systems/$SYSTEM_ID/domains` 获取已有域列表
+2. 用户可选择已有域（输入序号）或输入新域名（满足 quota 时创建）
+3. 新区 `POST /domains` 立即创建
 
-```bash
-# 删除
-if [ -z "$AMAIL_DOMAIN" ]; then
-    step_fail "AMAIL_DOMAIN is required for product_code activation"
-fi
+**当前 product_code 路径**：
+1. 跳过上述查询交互
+2. 仅 `read -r -p` 直接输入域名（或 env 传入）
+3. 缺失时 AUTO_MODE 下直接 `step_fail`
 
-# 统一为交互式 fallback
-if [ -z "$AMAIL_DOMAIN" ]; then
-    read -r -p "  Domain name: " AMAIL_DOMAIN
-fi
+**修正**：两种路径共用同一个域名交互逻辑（查询→选择→创建/存储），差异仅在创建时机：
+
+```
+Step 3: 统一域名交互
+  ├── 查询 GET /systems/$SYSTEM_ID/domains
+  ├── 列出已有裸域，用户可选择或输入新域名
+  ├── admin_key 路径: 新域名 → POST /domains 立即创建
+  └── product_code 路径: 存储 $AMAIL_DOMAIN，Step 5 activate_system 时创建
 ```
 
-两种路径共用同一个域名输入交互，差异仅在创建时机。
+删除 product_code 路径的 `step_fail` 和独立输入代码块，合并进统一的域名交互分支。
 
 ### 2.4 系统级 key 存储
 
