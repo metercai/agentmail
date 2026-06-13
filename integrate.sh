@@ -607,6 +607,99 @@ json.dump(cfg, open(p, 'w'), indent=2)
         fi
     fi
 fi
+
+# ── Bridge deployment + API key ──
+if [ -n "$WEBHOOK_HOST" ] && [ "$WEBHOOK_MODE" != "internal" ]; then
+    step_begin "Deploy amail-bridge"
+
+    BRIDGE_DIR="$HOME/.hermes/bin"
+    BRIDGE_BIN="${AMAIL_BRIDGE_BIN:-}"
+    if [ -z "$BRIDGE_BIN" ]; then
+        BRIDGE_BIN="$BRIDGE_DIR/amail-bridge"
+    fi
+    mkdir -p "$BRIDGE_DIR"
+
+    if [ ! -x "$BRIDGE_BIN" ]; then
+        BRIDGE_VERSION="${AMAIL_BRIDGE_VERSION:-v0.5.0}"
+        BRIDGE_URL="https://github.com/metercai/amail-bridge/releases/download/${BRIDGE_VERSION}/amail-bridge-${BRIDGE_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+        info "Downloading bridge from $BRIDGE_URL ..."
+        curl -sL "$BRIDGE_URL" | tar xz -C "$BRIDGE_DIR" amail-bridge 2>/dev/null || true
+    fi
+
+    if [ -x "$BRIDGE_BIN" ]; then
+        if [ "$WEBHOOK_MODE" = "bridge" ]; then
+            BRIDGE_ADDR="$(ip -4 addr show scope global 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1):38081"
+            [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}'):38081"
+            [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="127.0.0.1:38081"
+            WEBHOOK_HOST="$BRIDGE_ADDR"
+        fi
+
+        BRIDGE_MODE="push"
+        [ "$WEBHOOK_MODE" = "bridge" ] && BRIDGE_MODE="pull"
+
+        OLD_PID_FILE="$HOME/.hermes/bridge.pid"
+        if [ -f "$OLD_PID_FILE" ]; then kill "$(cat "$OLD_PID_FILE")" 2>/dev/null || true; rm -f "$OLD_PID_FILE"; fi
+
+        cat > "$HOME/.hermes/amail_bridge.toml" << EOF
+addr = "${WEBHOOK_HOST}"
+mode = "${BRIDGE_MODE}"
+
+[pull]
+amail_url = "${GATEWAY_URL}"
+admin_key = "${ADMIN_KEY}"
+system_id = "${SYSTEM_ID}"
+poll_interval_sec = 10
+EOF
+
+        nohup "$BRIDGE_BIN" -c "$HOME/.hermes/amail_bridge.toml" > "$HOME/.hermes/bridge.log" 2>&1 &
+        BRIDGE_PID=$!
+        echo "$BRIDGE_PID" > "$OLD_PID_FILE"
+        sleep 1
+
+        if kill -0 "$BRIDGE_PID" 2>/dev/null; then
+            step_ok "bridge started (mode=${BRIDGE_MODE}, ${WEBHOOK_HOST})"
+        else
+            step_warn "bridge failed to start — check $HOME/.hermes/bridge.log"
+        fi
+    else
+        step_warn "bridge binary not found — download failed"
+    fi
+elif [ -n "$WEBHOOK_HOST" ] && [ "$WEBHOOK_MODE" = "internal" ]; then
+    cat > "$HOME/.hermes/amail_bridge.toml" << EOF
+mode = "pull"
+
+[pull]
+amail_url = "${GATEWAY_URL}"
+admin_key = "${ADMIN_KEY}"
+system_id = "${SYSTEM_ID}"
+poll_interval_sec = 10
+EOF
+    step_ok "bridge config (pull mode, remote bridge $WEBHOOK_HOST)"
+fi
+
+# Create bridge-scoped API key
+if [ -n "$GATEWAY_URL" ] && [ -n "$ADMIN_KEY" ] && [ -n "$SYSTEM_ID" ]; then
+    BRIDGE_DOMAIN="bridge-$(uuidgen 2>/dev/null | tr -d '-' | head -c 8 || echo "$(date +%s|md5sum|head -c8)")"
+    BRIDGE_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
+        -H "X-Api-Key: $ADMIN_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{\"system_id\":\"$SYSTEM_ID\",\"email_address\":\"${BRIDGE_DOMAIN}\",\"scopes\":[\"bridge\"],\"category\":\"bridge\"}" 2>/dev/null)
+    BRIDGE_API_KEY=$(echo "$BRIDGE_KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null)
+    if [ -n "$BRIDGE_API_KEY" ]; then
+        python3 -c "
+import os, json
+p = os.path.expanduser('~/.hermes/amail_bridge.toml')
+with open(p) as f:
+    cfg = f.read()
+if 'api_key' not in cfg:
+    cfg = cfg.replace('[pull]', '[pull]\napi_key = \"' + '$BRIDGE_API_KEY' + '\"')
+    with open(p, 'w') as f:
+        f.write(cfg)
+" 2>/dev/null || true
+        step_ok "bridge API key created (category=bridge, exempt)"
+    fi
+fi
+
 if [ "$SAVE_SNAPSHOTS" = "true" ]; then
     step_ok "snapshots = true (inbound/outbound mail will be persisted locally)"
 else
