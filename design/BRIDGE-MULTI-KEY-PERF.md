@@ -1,129 +1,117 @@
-# Bridge 安全管理 & 性能优化方案
+# Bridge Security and Performance Plan (Final)
 
-## 1. 配额分析：为什么 bridge key 会占用 max_addresses
+## 0. Done: pending TTL
 
-### 1.1 api_keys 表结构
+pending_ttl_hours (default 72h) added to WebhookConfig, scheduler cleanup.
 
-```
-CREATE TABLE api_keys (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    system_id     TEXT NOT NULL,
-    domain_addr   TEXT NOT NULL,
-    key_hash      TEXT NOT NULL UNIQUE,
-    scopes        TEXT NOT NULL DEFAULT '["send"]',
-    category      TEXT NOT NULL DEFAULT 'system',
-    ...
-    UNIQUE(system_id, domain_addr)
-);
-```
+## 1. Quota Fix: category="agent"
 
-一行 = 一个邮箱地址 = 一个配额槽位。`UNIQUE(system_id, domain_addr)` 保证同一系统下每个地址唯一。
+### 1.1 Current State
 
-### 1.2 当前各 key 类型
+| key type | category | system_id | counts toward max_addresses |
+|----------|----------|-----------|---------------------------|
+| admin | "platform" | "admin" | no (different system_id) |
+| agent | "system" (default) | "base-xxx" | yes |
+| domain admin | "system" (default) | "base-xxx" | yes |
+| future bridge | "system" (default) | "base-xxx" | yes |
 
-| key 类型 | category | 创建路径 | 是否过 check_key_quota |
-|----------|----------|---------|----------------------|
-| admin key | "platform" | `server.rs setup_admin_key()` → 直接 `factory.create_api_key()` | **否**（bootstrap 绕过） |
-| agent key | "agent" | `POST /api/v1/api-keys` → `check_key_quota()` | 是 |
-| （未来）bridge key | "bridge" | `POST /api/v1/api-keys` → `check_key_quota()` | 是 |
+Problem: all share same category, no way to distinguish for quota.
 
-### 1.3 check_key_quota 统计口径
+### 1.2 Target State
 
-```sql
-SELECT COUNT(*) FROM api_keys WHERE system_id = ?1
-```
+| key type | category | quota counted |
+|----------|----------|--------------|
+| admin | "platform" | no |
+| agent | "agent" | yes |
+| domain admin | "system" | yes |
+| bridge | "bridge" | no |
 
-**不过滤 category。** admin key 用 `system_id="admin"`，不在用户系统 ID 中，所以不计入用户系统的配额。
+### 1.3 Changes
 
-但 bridge key 用 `system_id="base-xxx"`，和 agent key 同系统，计入同一个 `max_addresses` 计数器。这就是 bridge key 会消耗地址配额的原因。
+agent key creation: set category="agent" instead of default "system"
 
-### 1.4 解决方案
+files:
+  amail_tools.py _auto_register_email: add category="agent" to register body
+  OR gateway activation.rs: set category="agent" during activate_address_handler
 
-**方案 A**：`count_api_keys_by_system_id` 增加 `category` 排除条件：
+quota counter:
+  advanced/storage.rs count_api_keys_by_system_id:
+    SELECT COUNT(*) FROM api_keys WHERE system_id = ?1 AND category = 'agent'
 
-```sql
-SELECT COUNT(*) FROM api_keys WHERE system_id = ?1 AND category != 'bridge'
-```
+bonus: fixes pre-existing bug where SystemAdmin list_api_keys filters
+by category="agent" but no keys have that category -- returns empty list.
 
-bridge key 不占 `max_addresses`。简单 1 行改动。但无法独立限制 bridge key 数量。
+## 2. Bridge Security: Independent API Keys
 
-**方案 B**：新增 `max_bridge_keys` 配额字段 + 独立计数器：
+### 2.1 Current
 
-```sql
-SELECT COUNT(*) FROM api_keys WHERE system_id = ?1 AND category = 'bridge'
-```
+All bridges share admin_key with system scope.
+One leak compromises all bridges.
 
-bridge key 和 address 各自限额。更细粒度，但改动面大。
+### 2.2 Target
 
-**推荐方案 A**。bridge 是基础设施组件，不应该计费。
-
----
-
-## 2. 多 bridge 独立 API key
-
-### 2.1 现状
+Each bridge gets its own bridge-scope API key.
 
 ```
 system_id = base-xxx
-  ├─ bridge-A ──── admin_key = "abc123..."  (system scope, 共享)
-  ├─ bridge-B ──── admin_key = "abc123..."  (同一把 key)
-  └─ agent-alice ─ api_key  = "xxx..."       (独立)
+  bridge-A: api_key_001 (scope: bridge, category: bridge)
+  bridge-B: api_key_002 (scope: bridge, category: bridge)
+  agent-alice: api_key_xxx (scope: agent, category: agent)
 ```
 
-问题：一把 key 泄露 → 全部 bridge 失陷，无法单独吊销。
+### 2.3 Changes
 
-### 2.2 改进
+integrate.sh:
+  after bridge deploy, POST /api/v1/api-keys with:
+    { system_id, domain_addr: "bridge-{uuid}", scopes: ["bridge"], category: "bridge" }
+  write api_key to amail_bridge.toml [pull] api_key field
 
-```
-system_id = base-xxx
-  ├─ bridge-A ──── api_key_001  (scope: bridge, category: bridge, 不计 max_addresses)
-  ├─ bridge-B ──── api_key_002  (scope: bridge, category: bridge)
-  └─ agent-alice ─ api_key_xxx  (scope: agent)
-```
+bridge config.rs:
+  PullConfig: rename admin_key -> api_key (or add api_key alongside)
 
-### 2.3 实施改动
+bridge pull.rs:
+  header: X-Api-Key: state.config.pull.api_key
 
-| 模块 | 改动 |
-|------|------|
-| `integrate.sh` | bridge 部署时调 `POST /api/v1/api-keys {domain_addr:"bridge-xxx", scopes:["bridge"], category:"bridge"}` |
-| `amail_bridge.toml` | `[pull] admin_key` → `[pull] api_key` |
-| `bridge pull.rs` | `X-Api-Key: state.config.pull.api_key`（字段名改） |
-| `advanced storage.rs` | `count_api_keys_by_system_id` 加 `AND category != 'bridge'`（方案 A） |
-| gateway 无改动 | `pending/ack` 已接受 bridge scope |
+gateway: no changes (pending/ack already accept bridge scope)
 
----
+## 3. Pull Performance: Remove Email Filter
 
-## 3. Pull 大 email 列表性能优化
+### 3.1 Current
 
-### 3.1 现状
+POST /api/v1/admin/pending {"limit": 50, "emails": [1000 addresses]}
+Problem: 30KB JSON per poll, SQLite 999 param limit.
 
-```json
-POST /api/v1/admin/pending
-{"limit": 50, "emails": ["a1@x.com", "a2@x.com", ..., "a999@x.com"]}
-```
+### 3.2 Target
 
-问题：1000 地址 → 30KB JSON/次, SQLite 最多 999 绑定参数。
+POST /api/v1/admin/pending {"limit": 50}
+Bridge pulls all pending for system_id, filters locally with router.lookup().
+Unmatched deliveries stay pending, cleaned by TTL.
 
-### 3.2 方案 B：移除 email 过滤
+### 3.3 Changes
 
-bridge 不传 `emails` → gateway 返回该系统所有 pending → bridge 本地用 `router.lookup()` 过滤 → 匹配的才 ACK → 不匹配的留在队列被 TTL 清理。
+bridge pull.rs fetch_pending:
+  remove emails array from request body
 
-| 改动 | 文件 |
-|------|------|
-| gateway 接受空 emails 参数 | `http.rs list_pending_deliveries` 处理 `emails:[]` 情况 |
-| bridge 移除 emails 过滤 | `pull.rs fetch_pending()` 删除 `emails` 构建 |
-| bridge 本地过滤 | `pull.rs` 对拉取结果调 `router.lookup()` |
+bridge pull.rs process_batch:
+  after fetch, filter each delivery by router.lookup(email)
+  only forward/ACK matched deliveries
 
-### 3.3 方案 A（如果需要）：域名过滤
+gateway http.rs list_pending_deliveries:
+  accept request without emails field (already works -- emails is Optional)
 
-bridge 从 route table 提取唯一域名 → `["x.com", "y.com"]` → gateway 用 `domain_addr LIKE '%@x.com'` 过滤。
+## 4. Implementation Order
 
----
+Phase 1: Pull performance (remove email filter)
+  - bridge: 5 lines
+  - gateway: 0 lines (already Optional)
 
-## 4. 实施顺序
+Phase 2: Quota fix + category="agent"
+  - gateway activation: set category="agent"
+  - advanced quota: filter category='agent'
+  - amail_tools.py: add category param
+  - test: SystemAdmin list_api_keys now returns keys
 
-| 阶段 | 内容 | 风险 |
-|------|------|------|
-| Phase 1 | 移除 email 过滤（方案 B） | 低，gateway 2 行 + bridge 5 行 |
-| Phase 2 | 独立 bridge key + 配额豁免（方案 A） | 中，涉及 integrate.sh 和配额逻辑 |
-| Phase 3 | 域名过滤（方案 A，按需） | 低，仅当方案 B 不够时启用 |
+Phase 3: Bridge independent keys
+  - integrate.sh: create bridge-scope key
+  - bridge config: api_key field
+  - integration test
