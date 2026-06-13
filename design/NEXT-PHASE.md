@@ -87,20 +87,48 @@ POST /api/v1/admin/pending {"limit":50, "emails":["a1@x.com",...,"a999@x.com"]}
 
 ### 3.2 方案
 
-bridge 不传 `emails` → gateway 返回系统所有 pending → bridge 本地 `router.lookup()` 过滤 → 匹配的转发+ACK → 不匹配的留在队列被 TTL 清理。
+bridge 支持三种过滤模式，根据路由表结构自动选择最优策略：
+
+| 模式 | 请求体 | 适用场景 | gateway SQL |
+|------|--------|---------|------------|
+| exact | `{"emails":["a@x.com",...]}` | 纯精确地址路由 | `WHERE email IN (...)` |
+| domain | `{"domains":["x.com","y.com"]}` | 含正则域名路由 | `WHERE domain_addr LIKE '%@x.com' OR ...` |
+| all | `{}` | 路由表为空或 mixed | `无过滤` |
+
+bridge 判定逻辑：
+
+```
+if 路由表全为精确地址:
+    mode = exact  (传 emails)
+elif 路由表有正则域名:
+    mode = domain (提取唯一域名，传 domains)
+else:
+    mode = all    (什么都不传)
+```
 
 ### 3.3 改动
 
 | 文件 | 改动 |
 |------|------|
-| `bridge pull.rs` | `fetch_pending` 删除 emails 数组构建 |
-| `bridge pull.rs` | `process_batch` 逐条 `router.lookup(email)` 过滤（已支持精确+正则） |
-| gateway | 无需改动（emails 已是 Optional） |
+| gateway `http.rs` | `list_pending_deliveries` 新增 `domains` 参数（Optional） |
+| gateway `storage.rs` | `list_pending_deliveries` 支持 `domains: Option<&[String]>`，生成 `LIKE '%@domain'` 条件 |
+| bridge `pull.rs` | `fetch_pending` 根据路由表选择 exact/domain/all 模式 |
+| bridge `pull.rs` | `process_batch` 逐条 `router.lookup(email)` 过滤（兜底） |
 
-### 3.4 附带修复
+### 3.4 示例
 
-当前 gateway 的 `emails` 过滤要求精确地址列表，无法表达 regex 域名路由。
-移除过滤后，bridge 本地 `router.lookup()` 自动处理精确匹配和正则匹配，正则路由恢复正常。
+```
+路由表:                                        模式:
+  "a@x.com" = "127.0.0.1:8645"               → exact
+  "b@x.com" = "127.0.0.1:8646"                   POST {"emails":["a@x.com","b@x.com"]}
+
+  ".*@x.com" = "10.0.0.1:8645"               → domain
+  ".*@y.com" = "10.0.0.2:8645"                   POST {"domains":["x.com","y.com"]}
+
+  "a@x.com" = "127.0.0.1:8645"               → exact
+  ".*@y.com" = "10.0.0.1:8645"               (按 domain 模式，因含 regex)
+                                                    POST {"domains":["y.com"]}
+```
 
 ---
 
