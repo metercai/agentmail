@@ -1,42 +1,76 @@
-# sender.rs — DKIM + MX 直投代码分析
+# sender.rs — DKIM + MX 代码拆分分析
 
-## 当前状态
+## DKIM：可移 ✅ / MX：不可移 ❌
 
-`SmtpRelay` 结构体混合了三种职责：
+### DKIM（apply_dkim，11 行）
 
+当前：
 ```rust
-// 行 26-33
-pub struct SmtpRelay {
-    transport: SmtpTransportMode,         // Relay | Direct(MxResolver)
-    email_factory: Arc<EmailFactory>,
-    dkim_signer: Option<Arc<dyn DkimSigner>>,  // 高级功能
-    hostname: Option<String>,
+async fn apply_dkim(&self, raw, email_id) -> Cow {
+    match &self.dkim_signer {
+        Some(s) => match s.sign(raw, email_id).await {
+            Some(signed) => Cow::Owned(signed),
+            None => Cow::Borrowed(raw),
+        },
+        None => Cow::Borrowed(raw),
+    }
 }
 ```
 
-| 功能 | 行数 | Base 行为 | Advanced 行为 |
-|------|------|----------|-------------|
-| DKIM `apply_dkim()` | 366-376 (11 行) | dkim_signer=None → 不签 | dkim_signer=Some → 签名 |
-| MX `send_via_mx()` | 210-350 (~140 行) | 从不执行（BaseMxResolver 返回 Err） | 真正 MX 解析 |
-| MX dispatch | 121-122 | unreachable | 到达 |
-| Relay `send_via_relay()` | 153-210 (~57 行) | 正常运行 | 正常运行 |
+改造：加默认方法到 `DkimSigner` trait：
 
-## 策略模式已有隔离
+```rust
+pub trait DkimSigner {
+    async fn sign(&self, ...) -> Option<Vec<u8>>;
+
+    async fn apply_sign(&self, raw: &[u8], email_id: &str) -> Cow<'_, [u8]> {
+        match self.sign(raw, email_id).await {
+            Some(s) => Cow::Owned(s),  // advanced
+            None    => Cow::Borrowed(raw),  // base
+        }
+    }
+}
+```
+
+sender.rs 中 `apply_dkim()` 删除，两处调用点改为：
+```rust
+let raw = match &self.dkim_signer {
+    Some(s) => s.apply_sign(&raw, &id).await,
+    None => Cow::Borrowed(&raw),
+};
+```
+
+改动量：trait + 1 方法 + sender 改 2 行 + 删 11 行。
+
+---
+
+### MX（send_via_mx，140 行）：不可移 ❌
+
+`send_via_mx()` 依赖 sender 自身 3 个字段：
 
 ```
-mod...[truncated]
-## 结论：不建议物理移除
+self.email_factory     → Arc<EmailFactory>
+self.hostname          → Option<String>
+self.apply_dkim()      → DKIM 方法
+```
 
-MX 直投和 DKIM 大块代码存在于 base sender.rs 中，但它们**已经被 trait 隔离**：
+要移入 `MxResolver` trait，必须把这 3 个依赖也传进去，trait 签名为：
 
-- `BaseMxResolver.resolve()` → 永远返回错误 → `send_via_mx()` 永远不执行
-- `BaseDkimSigner.sign()` → 永远返回 None → `apply_dkim()` 跳过签名，返回原文
+```rust
+trait MxResolver {
+    async fn send_via_mx(
+        &self,
+        email_factory: &EmailFactory,
+        hostname: Option<&str>,
+        dkim_signer: Option<Arc<dyn DkimSigner>>,
+        from_addr: &Address,
+        recipients: &[Address],
+        email_body: &MultiPart,
+        record: &EmailRecord,
+    ) -> AppResult<()>;
+}
+```
 
-物理移除的成本：
-1. 需要把 `SmtpRelay` 拆成 base 和 advanced 两个版本
-2. 需要把构造函数、dispatch 逻辑全部复制/重构
-3. 需要更改 5+ 调用点（`entry.rs`、`server.rs` 等）
+trait 被 sender 专用类型污染，违背策略模式初衷。
 
-物理移除的收益：代码少 ~150 行，但增加两个版本的维护复杂度。
-
-**建议**：保留现状。策略模式已经完成了逻辑隔离，base edition 的二进制产物中包含 `send_via_mx` 和 `apply_dkim` 代码段但运行时永不触及。
+**结论**：MX 保持现状。策略模式已隔离——`BaseMxResolver.resolve()` 返回 Err，`send_via_mx()` 永不执行。和 `check_inbound()` 同理，运行时行为完全由 trait impl 决定。
