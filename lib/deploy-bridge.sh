@@ -55,6 +55,15 @@ json.dump(cfg, open(p, "w"), indent=2)
                 WEBHOOK_HOST="$BRIDGE_ADDR"
             fi
 
+            # Update amail_gateway.json with resolved webhook_host
+            python3 -c "
+import json, os
+p = os.path.expanduser('~/.hermes/amail_gateway.json')
+cfg = json.load(open(p))
+cfg['webhook_host'] = '$WEBHOOK_HOST'
+json.dump(cfg, open(p, 'w'), indent=2)
+" 2>/dev/null || true
+
             BRIDGE_MODE="push"
             [ "$WEBHOOK_MODE" = "bridge" ] && BRIDGE_MODE="pull"
 

@@ -3,12 +3,10 @@
 # =============================================================================
 # Usage: bash integrate.sh
 #
-#   env vars: AMAIL_URL, AMAIL_ADMIN_KEY,
-#             AMAIL_PRODUCT_CODE, AMAIL_DOMAIN, AMAIL_SAVE_SNAPSHOTS,
-#             AMAIL_MANAGER_ADDRESS, AMAIL_BRIDGE_BIN
-#
-# Sensitive variables (ADMIN_KEY, PRODUCT_CODE) can also be placed in
-# ./.env (alongside integrate.sh) — sourced automatically, avoids ps aux exposure.
+# Steps: [1] gateway connect  [2] auth method  [3] domain
+#        [4] basic config    [5] save / activate  [5a] bridge + domain key
+#        [6] install tools   [7] patch webhook   [8] patch profiles
+#        [9] diagnostics     [10] send/receive test
 # =============================================================================
 
 set -eo pipefail
