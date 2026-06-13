@@ -37,7 +37,7 @@ if let Err(e) = require_domain_match(&api_key, &req.email_address) {
 Step 1:  gateway_url 发现/输入
 Step 2:  认证方式 (admin_key 或 product_code)
 Step 3:  域名输入
-           admin_key:   查询已有域列表 → 选择或输入新域名 → POST /domains 创建
+           admin_key:   查询已有域列表 → 选择已有域（跳过创建）或输入新域名 → POST /domains 创建
            product_code: 直接输入新域名 → 存储 $AMAIL_DOMAIN（无 $SYSTEM_ID 无法查询）
            (若 $AMAIL_DOMAIN 已从 env 传入，跳过交互；product_code 删除 step_fail)
 Step 4:  配置收集 (snapshot / manager_address / webhook 模式)
