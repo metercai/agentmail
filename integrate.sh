@@ -543,6 +543,18 @@ if $AUTO_MODE; then
     info "manager_address: ${MANAGER_ADDRESS:-<empty>}"
     WEBHOOK_HOST="${AMAIL_WEBHOOK_HOST:-}"
     info "webhook_host: ${WEBHOOK_HOST:-<empty>}"
+    # Detect webhook mode from env or default to bridge
+    WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-}"
+    if [ -z "$WEBHOOK_MODE" ]; then
+        if [ -z "$WEBHOOK_HOST" ]; then
+            WEBHOOK_MODE="bridge"
+        elif echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.|^::1$|^localhost'; then
+            WEBHOOK_MODE="internal"
+        else
+            WEBHOOK_MODE="direct"
+        fi
+    fi
+    info "webhook_mode: $WEBHOOK_MODE"
 else
     SAVE_SNAPSHOTS=$(ask_param "$T_SNAP_PROMPT (true/false)" "AMAIL_SAVE_SNAPSHOTS" "save_raw_snapshots" "false")
     MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
@@ -690,7 +702,7 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
     DOMAIN_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
         -H "X-Api-Key: $ADMIN_KEY" \
         -H "Content-Type: application/json" \
-        -d '{"system_id":"'"$SYSTEM_ID"'","email_address":"'"$DOMAIN"'","scopes":["system"],"category":"system"}' 2>/dev/null)
+        -d '{"system_id":"'"$SYSTEM_ID"'","email_address":"'"$AMAIL_DOMAIN"'","scopes":["system"],"category":"system"}' 2>/dev/null)
     DOMAIN_ADMIN_KEY=$(echo "$DOMAIN_KEY_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("raw_key",""))' 2>/dev/null)
 
     if [ -n "$DOMAIN_ADMIN_KEY" ]; then
