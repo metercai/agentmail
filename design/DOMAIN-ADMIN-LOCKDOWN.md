@@ -48,7 +48,9 @@ Step 5 完成 → ADMIN_KEY(系统级) + SYSTEM_ID + DOMAIN
   │    amail_bridge.toml:  admin_key = DOMAIN_ADMIN_KEY
   │    $ADMIN_KEY = DOMAIN_ADMIN_KEY (后续步骤均使用)
   │
-  └── 保留 SYSTEM_KEY 在 system_admin_key 字段（仅备查）
+  └── 保留 SYSTEM_KEY:
+        admin_key 路径 → 不保存（用户持有）
+        product_code 路径 → 存 ~/.hermes/amail_system.key（不进自动化）
 ```
 
 ### 2.3 两种路径的差异处理
