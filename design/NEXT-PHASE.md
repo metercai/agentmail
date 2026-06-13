@@ -87,48 +87,32 @@ POST /api/v1/admin/pending {"limit":50, "emails":["a1@x.com",...,"a999@x.com"]}
 
 ### 3.2 方案
 
-bridge 支持三种过滤模式，根据路由表结构自动选择最优策略：
+bridge 将路由表的所有 key 原样传入，gateway 按格式自动判定过滤类型：
 
-| 模式 | 请求体 | 适用场景 | gateway SQL |
-|------|--------|---------|------------|
-| exact | `{"emails":["a@x.com",...]}` | 纯精确地址路由 | `WHERE email IN (...)` |
-| domain | `{"domains":["x.com","y.com"]}` | 含正则域名路由 | `WHERE domain_addr LIKE '%@x.com' OR ...` |
-| all | `{}` | 路由表为空或 mixed | `无过滤` |
-
-bridge 判定逻辑：
-
+```json
+POST /api/v1/admin/pending
+{
+  "filter": ["alice@x.com", "x.com", ".*@y.com"]
+}
 ```
-if 路由表全为精确地址:
-    mode = exact  (传 emails)
-elif 路由表有正则域名:
-    mode = domain (提取唯一域名，传 domains)
-else:
-    mode = all    (什么都不传)
-```
+
+| 格式 | 示例 | gateway SQL |
+|------|------|------------|
+| 含 `@` | `"alice@x.com"` | `email = 'alice@x.com'` |
+| 裸域（无 `@`） | `"x.com"` | `domain_addr LIKE '%@x.com'` |
+| 正则字符 | `".*@y.com"` | `email REGEXP '.*@y.com'` |
+
+bridge 无需区分模式——所有路由表 key 直接拼接为 filter 数组即可。
+filter 条目数 = 唯一域名/地址数，远小于 email 总数，无参数上限问题。
 
 ### 3.3 改动
 
 | 文件 | 改动 |
 |------|------|
-| gateway `http.rs` | `list_pending_deliveries` 新增 `domains` 参数（Optional） |
-| gateway `storage.rs` | `list_pending_deliveries` 支持 `domains: Option<&[String]>`，生成 `LIKE '%@domain'` 条件 |
-| bridge `pull.rs` | `fetch_pending` 根据路由表选择 exact/domain/all 模式 |
-| bridge `pull.rs` | `process_batch` 逐条 `router.lookup(email)` 过滤（兜底） |
-
-### 3.4 示例
-
-```
-路由表:                                        模式:
-  "a@x.com" = "127.0.0.1:8645"               → exact
-  "b@x.com" = "127.0.0.1:8646"                   POST {"emails":["a@x.com","b@x.com"]}
-
-  ".*@x.com" = "10.0.0.1:8645"               → domain
-  ".*@y.com" = "10.0.0.2:8645"                   POST {"domains":["x.com","y.com"]}
-
-  "a@x.com" = "127.0.0.1:8645"               → exact
-  ".*@y.com" = "10.0.0.1:8645"               (按 domain 模式，因含 regex)
-                                                    POST {"domains":["y.com"]}
-```
+| gateway `http.rs` | `emails` 参数改为 `filter: Vec<String>`，逐条按格式判定 |
+| gateway `storage.rs` | `list_pending_deliveries` 按 filter 构建 `=` / `LIKE` / `REGEXP` 条件 |
+| bridge `pull.rs` | 路由表 keys 直接拼接为 filter 数组 |
+| bridge `pull.rs` | `process_batch` 逐条 `router.lookup(email)` 兜底过滤 |
 
 ---
 
