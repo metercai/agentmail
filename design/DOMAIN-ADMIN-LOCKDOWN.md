@@ -53,7 +53,23 @@ Step 5 完成 → ADMIN_KEY(系统级) + SYSTEM_ID + DOMAIN
         product_code 路径 → 存 ~/.hermes/amail_system.key（不进自动化）
 ```
 
-### 2.3 两种路径的差异处理
+### 2.3 执行顺序修正
+
+**当前问题**：product_code 路径中，Step 4 桥接部署时 `$ADMIN_KEY` 为空（尚未激活）。
+
+**修正**：Step 4 只收集配置，不部署。桥接部署 + 域级 key 创建统一放在 Step 5a（Step 5 完成后）。
+
+```
+Step 1-3: gateway_url / auth / domain (admin_key 路径)
+Step 4:   收集 webhook 模式、manager_address、snapshot 配置
+          ← 仅收集，不部署
+Step 5:   系统激活 + 域创建 + 保存 amail_gateway.json
+          ← 此时 $ADMIN_KEY + $SYSTEM_ID + $DOMAIN 均就绪
+Step 5a:  桥接部署 + 域级 key 创建
+          ← 统一入口，两种路径均可用
+```
+
+### 2.4 两种路径的差异处理
 
 **admin_key 路径**（Step 3 用户输入域）：
 - Step 5a 时 `$DOMAIN` 已确定，直接创建
@@ -62,7 +78,7 @@ Step 5 完成 → ADMIN_KEY(系统级) + SYSTEM_ID + DOMAIN
 - 当前代码 line 750-756 已提取 `NEW_ADMIN_KEY`、`NEW_SYSTEM_ID`、`NEW_DOMAIN`
 - Step 5a 时用提取的值，`$DOMAIN=$NEW_DOMAIN`
 
-### 2.4 影响面
+### 2.5 影响面
 
 | 位置 | 当前 | 改为 | 影响 |
 |------|------|------|------|
@@ -77,11 +93,11 @@ Step 5 完成 → ADMIN_KEY(系统级) + SYSTEM_ID + DOMAIN
 
 域级 admin key 的 category="system"，quota 不统计（`AND category='agent'`）。不增加配额消耗。
 
-### 2.5 保留 SYSTEM_KEY
+### 2.5### 2.5 保留 SYSTEM_KEY
 
 `integrate.sh` 在创建域级 key 成功后，可将 SYSTEM_KEY 保留在 `amail_gateway.json` 的 `system_admin_key` 字段作为备用——仅供人工排查使用，不参与自动化流程。
 
-## 3. 实施顺序
+## 3.1 实施顺序
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
