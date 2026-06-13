@@ -21,39 +21,46 @@ if let Err(e) = require_domain_match(&api_key, &req.email_address) {
 
 ## 2. integrate.sh 域级 admin key
 
-### 2.1 现状
+### 2.1 两种激活路径
 
-```
-integrate.sh:
-  Step 2 → $ADMIN_KEY (system admin, empty email, scope=system)
-  Step 3 → 创建裸域 dom1.com
-  Step 5 → amail_gateway.json: { admin_key: SYSTEM_KEY }
-  Step 8 → _auto_register_email 读取 admin_key → 调 register_email
-  bridge → amail_bridge.toml admin_key: SYSTEM_KEY
-```
+**admin_key 路径**：Step 2 (提供 key) → Step 3 (创建域) → Step 4 (配置) → Step 5 (保存)
 
-问题：
-- 一次集成只管理一个域，不需要全系统权限
-- 泄露影响所有域
-- create_api_key 跨域限制生效后，SYSTEM_KEY 不受限（empty email bypass），但如果是域级 key 则受限——与 design 矛盾
+**product_code 路径**：Step 2 (提供码) → Step 3 (跳过) → Step 4 (配置) → Step 5 (激活系统+创建域+保存，返回 admin_key)
+
+**两者在 Step 5 后汇聚**——都有 `$ADMIN_KEY`（系统级）、`$SYSTEM_ID`、域信息。
 
 ### 2.2 目标
 
+在 Step 5 后（两种路径均已完成系统激活和域创建），统一创建域级 admin key：
+
 ```
-integrate.sh:
-  Step 2 → $ADMIN_KEY (system admin 或 product code)
-  Step 3 → 创建裸域 dom1.com
-  Step 3a → 创建域级 admin key (NEW)
-             POST /api/v1/api-keys {
-               system_id, email_address="dom1.com",
-               scopes=["system"], category="system"
-             }
-  Step 5 → amail_gateway.json: { admin_key: DOMAIN_KEY }
-  Step 8 → _auto_register_email 读取 DOMAIN_KEY → 调 register_email
-  bridge → amail_bridge.toml admin_key: DOMAIN_KEY
+Step 5 完成 → ADMIN_KEY(系统级) + SYSTEM_ID + DOMAIN
+  │
+  ├── 5a: 创建域级 admin key
+  │    POST /api/v1/api-keys {
+  │      system_id, email_address=DOMAIN,
+  │      scopes=["system"], category="system"
+  │    }
+  │    → DOMAIN_ADMIN_KEY
+  │
+  ├── 5b: 替换全局配置
+  │    amail_gateway.json: admin_key = DOMAIN_ADMIN_KEY
+  │    amail_bridge.toml:  admin_key = DOMAIN_ADMIN_KEY
+  │    $ADMIN_KEY = DOMAIN_ADMIN_KEY (后续步骤均使用)
+  │
+  └── 保留 SYSTEM_KEY 在 system_admin_key 字段（仅备查）
 ```
 
-### 2.3 影响面
+### 2.3 两种路径的差异处理
+
+**admin_key 路径**（Step 3 用户输入域）：
+- Step 5a 时 `$DOMAIN` 已确定，直接创建
+
+**product_code 路径**（Step 5 激活后提取 NEW_DOMAIN）：
+- 当前代码 line 750-756 已提取 `NEW_ADMIN_KEY`、`NEW_SYSTEM_ID`、`NEW_DOMAIN`
+- Step 5a 时用提取的值，`$DOMAIN=$NEW_DOMAIN`
+
+### 2.4 影响面
 
 | 位置 | 当前 | 改为 | 影响 |
 |------|------|------|------|
