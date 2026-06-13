@@ -517,12 +517,9 @@ print(entries[$DOMAIN_CHOICE-1]['domain'])
         step_ok "$T_DOMAIN_UNSET"
     fi
 else
-    # product_code: prompt for domain (server requires it, no auto-generation)
+    # product_code: prompt for domain (no AUTO_MODE fail — always provide interactive fallback)
     step_begin "$T_DOMAIN"
     if [ -z "$AMAIL_DOMAIN" ]; then
-        if $AUTO_MODE; then
-            step_fail "AMAIL_DOMAIN is required for product_code activation"
-        fi
         read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
     fi
     if [ -n "$AMAIL_DOMAIN" ]; then
