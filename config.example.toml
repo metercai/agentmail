@@ -1,6 +1,8 @@
 [http]
-addr = "0.0.0.0:38080"
-# TLS 证书路径（可选，有证书则启用 HTTPS）
+addr = "0.0.0.0:443"
+# 公共域名 — 启用 ACME 自动证书（不设 tls_cert/tls_key 时）
+# hostname = "mail.yourdomain.com"
+# 静态证书路径（可选，与 ACME 二选一）
 # tls_cert = "/etc/amail-gateway/cert.pem"
 # tls_key  = "/etc/amail-gateway/key.pem"
 
