@@ -9,6 +9,13 @@ TEST_KEY_ID=""
 TEST_DOMAIN_ID=""
 TEST_WL_ID=""
 
+cleanup_test() {
+    [ -n "$TEST_KEY_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/api-keys/$TEST_KEY_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
+    [ -n "$TEST_DOMAIN_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/system-domains/$TEST_DOMAIN_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
+    [ -n "$TEST_WL_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/whitelists/$TEST_WL_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
+}
+trap cleanup_test EXIT
+
 echo -n "  $T_TEST_CREATE "
 CREATE_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
     -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
