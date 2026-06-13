@@ -87,31 +87,29 @@ POST /api/v1/admin/pending {"limit":50, "emails":["a1@x.com",...,"a999@x.com"]}
 
 ### 3.2 方案
 
-bridge 从路由表提取唯一域名，传给 gateway。gateway 按域名过滤 pending。
-bridge 拉回后在本地 `router.lookup()` 精确匹配，匹配的转发+ACK，不匹配的留在队列被 TTL 清理。
+**gateway 侧**：`POST /api/v1/admin/pending` 的 `filter` 参数支持混合列表，逐条按格式判定：
 
+| 格式 | 示例 | gateway SQL |
+|------|------|------------|
+| 含 `@` | `"alice@x.com"` | `email = 'alice@x.com'` |
+| 裸域（无 `@`） | `"x.com"` | `domain_addr LIKE '%@x.com'` |
+| 正则字符 | `".*@y.com"` | `email REGEXP '.*@y.com'` |
+
+```json
+{"filter": ["alice@x.com", "x.com", ".*@y.com"]}
 ```
-amail_routes.toml:                 提取唯一域名:
-  "a@x.com" = "127.0.0.1:8645"    → x.com
-  "b@x.com" = "127.0.0.1:8646"
-  ".*@y.com" = "10.0.0.1:8645"    → y.com
 
-POST /api/v1/admin/pending {"domains": ["x.com", "y.com"]}
-```
+**bridge 侧**：当前只上传域名——从路由表提取唯一域名，传 `filter: ["x.com", "y.com"]`。
 
-gateway: `WHERE domain_addr LIKE '%@x.com' OR domain_addr LIKE '%@y.com'`
-
-bridge 收到后：
-  router.lookup(email) 匹配 → 转发 → ACK 删除
-  不匹配 → 不动 → TTL 自然清理
+bridge 拉回后 `router.lookup(email)` 精确匹配 → 转发 + ACK → 不匹配的由 TTL 清理。
 
 ### 3.3 改动
 
 | 文件 | 改动 |
 |------|------|
-| gateway `http.rs` | `list_pending_deliveries` 新增 `domains` 参数（Optional） |
-| gateway `storage.rs` | `domains: Option<&[String]>` → `LIKE '%@domain'` 条件 |
-| bridge `pull.rs` | `fetch_pending` 从路由表提取唯一域名，传 `domains` |
+| gateway `http.rs` | `emails` 参数改为 `filter: Vec<String>`，逐条按格式判定 |
+| gateway `storage.rs` | `list_pending_deliveries` 按 filter 构建 `=` / `LIKE` / `REGEXP` |
+| bridge `pull.rs` | `fetch_pending` 从路由表提取唯一域名，传 `filter` |
 | bridge `pull.rs` | `process_batch` 逐条 `router.lookup(email)` 兜底过滤 |
 
 ---
