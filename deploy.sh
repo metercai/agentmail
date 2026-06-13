@@ -32,7 +32,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ADVANCED_BIN="${SCRIPT_DIR}/../amail-advanced/target/release/amail-advanced"
 REMOTE_DIR="/usr/local/bin"
 CONFIG="/etc/amail/config.toml"
-DB="/var/amail/amail.db"
 WORKDIR="/var/amail"
 SERVICE_NAME="amail-advanced"
 
@@ -48,9 +47,7 @@ start() {
     $SSH "mkdir -p $WORKDIR && \
     systemctl cat ${SERVICE_NAME} >/dev/null 2>&1 && \
     systemctl start ${SERVICE_NAME} && echo 'started (systemd)' || \
-    nohup ${REMOTE_DIR}/amail-advanced \
-      --config $CONFIG \
-      --db $DB \
+    nohup ${REMOTE_DIR}/amail-advanced --config $CONFIG \
       > /var/log/amail-gateway.log 2>&1 & \
     echo \$! > /var/run/amail-gateway.pid && \
     echo 'started (background)'"
@@ -95,7 +92,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$WORKDIR
-ExecStart=${REMOTE_DIR}/amail-advanced --config $CONFIG --db $DB
+ExecStart=${REMOTE_DIR}/amail-advanced --config $CONFIG
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
