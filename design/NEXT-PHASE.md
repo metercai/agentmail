@@ -94,8 +94,13 @@ bridge 不传 `emails` → gateway 返回系统所有 pending → bridge 本地 
 | 文件 | 改动 |
 |------|------|
 | `bridge pull.rs` | `fetch_pending` 删除 emails 数组构建 |
-| `bridge pull.rs` | `process_batch` 逐条 `router.lookup(email)` 过滤 |
+| `bridge pull.rs` | `process_batch` 逐条 `router.lookup(email)` 过滤（已支持精确+正则） |
 | gateway | 无需改动（emails 已是 Optional） |
+
+### 3.4 附带修复
+
+当前 gateway 的 `emails` 过滤要求精确地址列表，无法表达 regex 域名路由。
+移除过滤后，bridge 本地 `router.lookup()` 自动处理精确匹配和正则匹配，正则路由恢复正常。
 
 ---
 
