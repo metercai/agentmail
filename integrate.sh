@@ -224,25 +224,18 @@ print(f'    [{DOMAIN_COUNT+1}] Enter a new domain')
                 DOMAIN_HTTP=$(echo "$DOMAIN_RESP" | tail -1)
                 if [ "$DOMAIN_HTTP" = "201" ] || [ "$DOMAIN_HTTP" = "200" ]; then
                     echo -e "${GREEN}$T_OK${NC}"
+                    SELECTED_DOMAINS="$NEW_DOMAIN"
                 else
                     echo -e "${RED}$T_FAILED${NC}"
                 fi
             fi
-            # Loop back to show updated list
-            continue
+            break
         fi
 
-        # Parse selected domain(s) from numbered list
-        for part in $(echo "$DOMAIN_CHOICE" | tr ',' ' '); do
-            part="$(echo "$part" | xargs)"
-            if echo "$part" | grep -qE '^[0-9]+$' && [ "$part" -ge 1 ] && [ "$part" -le "$DOMAIN_COUNT" ]; then
-                DOM=$(echo "$BARE_DOMAINS" | sed -n "${part}p")
-                if [ -n "$DOM" ] && ! echo " $SELECTED_DOMAINS " | grep -q " $DOM "; then
-                    SELECTED_DOMAINS="$SELECTED_DOMAINS $DOM"
-                fi
-            fi
-        done
-        SELECTED_DOMAINS=$(echo "$SELECTED_DOMAINS" | xargs)
+        # Single domain selection
+        if echo "$DOMAIN_CHOICE" | grep -qE '^[0-9]+$' && [ "$DOMAIN_CHOICE" -ge 1 ] && [ "$DOMAIN_CHOICE" -le "$DOMAIN_COUNT" ]; then
+            SELECTED_DOMAINS=$(echo "$BARE_DOMAINS" | sed -n "${DOMAIN_CHOICE}p")
+        fi
 
         if [ -n "$SELECTED_DOMAINS" ]; then
             break
