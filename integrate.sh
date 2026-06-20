@@ -91,9 +91,9 @@ step_begin "$T_AUTH"
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
 
-# Reuse existing config
+# Reuse existing config (skip if product code is explicitly requested)
 REUSED_KEY=false
-if [ -f "$HOME/.hermes/amail_gateway.json" ]; then
+if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -f "$HOME/.hermes/amail_gateway.json" ]; then
     STORED_KEY=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('admin_key',''))" 2>/dev/null || echo "")
     STORED_URL=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('gateway_url',''))" 2>/dev/null || echo "")
     if [ -n "$STORED_KEY" ] && [ "$STORED_URL" = "$GATEWAY_URL" ]; then
