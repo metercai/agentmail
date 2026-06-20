@@ -186,85 +186,89 @@ if ! $USE_PRODUCT_CODE; then
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
     info "$T_DOMAIN_QUERY"
     DOMAINS_JSON=$(curl -s "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-    ALL_DOMAINS=$(echo "$DOMAINS_JSON" | python3 -c "
+    SELECTED_DOMAINS=""
+    DOMAIN_OK_COUNT=0
+
+    while true; do
+        # Refresh domain list
+        DOMAINS_JSON=$(curl -s "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
+        BARE_DOMAINS=$(echo "$DOMAINS_JSON" | python3 -c "
 import sys,json
 entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
 for d in entries:
     print(d['domain'])
 " 2>/dev/null)
-    DOMAIN_COUNT=$(echo "$ALL_DOMAINS" | wc -l)
-    SELECTED_DOMAINS=""
-    if [ "$DOMAIN_COUNT" -gt 0 ]; then
+        DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
+
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
         echo "$DOMAINS_JSON" | python3 -c "
 import sys,json
 entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
 for i,d in enumerate(entries,1):
     print(f'    [{i}] {d.get(\"domain\",\"?\")}  {\"(inactive)\" if not d.get(\"is_active\") else \"\"}')
+print(f'    [{DOMAIN_COUNT+1}] Enter a new domain')
 " 2>/dev/null
         echo ""
-        info "  Select domains by number (e.g. '1,2', '1-3', or 'all' for all)"
         echo -n "  $T_DOMAIN_SELECT"; read -r DOMAIN_CHOICE
-        DOMAIN_CHOICE="${DOMAIN_CHOICE:-all}"
-        # Parse selection into domain list
-        SELECTED_DOMAINS=$(echo "$DOMAINS_JSON" | python3 -c "
-import sys,json
-entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
-choice = '$DOMAIN_CHOICE'
-result = []
-if choice.lower() == 'all':
-    result = [d['domain'] for d in entries]
-else:
-    for part in choice.split(','):
-        part = part.strip()
-        if '-' in part:
-            a,b = part.split('-',1)
-            for i in range(int(a), int(b)+1):
-                if 1 <= i <= len(entries):
-                    result.append(entries[i-1]['domain'])
-        elif part.isdigit():
-            i = int(part)
-            if 1 <= i <= len(entries):
-                result.append(entries[i-1]['domain'])
-print(' '.join(result))
-" 2>/dev/null)
-    fi
-    # Also prompt to add new domains
-    info ""
-    info "  Enter additional new domains (space-separated), or leave blank to skip:"
-    read -r -p "  New domains: " NEW_DOMAINS
-    SELECTED_DOMAINS="$SELECTED_DOMAINS $NEW_DOMAINS"
-    SELECTED_DOMAINS=$(echo "$SELECTED_DOMAINS" | tr -s ' ' | sed 's/^ *//;s/ *$//')
-    if [ -z "$SELECTED_DOMAINS" ]; then
-        if [ -n "$AMAIL_DOMAIN" ]; then
-            SELECTED_DOMAINS="$AMAIL_DOMAIN"
-        else
-            step_ok "$T_DOMAIN_UNSET"
+        DOMAIN_CHOICE="${DOMAIN_CHOICE:-1}"
+
+        # Check if adding new domain
+        if [ "$DOMAIN_CHOICE" = "$((DOMAIN_COUNT+1))" ]; then
+            read -r -p "  New domain (e.g. 'admin.local'): " NEW_DOMAIN
+            if [ -n "$NEW_DOMAIN" ]; then
+                echo -n "  Creating domain '$NEW_DOMAIN'... "
+                DOMAIN_RESP=$(curl -s -w "\n%{http_code}" -X POST \
+                    "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" \
+                    -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
+                    -d "{\"id\":\"dom-$(echo "$NEW_DOMAIN" | tr -c 'a-zA-Z0-9' '-')-$(date +%s)\",\"domain\":\"$NEW_DOMAIN\"}" 2>/dev/null || echo "{\"error\":\"curl_failed\"}\n000")
+                DOMAIN_HTTP=$(echo "$DOMAIN_RESP" | tail -1)
+                if [ "$DOMAIN_HTTP" = "201" ] || [ "$DOMAIN_HTTP" = "200" ]; then
+                    echo -e "${GREEN}$T_OK${NC}"
+                else
+                    echo -e "${RED}$T_FAILED${NC}"
+                fi
+            fi
+            # Loop back to show updated list
+            continue
         fi
-    fi
-    # Process each selected domain
-    DOMAIN_OK_COUNT=0
+
+        # Parse selected domain(s) from numbered list
+        for part in $(echo "$DOMAIN_CHOICE" | tr ',' ' '); do
+            part="$(echo "$part" | xargs)"
+            if echo "$part" | grep -qE '^[0-9]+$' && [ "$part" -ge 1 ] && [ "$part" -le "$DOMAIN_COUNT" ]; then
+                DOM=$(echo "$BARE_DOMAINS" | sed -n "${part}p")
+                if [ -n "$DOM" ] && ! echo " $SELECTED_DOMAINS " | grep -q " $DOM "; then
+                    SELECTED_DOMAINS="$SELECTED_DOMAINS $DOM"
+                fi
+            fi
+        done
+        SELECTED_DOMAINS=$(echo "$SELECTED_DOMAINS" | xargs)
+
+        if [ -n "$SELECTED_DOMAINS" ]; then
+            break
+        fi
+        info "No valid domains selected, please try again."
+    done
+
+    # Create/confirm all selected domains
     for DOM in $SELECTED_DOMAINS; do
-        [ -z "$DOM" ] && continue
-        AMAIL_DOMAIN="$DOM"
-        echo -n "  Creating bare domain '$DOM' on gateway... "
+        echo -n "  Ensuring domain '$DOM'... "
         DOMAIN_RESP=$(curl -s -w "\n%{http_code}" -X POST \
             "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" \
             -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
             -d "{\"id\":\"dom-$(echo "$DOM" | tr -c 'a-zA-Z0-9' '-')-$(date +%s)\",\"domain\":\"$DOM\"}" 2>/dev/null || echo "{\"error\":\"curl_failed\"}\n000")
         DOMAIN_HTTP=$(echo "$DOMAIN_RESP" | tail -1)
-        DOMAIN_BODY=$(echo "$DOMAIN_RESP" | head -n -1)
         if [ "$DOMAIN_HTTP" = "201" ] || [ "$DOMAIN_HTTP" = "200" ]; then
             echo -e "${GREEN}$T_OK${NC}"
             DOMAIN_OK_COUNT=$((DOMAIN_OK_COUNT + 1))
-        elif echo "$DOMAIN_BODY" | grep -qi "quota_exceeded\|already exists\|UNIQUE.*domain"; then
+        elif echo "$DOMAIN_RESP" | grep -qi "already exists\|UNIQUE.*domain"; then
             echo -e "${YELLOW}already exists${NC}"
             DOMAIN_OK_COUNT=$((DOMAIN_OK_COUNT + 1))
         else
-            echo -e "${RED}$T_FAILED ($DOMAIN_HTTP)${NC}"
-            echo "  Domain creation failed: $(echo "$DOMAIN_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail','?'))" 2>/dev/null || echo '?')"
+            echo -e "${YELLOW}failed (will continue)${NC}"
         fi
     done
+
     # Use first domain as primary for downstream steps
     AMAIL_DOMAIN=$(echo "$SELECTED_DOMAINS" | awk '{print $1}')
     if [ -n "$AMAIL_DOMAIN" ]; then
