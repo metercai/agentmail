@@ -13,7 +13,7 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
     _ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
     _ADMIN_EMAIL=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
     _ADMIN_SCOPE=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('scope',''))" 2>/dev/null)
-    if [ "$_ADMIN_EMAIL" = "$AMAIL_DOMAIN" ] || echo "$_ADMIN_SCOPE" | grep -q "platform"; then
+    if [ -z "$_ADMIN_EMAIL" ] || [ "$_ADMIN_EMAIL" = "$AMAIL_DOMAIN" ] || echo "$_ADMIN_SCOPE" | grep -q "platform"; then
         step_begin "Create domain-level admin key for ${AMAIL_DOMAIN}"
         DOMAIN_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
             -H "X-Api-Key: $ADMIN_KEY" \
