@@ -49,10 +49,17 @@ json.dump(cfg, open(p, "w"), indent=2)
 
         if [ -x "$BRIDGE_BIN" ]; then
             if [ "$WEBHOOK_MODE" = "bridge" ]; then
-                BRIDGE_ADDR="$(ip -4 addr show scope global 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1):38081"
-                [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}'):38081"
-                [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="127.0.0.1:38081"
-                WEBHOOK_HOST="$BRIDGE_ADDR"
+                # Try IPv4 first, then IPv6, then hostname, then loopback
+                BRIDGE_ADDR="$(ip -4 addr show scope global 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1)"
+                [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="$(ip -6 addr show scope global 2>/dev/null | grep -oP 'inet6 \K[\da-f:]+' | grep -vi '::1' | grep -vi 'fe80' | head -1)"
+                [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
+                [ -z "$BRIDGE_ADDR" ] && BRIDGE_ADDR="127.0.0.1"
+                # Wrap IPv6 in brackets for URL
+                if echo "$BRIDGE_ADDR" | grep -q ':'; then
+                    WEBHOOK_HOST="[${BRIDGE_ADDR}]:38081"
+                else
+                    WEBHOOK_HOST="${BRIDGE_ADDR}:38081"
+                fi
             fi
 
             # Update amail_gateway.json with resolved webhook_host

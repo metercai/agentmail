@@ -16,7 +16,7 @@ else
         step_ok "$T_PROFILES_OK"
     else
         echo -n "  $T_PROFILES_APPLY "
-        python3 "$SCRIPT_DIR/patches/apply_profiles_patch.py" "$PROFILES_PY" 2>/dev/null && echo "$T_OK" || echo "$T_FAILED"
+        PATCH_OUT=$(python3 "$SCRIPT_DIR/patches/apply_profiles_patch.py" "$PROFILES_PY" 2>&1) && echo "$T_OK" || { echo "$T_FAILED"; echo "$PATCH_OUT" | head -5 | sed 's/^/  | /'; }
         if grep -q "trigger_profile_hooks" "$PROFILES_PY" 2>/dev/null; then
             step_ok "$T_PROFILES_DONE"
         else

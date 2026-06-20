@@ -4,20 +4,132 @@
 Adds trigger_profile_hooks() calls for profile_created and profile_deleted
 events, enabling automatic amail address registration and API key cleanup.
 
+Auto-detects Hermes commit version and adjusts insertion points accordingly.
+See HERMES_PATCH_MAP.md for details.
+
 Usage: python3 apply_profiles_patch.py <path/to/profiles.py>
 """
 import sys
 import re
+import os
+import subprocess
+
+# ═══════════════════════════════════════════════════════════════
+# Commit → anchor position mapping
+#
+# Each entry: (since_commit, {"register": N, "return": N, "delete": N})
+# "since_commit" means this entry applies when HEAD is an ancestor
+# of or equal to since_commit. Ordered oldest → newest.
+# ═══════════════════════════════════════════════════════════════
+
+PROFILES_ANCHOR_MAP = [
+    # (anchor commit, {_maybe_register_line, first_return_after_register, deleted_print_line})
+    ("4d22b8293374", {"register": 880, "return": 882, "delete": 1074}),
+    ("88dbf9510", {"register": 899, "return": 901, "delete": 1093}),
+    ("7a318aae2", {"register": 930, "return": 932, "delete": 1124}),
+    ("9b5f7b63c", {"register": 930, "return": 932, "delete": 1176}),
+    ("723c2331b", {"register": 932, "return": 934, "delete": 1178}),
+    ("40d7c264f", {"register": 971, "return": 973, "delete": 1217}),
+    ("d82f9fa7f", {"register": 1012, "return": 1014, "delete": 1258}),
+]
+
+# ── Helpers ───────────────────────────────────────────────────
+
+def _resolve_git_root(target_path: str) -> str:
+    """Return the git root directory for the target file."""
+    try:
+        d = os.path.dirname(os.path.abspath(target_path))
+        r = subprocess.run(
+            ["git", "-C", d, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return os.path.dirname(os.path.abspath(target_path))
+
+
+def _get_hermes_commit(git_root: str) -> str:
+    """Return the short (12-char) HEAD commit hash."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", git_root, "rev-parse", "--short=12", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _is_ancestor(git_root: str, ancestor: str, commit: str) -> bool:
+    """Return True if `ancestor` is an ancestor of `commit` (or equal)."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", git_root, "merge-base", "--is-ancestor", ancestor, commit],
+            capture_output=True, text=True, timeout=5
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _resolve_anchors(git_root: str, commit: str) -> dict:
+    """Find the best anchor positions for a given Hermes commit."""
+    anchors = {"register": 1012, "return": 1014, "delete": 1258}  # default (newest)
+    if commit == "unknown":
+        return anchors
+    for since_commit, mapping in reversed(PROFILES_ANCHOR_MAP):
+        if _is_ancestor(git_root, since_commit, commit):
+            return mapping
+    return anchors
+
+
+def _find_return_after_register(content: str, lines: list, register_line: int) -> int:
+    """Find the first `return profile_dir` after the _maybe_register line."""
+    search_start = register_line - 1  # 0-indexed
+    for i in range(search_start, len(lines)):
+        if lines[i].strip() == "return profile_dir":
+            return i + 1  # 1-indexed
+    return register_line + 2  # fallback
+
+
+def _find_delete_print_line(content: str) -> int:
+    """Find the print(f\"...Profile '...' deleted.\") line."""
+    for m in re.finditer(r"Profile '.*?' deleted\.", content):
+        line_end = content.find('\n', m.end())
+        if line_end == -1:
+            line_end = len(content)
+        line_start = content.rfind('\n', 0, m.start()) + 1
+        line = content[line_start:line_end].strip()
+        if line.startswith("print("):
+            return content[:line_end+1].count('\n') + 1
+    return 0
+
+
+# ── Main ──────────────────────────────────────────────────────
+
+if len(sys.argv) < 2:
+    print("Usage: python3 apply_profiles_patch.py <path/to/profiles.py>", file=sys.stderr)
+    sys.exit(1)
 
 target = sys.argv[1]
+git_root = _resolve_git_root(target)
+hermes_commit = _get_hermes_commit(git_root)
+anchors = _resolve_anchors(git_root, hermes_commit)
+
+print(f"Hermes commit: {hermes_commit}", file=sys.stderr)
+print(f"Anchors: register={anchors['register']} return={anchors['return']} delete={anchors['delete']}", file=sys.stderr)
+
 with open(target) as f:
     content = f.read()
 
+lines = content.split('\n')
 patched = False
 
-# ── Patch 1: profile creation hook ────────────────────────────
-if "trigger_profile_hooks" not in content:
-    hook_created = '''
+hook_created = '''
     # ── Fire integration hooks (AmailGateway) ──
     try:
         from tools.amail_tools import trigger_profile_hooks
@@ -25,23 +137,8 @@ if "trigger_profile_hooks" not in content:
     except ImportError:
         pass  # AmailGateway tools not installed
 '''
-    inserted = False
-    # Match the line that logs "Profile ... created"
-    created_pattern = re.compile(r'^.*(?:Profile.*created|created.*[Pp]rofile).*$', re.MULTILINE)
-    for m in created_pattern.finditer(content):
-        # Also check next line contains "logger" for confirmation
-        line_end = content.find('\n', m.end()) if m.end() < len(content) else len(content)
-        content = content[:line_end+1] + hook_created + content[line_end+1:]
-        inserted = True
-        patched = True
-        break
 
-    if not inserted:
-        print("WARNING: could not find insertion point for profile_created hook", file=sys.stderr)
-
-# ── Patch 2: profile deletion hook ────────────────────────────
-if "trigger_profile_hooks(\"profile_deleted\"" not in content:
-    hook_deleted = '''
+hook_deleted = '''
     # ── Fire integration hooks (AmailGateway) ──
     try:
         from tools.amail_tools import trigger_profile_hooks
@@ -49,27 +146,57 @@ if "trigger_profile_hooks(\"profile_deleted\"" not in content:
     except ImportError:
         pass  # AmailGateway tools not installed
 '''
-    inserted = False
-    # Match shutil.rmtree with profile_dir context
-    rmtree_pattern = re.compile(r'^.*shutil\.rmtree\(.*profile_dir.*\).*$', re.MULTILINE)
-    for m in rmtree_pattern.finditer(content):
-        line_end = content.find('\n', m.end()) if m.end() < len(content) else len(content)
-        content = content[:line_end+1] + hook_deleted + content[line_end+1:]
-        inserted = True
-        patched = True
-        break
 
-    if not inserted:
-        # Fallback: match "Profile deleted" log line
-        deleted_pattern = re.compile(r'^.*[Pp]rofile.*deleted.*$', re.MULTILINE)
-        for m in deleted_pattern.finditer(content):
-            line_end = content.find('\n', m.end()) if m.end() < len(content) else len(content)
-            content = content[:line_end+1] + hook_deleted + content[line_end+1:]
-            inserted = True
+# ── Patch 1: profile creation hook ────────────────────────────
+if "trigger_profile_hooks" not in content:
+    register_idx = anchors["register"] - 1  # 0-indexed
+    if register_idx < len(lines) and "_maybe_register_gateway_service(canon)" in lines[register_idx]:
+        # Find the actual return line (it may have shifted slightly)
+        actual_return = _find_return_after_register(content, lines, anchors["register"])
+        return_idx = actual_return - 1
+        if return_idx < len(lines) and lines[return_idx].strip() == "return profile_dir":
+            content = content[:content.index('\n', sum(len(l)+1 for l in lines[:return_idx-1])) + 1
+                     if return_idx > 1 else 0] + hook_created + '\n' + lines[return_idx] + '\n' + content[content.index('\n', sum(len(l)+1 for l in lines[:return_idx])) + 1:]
             patched = True
+            print("Patch 1: profile_created hook inserted", file=sys.stderr)
+        else:
+            # Fallback: search for return profile_dir after marker
+            marker = "_maybe_register_gateway_service(canon)"
+            if marker in content:
+                search_from = content.index(marker)
+                rest = content[search_from:]
+                m = re.search(r'\n(    return profile_dir)\n', rest)
+                if m:
+                    insertion = rest[:m.start(1)] + hook_created + '\n' + rest[m.start(1):]
+                    content = content[:search_from] + insertion
+                    patched = True
+                    print("Patch 1: profile_created hook inserted (fallback)", file=sys.stderr)
+    else:
+        print("WARNING: could not find _maybe_register_gateway_service insertion point for profile_created hook", file=sys.stderr)
+
+# ── Patch 2: profile deletion hook ────────────────────────────
+if 'trigger_profile_hooks("profile_deleted"' not in content:
+    delete_line = _find_delete_print_line(content)
+    if delete_line > 0:
+        # Insert after the print line
+        line_end = content.index('\n', sum(len(l)+1 for l in lines[:delete_line-1]))
+        if lines[delete_line - 1].strip():
+            content = content[:line_end+1] + hook_deleted + content[line_end+1:]
+            patched = True
+            print("Patch 2: profile_deleted hook inserted", file=sys.stderr)
+    
+    if 'trigger_profile_hooks("profile_deleted"' not in content:
+        # Fallback: match shutil.rmtree with profile_dir
+        for m in re.finditer(r'^.*shutil\.rmtree\(.*profile_dir.*\).*$', content, re.MULTILINE):
+            line_end = content.find('\n', m.end())
+            if line_end == -1:
+                line_end = len(content)
+            content = content[:line_end+1] + hook_deleted + content[line_end+1:]
+            patched = True
+            print("Patch 2: profile_deleted hook inserted (rmtree fallback)", file=sys.stderr)
             break
 
-    if not inserted:
+    if not patched:
         print("WARNING: could not find insertion point for profile_deleted hook", file=sys.stderr)
 
 if patched:

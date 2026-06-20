@@ -249,7 +249,19 @@ fi
 # ═══════════════════════════════════════════════════════════════
 step_begin "$T_SNAP_CONFIG"
 
-SAVE_SNAPSHOTS=$(ask_param "$T_SNAP_PROMPT (true/false)" "AMAIL_SAVE_SNAPSHOTS" "save_raw_snapshots" "false")
+# Read current config value for display
+_SAVE_CURRENT=$(read_config "save_raw_snapshots")
+_SAVE_DEFAULT="no"
+[ "$_SAVE_CURRENT" = "true" ] && _SAVE_DEFAULT="yes"
+echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
+read -r _SAVE_INPUT
+_SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
+case "$_SAVE_INPUT" in
+    y|Y|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
+    *) SAVE_SNAPSHOTS="false" ;;
+esac
+unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
+echo ""
 MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
 
 WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"
@@ -268,10 +280,12 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
     echo ""
-    info "Webhook callback address — where the gateway delivers inbound emails:"
-    info "  [1] Public address (gateway → your server via internet)"
-    info "  [2] Internal bridge address (gateway → bridge on your LAN)"
-    info "  [3] Self-hosted bridge (auto-detect, deploy bridge locally)"
+    info "How does your Hermes Agent receive emails from the gateway?"
+    info "  Choose based on your Agent's network environment:"
+    info ""
+    info "  [1] Agent has a public IP — gateway can directly push webhooks to it"
+    info "  [2] An amail-bridge is already deployed in your LAN / on this machine"
+    info "  [3] No bridge yet — auto-deploy one on this machine (recommended)"
     echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
     WH_MODE="${WH_MODE:-3}"
     if [ "$WH_MODE" = "1" ]; then

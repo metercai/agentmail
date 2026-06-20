@@ -5,14 +5,110 @@ Adds:
   1. PREPROCESS_REGISTRY dict + register_preprocessor() function
   2. Preprocessor invocation in webhook handler (before prompt rendering)
 
+Auto-detects Hermes commit version and adjusts insertion points accordingly.
+See HERMES_PATCH_MAP.md for details.
+
 Usage: python3 apply_webhook_patch.py <path/to/webhook.py>
 """
-import sys, re
+import sys
+import re
+import os
+import subprocess
+
+# ═══════════════════════════════════════════════════════════════
+# Commit → anchor position mapping
+#
+# Each entry: (since_commit, {"typing": N, "logger": N, "prompt": N})
+# "since_commit" means this entry applies when HEAD is an ancestor
+# of or equal to since_commit. Ordered oldest → newest.
+# ═══════════════════════════════════════════════════════════════
+
+WEBHOOK_ANCHOR_MAP = [
+    # (anchor commit, {typing_import_line, logger_line, prompt_anchor_line})
+    ("898b6d7d5", {"typing": 37, "logger": 55, "prompt": 409}),
+    ("60531889d", {"typing": 37, "logger": 55, "prompt": 410}),
+    ("9c90b3a59", {"typing": 37, "logger": 55, "prompt": 425}),
+    ("61ac11872", {"typing": 37, "logger": 55, "prompt": 436}),
+    ("bbf02c322", {"typing": 39, "logger": 57, "prompt": 439}),
+    ("15aa6884a", {"typing": 39, "logger": 57, "prompt": 451}),
+    ("bd8e2ec1a", {"typing": 39, "logger": 57, "prompt": 460}),
+    ("afc861550", {"typing": 40, "logger": 58, "prompt": 503}),
+    ("f35abb122", {"typing": 40, "logger": 58, "prompt": 552}),
+]
+
+# ── Helpers ───────────────────────────────────────────────────
+
+def _resolve_git_root(target_path: str) -> str:
+    """Return the git root directory for the target file."""
+    try:
+        d = os.path.dirname(os.path.abspath(target_path))
+        r = subprocess.run(
+            ["git", "-C", d, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return os.path.dirname(os.path.abspath(target_path))
+
+
+def _get_hermes_commit(git_root: str) -> str:
+    """Return the short (12-char) HEAD commit hash."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", git_root, "rev-parse", "--short=12", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _is_ancestor(git_root: str, ancestor: str, commit: str) -> bool:
+    """Return True if `ancestor` is an ancestor of `commit` (or equal)."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", git_root, "merge-base", "--is-ancestor", ancestor, commit],
+            capture_output=True, text=True, timeout=5
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _resolve_anchors(git_root: str, commit: str) -> dict:
+    """Find the best anchor positions for a given Hermes commit."""
+    anchors = {"typing": 40, "logger": 58, "prompt": 552}  # default (newest)
+    if commit == "unknown":
+        return anchors
+    # Walk from newest to oldest, pick first match
+    for since_commit, mapping in reversed(WEBHOOK_ANCHOR_MAP):
+        if _is_ancestor(git_root, since_commit, commit):
+            return mapping
+    return anchors
+
+
+# ── Main ──────────────────────────────────────────────────────
+
+if len(sys.argv) < 2:
+    print("Usage: python3 apply_webhook_patch.py <path/to/webhook.py>", file=sys.stderr)
+    sys.exit(1)
 
 target = sys.argv[1]
+git_root = _resolve_git_root(target)
+hermes_commit = _get_hermes_commit(git_root)
+anchors = _resolve_anchors(git_root, hermes_commit)
+
+print(f"Hermes commit: {hermes_commit}", file=sys.stderr)
+print(f"Anchors: typing={anchors['typing']} logger={anchors['logger']} prompt={anchors['prompt']}", file=sys.stderr)
+
 with open(target) as f:
     content = f.read()
 
+lines = content.split('\n')
 patched = False
 
 # ── Patch 1: add Callable to typing import ────────────────────
@@ -20,6 +116,7 @@ m = re.search(r'(from typing import .+)', content)
 if m and "Callable" not in m.group(1):
     content = content.replace(m.group(1), m.group(1) + ", Callable", 1)
     patched = True
+    print("Patch 1: Callable added to import", file=sys.stderr)
 
 # ── Patch 2: add PREPROCESS_REGISTRY after logger ─────────────
 if "PREPROCESS_REGISTRY" not in content:
@@ -43,11 +140,18 @@ def register_preprocessor(name: str, fn: Callable) -> None:
     PREPROCESS_REGISTRY[name] = fn
 
 """
-    content = content.replace(
-        "logger = logging.getLogger(__name__)",
-        "logger = logging.getLogger(__name__)" + registry
-    )
-    patched = True
+    logger_line = lines[anchors["logger"] - 1] if anchors["logger"] <= len(lines) else ""
+    if "logger = logging.getLogger(__name__)" in logger_line:
+        content = content.replace(logger_line, logger_line + registry, 1)
+        patched = True
+        print("Patch 2: PREPROCESS_REGISTRY added", file=sys.stderr)
+    else:
+        # Fallback: search for the pattern
+        m = re.search(r'^logger = logging\.getLogger\(__name__\)', content, re.MULTILINE)
+        if m:
+            content = content[:m.end()] + registry + content[m.end():]
+            patched = True
+            print("Patch 2: PREPROCESS_REGISTRY added (fallback)", file=sys.stderr)
 
 # ── Patch 3: add preprocessor call in webhook handler ─────────
 if "PREPROCESS_REGISTRY.get" not in content:
@@ -66,14 +170,23 @@ if "PREPROCESS_REGISTRY.get" not in content:
                     )
 
 '''
-    if "# Format prompt from template" in content:
-        content = content.replace(
-            "# Format prompt from template",
-            call_block + "        # Format prompt from template"
-        )
+    prompt_line_idx = anchors["prompt"] - 1
+    if prompt_line_idx < len(lines) and "# Format prompt from template" in lines[prompt_line_idx]:
+        orig = lines[prompt_line_idx]
+        content = content.replace(orig, call_block + "        " + orig, 1)
         patched = True
+        print("Patch 3: preprocessor call inserted", file=sys.stderr)
     else:
-        print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
+        # Fallback: search
+        if "# Format prompt from template" in content:
+            content = content.replace(
+                "# Format prompt from template",
+                call_block + "        # Format prompt from template", 1
+            )
+            patched = True
+            print("Patch 3: preprocessor call inserted (fallback)", file=sys.stderr)
+        else:
+            print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
 if patched:
     with open(target, "w") as f:

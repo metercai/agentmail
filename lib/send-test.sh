@@ -3,51 +3,35 @@
 step_begin "$T_TEST"
 
 TEST_TS=$(date +%s)
-TEST_EMAIL="amail-test-${TEST_TS}@test-${TEST_TS}.local"
-TEST_AGENT_KEY=""
-TEST_KEY_ID=""
-TEST_DOMAIN_ID=""
 TEST_WL_ID=""
 
 cleanup_test() {
-    [ -n "$TEST_KEY_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/api-keys/$TEST_KEY_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-    [ -n "$TEST_DOMAIN_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/system-domains/$TEST_DOMAIN_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
     [ -n "$TEST_WL_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/whitelists/$TEST_WL_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
 }
 trap cleanup_test EXIT
 
-echo -n "  $T_TEST_CREATE "
-CREATE_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
-    -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-    -d '{"system_id":"'"$SYSTEM_ID"'","email_address":"'"$TEST_EMAIL"'","scopes":["agent","send"],"category":"agent"}' 2>/dev/null)
-TEST_AGENT_KEY=$(echo "$CREATE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null)
-TEST_KEY_ID=$(echo "$CREATE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-if [ -n "$TEST_AGENT_KEY" ]; then
-    echo "$T_OK (${TEST_AGENT_KEY:0:8}...)"
-else
-    echo "$T_FAILED"
+# Get admin email and system ID from whoami (more reliable than config)
+ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
+ADMIN_EMAIL=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
+SYSTEM_ID=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null)
+
+if [ -z "$ADMIN_EMAIL" ]; then
+    echo -n "  $T_TEST_CREATE "
+    echo "$T_FAILED (cannot determine admin email)"
     step_warn "$T_TEST_FAIL_KEY"
-fi
-
-if [ -n "$TEST_AGENT_KEY" ]; then
-    # Register test domain
-    echo -n "  $T_TEST_REG "
-    DOMAIN_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" \
+else
+    # Create a temporary whitelist entry for the test
+    echo -n "  Creating test whitelist... "
+    WL_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
         -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-        -d '{"id":"test-'${TEST_TS}'","domain":"test-'${TEST_TS}'.local"}' 2>/dev/null)
-    TEST_DOMAIN_ID=$(echo "$DOMAIN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-    [ -n "$TEST_DOMAIN_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
+        -d '{"system_id":"'"$SYSTEM_ID"'","domain_addr":"'"$ADMIN_EMAIL"'","direction":"all","value":"*@example.com"}' 2>/dev/null)
+    TEST_WL_ID=$(echo "$WL_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+    [ -n "$TEST_WL_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
 
-    # Whitelist for outbound send
-    WHITELIST_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
-        -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-        -d '{"system_id":"'${SYSTEM_ID}'","domain_addr":"test-'${TEST_TS}'.local","direction":"all","value":"*@example.com"}' 2>/dev/null)
-    TEST_WL_ID=$(echo "$WHITELIST_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-
-    # Send a test email via API
+    # Send a test email using the admin key directly
     echo -n "  $T_TEST_SEND "
     SEND_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/send" \
-        -H "X-Api-Key: $TEST_AGENT_KEY" -H "Content-Type: application/json" \
+        -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
         -d '{"to":"test@example.com","subject":"Amail Integration Test","markdown":"This is an automated integration test from amail integrate.sh."}' 2>/dev/null)
     SEND_MSG_ID=$(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email_id','') or json.load(sys.stdin).get('message_id',''))" 2>/dev/null)
 
@@ -62,8 +46,6 @@ if [ -n "$TEST_AGENT_KEY" ]; then
 
     # Cleanup
     echo -n "  $T_TEST_CLEAN "
-    [ -n "$TEST_KEY_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/api-keys/$TEST_KEY_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-    [ -n "$TEST_DOMAIN_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/system-domains/$TEST_DOMAIN_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
     [ -n "$TEST_WL_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/whitelists/$TEST_WL_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
     echo "$T_OK"
 fi
