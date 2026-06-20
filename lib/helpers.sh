@@ -45,15 +45,7 @@ domain_exists_globally() {
     local check_domain="$1"
     local gateway_url="${2:-$GATEWAY_URL}"
     local admin_key="${3:-$ADMIN_KEY}"
-    local systems
-    systems=$(curl -s "$gateway_url/api/v1/admin/systems" -H "X-Api-Key: $admin_key" 2>/dev/null \
-        | python3 -c "import sys,json; [print(s.get('system_id','')) for s in (json.load(sys.stdin) if isinstance(json.load(sys.stdin),list) else [])]" 2>/dev/null || echo "")
-    local sid
-    for sid in $systems; do
-        if curl -s "$gateway_url/api/v1/admin/systems/$sid/domains" -H "X-Api-Key: $admin_key" 2>/dev/null \
-            | python3 -c "import sys,json; sys.exit(0) if any(d.get('domain') == '$check_domain' for d in json.load(sys.stdin)) else sys.exit(1)" 2>/dev/null; then
-            return 0
-        fi
-    done
-    return 1
+    curl -s "$gateway_url/api/v1/admin/domains/check?domain=$check_domain" \
+        -H "X-Api-Key: $admin_key" 2>/dev/null \
+        | python3 -c "import sys,json; sys.exit(0) if json.load(sys.stdin).get('exists') else sys.exit(1)" 2>/dev/null
 }
