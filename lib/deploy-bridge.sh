@@ -3,22 +3,28 @@
 
 if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -n "$SYSTEM_ID" ]; then
 
-    # Create a domain-level admin key (bare domain, system scope) so that
-    # domain-level operations don't leak the platform/system admin key
-    # to external systems. This requires either:
-    #   a) The current admin key's email matches the bare domain itself, OR
-    #   b) The current admin key has 'platform' scope (bypasses email check)
+    # Attempt domain-level admin key (bare domain, system scope).
+    # This limits key exposure to a single domain — security best practice.
+    # Only succeeds when current key's email matches the bare domain,
+    # or current key has 'platform' scope (bypasses email check).
+    # Standard activation produces admin@domain + system scope, so this
+    # typically falls through — that's fine, the system admin key is used.
+    DOMAIN_ADMIN_KEY=""
     _ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
     _ADMIN_EMAIL=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
     _ADMIN_SCOPE=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('scope',''))" 2>/dev/null)
-    DOMAIN_ADMIN_KEY=""
     if [ "$_ADMIN_EMAIL" = "$AMAIL_DOMAIN" ] || echo "$_ADMIN_SCOPE" | grep -q "platform"; then
         step_begin "Create domain-level admin key for ${AMAIL_DOMAIN}"
         DOMAIN_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
             -H "X-Api-Key: $ADMIN_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$AMAIL_DOMAIN'","scopes":["system"],"category":"system"}' 2>/dev/null)
+            -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$AMAIL_DOMAIN'","scopes":["system"],"category":"domain"}' 2>/dev/null)
         DOMAIN_ADMIN_KEY=$(echo "$DOMAIN_KEY_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("raw_key",""))' 2>/dev/null)
+        if [ -n "$DOMAIN_ADMIN_KEY" ]; then
+            step_ok "domain admin key created ($AMAIL_DOMAIN)"
+        else
+            step_warn "domain admin key creation failed — using system admin key"
+        fi
     fi
     unset _ADMIN_INFO _ADMIN_EMAIL _ADMIN_SCOPE
 
