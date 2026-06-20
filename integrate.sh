@@ -205,8 +205,10 @@ for d in entries:
 import sys,json
 entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
 for i,d in enumerate(entries,1):
-    print(f'    [{i}] {d.get(\"domain\",\"?\")}  {\"(inactive)\" if not d.get(\"is_active\") else \"\"}')
-print(f'    [{DOMAIN_COUNT+1}] Enter a new domain')
+    status = ' (inactive)' if not d.get('is_active') else ''
+    print(f'    [{i}] {d.get(\"domain\",\"?\")}{status}')
+domain_count = len(entries)
+print(f'    [{domain_count+1}] Enter a new domain')
 " 2>/dev/null
         echo ""
         echo -n "  $T_DOMAIN_SELECT"; read -r DOMAIN_CHOICE
