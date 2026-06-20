@@ -218,20 +218,15 @@ print(f'    [{domain_count+1}] Enter a new domain')
         if [ "$DOMAIN_CHOICE" = "$((DOMAIN_COUNT+1))" ]; then
             read -r -p "  New domain (e.g. 'admin.local'): " NEW_DOMAIN
             if [ -n "$NEW_DOMAIN" ]; then
-                echo -n "  Creating domain '$NEW_DOMAIN'... "
-                DOMAIN_RESP=$(curl -s -w "\n%{http_code}" -X POST \
-                    "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" \
-                    -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-                    -d "{\"id\":\"dom-$(echo "$NEW_DOMAIN" | tr -c 'a-zA-Z0-9' '-')-$(date +%s)\",\"domain\":\"$NEW_DOMAIN\"}" 2>/dev/null || echo "{\"error\":\"curl_failed\"}\n000")
-                DOMAIN_HTTP=$(echo "$DOMAIN_RESP" | tail -1)
-                if [ "$DOMAIN_HTTP" = "201" ] || [ "$DOMAIN_HTTP" = "200" ]; then
-                    echo -e "${GREEN}$T_OK${NC}"
-                    SELECTED_DOMAINS="$NEW_DOMAIN"
+                # Check if domain already exists
+                if echo "$BARE_DOMAINS" | grep -qFx "$NEW_DOMAIN"; then
+                    echo -e "  ${YELLOW}Domain '$NEW_DOMAIN' already exists — choose a different one${NC}"
                 else
-                    echo -e "${RED}$T_FAILED${NC}"
+                    SELECTED_DOMAINS="$NEW_DOMAIN"
+                    break
                 fi
             fi
-            break
+            continue
         fi
 
         # Single domain selection
@@ -271,14 +266,31 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
 else
     step_begin "$T_DOMAIN"
-    if [ -z "$AMAIL_DOMAIN" ]; then
-        read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
-    fi
-    if [ -n "$AMAIL_DOMAIN" ]; then
-        step_ok "domain = $AMAIL_DOMAIN"
-    else
-        step_fail "Domain is required — activate_system requires a valid bare domain"
-    fi
+    while true; do
+        if [ -z "$AMAIL_DOMAIN" ]; then
+            read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
+        fi
+        if [ -z "$AMAIL_DOMAIN" ]; then
+            step_fail "$T_DOMAIN_EMPTY"
+        fi
+        # Check if domain already exists globally by querying the domains list
+        _DOMAIN_EXISTS=false
+        _ALL_SYSTEMS=$(curl -s "$GATEWAY_URL/api/v1/admin/systems" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; [print(s.get('system_id','')) for s in (json.load(sys.stdin) if isinstance(json.load(sys.stdin),list) else [])]" 2>/dev/null || echo "")
+        for _SID in $_ALL_SYSTEMS; do
+            if curl -s "$GATEWAY_URL/api/v1/admin/systems/$_SID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; sys.exit(0) if any(d.get('domain') == '$AMAIL_DOMAIN' for d in json.load(sys.stdin)) else sys.exit(1)" 2>/dev/null; then
+                _DOMAIN_EXISTS=true
+                break
+            fi
+        done
+        if $_DOMAIN_EXISTS; then
+            echo -e "  ${YELLOW}Domain '$AMAIL_DOMAIN' already exists — choose a different one${NC}"
+            AMAIL_DOMAIN=""
+        else
+            break
+        fi
+    done
+    unset _DOMAIN_EXISTS _ALL_SYSTEMS _SID
+    step_ok "domain = $AMAIL_DOMAIN"
     SYSTEM_ID=""
 fi
 
