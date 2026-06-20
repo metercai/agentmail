@@ -218,8 +218,8 @@ print(f'    [{domain_count+1}] Enter a new domain')
         if [ "$DOMAIN_CHOICE" = "$((DOMAIN_COUNT+1))" ]; then
             read -r -p "  New domain (e.g. 'admin.local'): " NEW_DOMAIN
             if [ -n "$NEW_DOMAIN" ]; then
-                # Check if domain already exists
-                if echo "$BARE_DOMAINS" | grep -qFx "$NEW_DOMAIN"; then
+                # Check if domain already exists globally
+                if domain_exists_globally "$NEW_DOMAIN"; then
                     echo -e "  ${YELLOW}Domain '$NEW_DOMAIN' already exists — choose a different one${NC}"
                 else
                     SELECTED_DOMAINS="$NEW_DOMAIN"
@@ -273,23 +273,14 @@ else
         if [ -z "$AMAIL_DOMAIN" ]; then
             step_fail "$T_DOMAIN_EMPTY"
         fi
-        # Check if domain already exists globally by querying the domains list
-        _DOMAIN_EXISTS=false
-        _ALL_SYSTEMS=$(curl -s "$GATEWAY_URL/api/v1/admin/systems" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; [print(s.get('system_id','')) for s in (json.load(sys.stdin) if isinstance(json.load(sys.stdin),list) else [])]" 2>/dev/null || echo "")
-        for _SID in $_ALL_SYSTEMS; do
-            if curl -s "$GATEWAY_URL/api/v1/admin/systems/$_SID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; sys.exit(0) if any(d.get('domain') == '$AMAIL_DOMAIN' for d in json.load(sys.stdin)) else sys.exit(1)" 2>/dev/null; then
-                _DOMAIN_EXISTS=true
-                break
-            fi
-        done
-        if $_DOMAIN_EXISTS; then
+        # Check if domain already exists globally
+        if domain_exists_globally "$AMAIL_DOMAIN"; then
             echo -e "  ${YELLOW}Domain '$AMAIL_DOMAIN' already exists — choose a different one${NC}"
             AMAIL_DOMAIN=""
         else
             break
         fi
     done
-    unset _DOMAIN_EXISTS _ALL_SYSTEMS _SID
     step_ok "domain = $AMAIL_DOMAIN"
     SYSTEM_ID=""
 fi
