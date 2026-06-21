@@ -196,8 +196,21 @@ import sys,json
 entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
 for d in entries:
     print(d['domain'])
+# If system has no bare domains but AMAIL_DOMAIN is set, show it as available
+if not entries:
+    import os
+    env_domain = os.environ.get('AMAIL_DOMAIN','')
+    if env_domain:
+        print(env_domain)
 " 2>/dev/null)
         DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
+
+        # If system has no bare domains but AMAIL_DOMAIN is configured, add it
+        _EXTRA_DOMAIN=""
+        if [ "$DOMAIN_COUNT" -eq 0 ] && [ -n "$AMAIL_DOMAIN" ]; then
+            _EXTRA_DOMAIN="$AMAIL_DOMAIN"
+            DOMAIN_COUNT=1
+        fi
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
         echo "$DOMAINS_JSON" | python3 -c "
@@ -207,8 +220,11 @@ for i,d in enumerate(entries,1):
     status = ' (inactive)' if not d.get('is_active') else ''
     print(f'    [{i}] {d.get(\"domain\",\"?\")}{status}')
 domain_count = len(entries)
-print(f'    [{domain_count+1}] Enter a new domain')
 " 2>/dev/null
+        if [ -n "$_EXTRA_DOMAIN" ]; then
+            echo "    [1] $_EXTRA_DOMAIN (shared domain)"
+        fi
+        echo "    [$((DOMAIN_COUNT + 1))] Enter a new domain"
         echo ""
         echo -n "  $T_DOMAIN_SELECT"; read -r DOMAIN_CHOICE
         DOMAIN_CHOICE="${DOMAIN_CHOICE:-1}"
