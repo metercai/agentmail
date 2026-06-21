@@ -25,7 +25,7 @@ else
     fi
 
     # Register existing profiles that don't have amail.json yet
-    echo -n "  Registering amail addresses for existing profiles... "
+    step_ok "Registering amail addresses for existing profiles..."
     REG_OUTPUT=$(python3 << PYEOF
 import sys, os
 sys.path.insert(0, "$SCRIPT_DIR/tools")
