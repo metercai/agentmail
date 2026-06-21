@@ -66,10 +66,10 @@ if curl -s -o /dev/null -w '%{http_code}' "$DEFAULT_URL/health" 2>/dev/null | gr
 fi
 GATEWAY_URL=$(ask_param "gateway_url" "AMAIL_URL" "gateway_url" "$DEFAULT_URL")
 
-# Normalize port
+# Normalize port — only append non-default ports
 if ! echo "$GATEWAY_URL" | grep -qE ':[0-9]+(/|$|#|\?)'; then
     if echo "$GATEWAY_URL" | grep -qi '^https://'; then
-        GATEWAY_URL="${GATEWAY_URL%/}:443"
+        : # no-op — 443 is default for HTTPS
     else
         GATEWAY_URL="${GATEWAY_URL%/}:80"
     fi
@@ -117,7 +117,7 @@ if ! $REUSED_KEY; then
         info "$T_AUTH_READ"
     elif [ -n "$PRODUCT_CODE" ] && [ -z "$ADMIN_KEY" ]; then
         USE_PRODUCT_CODE=true
-        info "$T_AUTH_READ_PC"
+        echo "  $T_AUTH_READ_PC"
     else
         echo ""
         info "$T_SELECT_AUTH"
@@ -320,12 +320,12 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
     echo ""
-    info "How does your Hermes Agent receive emails from the gateway?"
-    info "  Choose based on your Agent's network environment:"
-    info ""
-    info "  [1] Agent has a public IP — gateway can directly push webhooks to it"
-    info "  [2] An amail-bridge is already deployed in your LAN / on this machine"
-    info "  [3] No bridge yet — auto-deploy one on this machine (recommended)"
+    echo "  How does your Hermes Agent receive emails from the gateway?"
+    echo "    Choose based on your Agent's network environment:"
+    echo ""
+    echo "    [1] Agent has a public IP — gateway can directly push webhooks to it"
+    echo "    [2] An amail-bridge is already deployed in your LAN / on this machine"
+    echo "    [3] No bridge yet — auto-deploy one on this machine (recommended)"
     echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
     WH_MODE="${WH_MODE:-3}"
     if [ "$WH_MODE" = "1" ]; then
