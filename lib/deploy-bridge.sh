@@ -31,7 +31,6 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
     if [ -n "$DOMAIN_ADMIN_KEY" ]; then
         SYSTEM_ADMIN_KEY="$ADMIN_KEY"
         ADMIN_KEY="$DOMAIN_ADMIN_KEY"
-        step_ok "domain admin key created ($AMAIL_DOMAIN)"
 
         python3 -c '
 import json, os
