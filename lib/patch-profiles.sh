@@ -25,7 +25,7 @@ else
     fi
 
     # Register existing profiles that don't have amail.json yet
-    echo "  Registering amail addresses for existing profiles..."
+    echo -n "  Registering amail addresses for existing profiles... "
     REG_OUTPUT=$(python3 << PYEOF
 import sys, os
 sys.path.insert(0, "$SCRIPT_DIR/tools")
@@ -82,9 +82,9 @@ PYEOF
         esac
     done <<< "$REG_OUTPUT"
     if [ "${REG_COUNT:-0}" -gt 0 ]; then
-        echo "  $T_PROFILES_REG_DONE" | sed "s/{count}/$REG_COUNT/"
+        step_ok "$T_PROFILES_REG_DONE" | sed "s/{count}/$REG_COUNT/"
     else
-        echo "  All profiles already registered, skipping"
+        step_ok "All profiles already registered, skipping"
     fi
 fi
 
