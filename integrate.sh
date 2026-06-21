@@ -391,7 +391,8 @@ if os.environ.get("INTEGRATE_USE_PRODUCT_CODE", "") == "true":
 else:
     kwargs["admin_key"] = os.environ.get("INTEGRATE_ADMIN_KEY", "")
 result = setup(**kwargs)
-print(json.dumps(result, indent=2, ensure_ascii=False))
+display_result = {k: v for k, v in result.items() if k not in ("success", "path")}
+print(json.dumps(display_result, indent=2, ensure_ascii=False))
 if not result.get("success"): sys.exit(1)
 PYEOF
 ) || EXIT_CODE=$?
