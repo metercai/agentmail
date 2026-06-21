@@ -199,18 +199,6 @@ for d in entries:
 " 2>/dev/null)
         DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
-        # If system has no bare domains, check if admin key is a bare-domain key (DomainAdmin)
-        _EXTRA_DOMAIN=""
-        if [ "$DOMAIN_COUNT" -eq 0 ]; then
-            _ADMIN_EMAIL=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null \
-                | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
-            if [ -n "$_ADMIN_EMAIL" ] && ! echo "$_ADMIN_EMAIL" | grep -q '@'; then
-                _EXTRA_DOMAIN="$_ADMIN_EMAIL"
-                DOMAIN_COUNT=1
-            fi
-            unset _ADMIN_EMAIL
-        fi
-
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
         echo "$DOMAINS_JSON" | python3 -c "
 import sys,json
@@ -219,11 +207,8 @@ for i,d in enumerate(entries,1):
     status = ' (inactive)' if not d.get('is_active') else ''
     print(f'    [{i}] {d.get(\"domain\",\"?\")}{status}')
 domain_count = len(entries)
+print(f'    [{domain_count+1}] Enter a new domain')
 " 2>/dev/null
-        if [ -n "$_EXTRA_DOMAIN" ]; then
-            echo "    [1] $_EXTRA_DOMAIN (shared domain)"
-        fi
-        echo "    [$((DOMAIN_COUNT + 1))] Enter a new domain"
         echo ""
         echo -n "  $T_DOMAIN_SELECT"; read -r DOMAIN_CHOICE
         DOMAIN_CHOICE="${DOMAIN_CHOICE:-1}"
@@ -246,10 +231,6 @@ domain_count = len(entries)
         # Single domain selection
         if echo "$DOMAIN_CHOICE" | grep -qE '^[0-9]+$' && [ "$DOMAIN_CHOICE" -ge 1 ] && [ "$DOMAIN_CHOICE" -le "$DOMAIN_COUNT" ]; then
             SELECTED_DOMAINS=$(echo "$BARE_DOMAINS" | sed -n "${DOMAIN_CHOICE}p")
-        fi
-        # If selection is from the shared domain fallback (not in BARE_DOMAINS)
-        if [ -z "$SELECTED_DOMAINS" ] && [ "$DOMAIN_CHOICE" = "1" ] && [ -n "$_EXTRA_DOMAIN" ]; then
-            SELECTED_DOMAINS="$_EXTRA_DOMAIN"
         fi
 
         if [ -n "$SELECTED_DOMAINS" ]; then
@@ -326,7 +307,6 @@ case "$_SAVE_INPUT" in
     *) SAVE_SNAPSHOTS="false" ;;
 esac
 unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
-echo ""
 MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
 
 WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"

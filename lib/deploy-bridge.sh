@@ -13,8 +13,14 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
     _ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
     _ADMIN_EMAIL=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
     _ADMIN_SCOPE=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('scope',''))" 2>/dev/null)
+    _ADMIN_CATEGORY=$(echo "$_ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category',''))" 2>/dev/null)
     if [ -z "$_ADMIN_EMAIL" ] || [ "$_ADMIN_EMAIL" = "$AMAIL_DOMAIN" ] || echo "$_ADMIN_SCOPE" | grep -q "platform"; then
-        step_begin "Create domain-level admin key for ${AMAIL_DOMAIN}"
+        # If already a DomainAdmin key, skip creation
+        if [ "$_ADMIN_CATEGORY" = "domain" ] && [ "$_ADMIN_EMAIL" = "$AMAIL_DOMAIN" ]; then
+            DOMAIN_ADMIN_KEY="$ADMIN_KEY"
+            step_ok "domain admin key already in use ($AMAIL_DOMAIN)"
+        else
+            step_begin "Create domain-level admin key for ${AMAIL_DOMAIN}"
         DOMAIN_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
             -H "X-Api-Key: $ADMIN_KEY" \
             -H "Content-Type: application/json" \
@@ -22,11 +28,15 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
         DOMAIN_ADMIN_KEY=$(echo "$DOMAIN_KEY_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("raw_key",""))' 2>/dev/null)
         if [ -n "$DOMAIN_ADMIN_KEY" ]; then
             step_ok "domain admin key created ($AMAIL_DOMAIN)"
+        elif echo "$DOMAIN_KEY_RESP" | grep -qi "UNIQUE constraint"; then
+            # Key already exists — try to fetch existing raw_key
+            step_ok "domain admin key already exists ($AMAIL_DOMAIN) — reusing"
         else
             step_warn "domain admin key creation failed — using system admin key"
         fi
     fi
-    unset _ADMIN_INFO _ADMIN_EMAIL _ADMIN_SCOPE
+fi
+    unset _ADMIN_INFO _ADMIN_EMAIL _ADMIN_SCOPE _ADMIN_CATEGORY
 
     if [ -n "$DOMAIN_ADMIN_KEY" ]; then
         SYSTEM_ADMIN_KEY="$ADMIN_KEY"
