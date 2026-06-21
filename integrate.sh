@@ -396,7 +396,7 @@ if not result.get("success"): sys.exit(1)
 PYEOF
 ) || EXIT_CODE=$?
 _ERR_MSG=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error','') or d.get('detail',''))" 2>/dev/null || echo "")
-[ $EXIT_CODE -ne 0 ] && step_fail "${_ERR_MSG:-$T_CONFIG_FAIL}"
+[ $EXIT_CODE -ne 0 ] && step_fail "Activation failed: ${_ERR_MSG:-$T_CONFIG_FAIL}"
 
 if $USE_PRODUCT_CODE; then
     NEW_ADMIN_KEY=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('admin_key','') or d.get('raw_key',''))" 2>/dev/null || echo "")
