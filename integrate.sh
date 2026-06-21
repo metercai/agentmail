@@ -290,18 +290,25 @@ fi
 step_begin "$T_SNAP_CONFIG"
 
 # Read current config value for display
-_SAVE_CURRENT=$(read_config "save_raw_snapshots")
-_SAVE_DEFAULT="yes"
-[ "$_SAVE_CURRENT" = "false" ] && _SAVE_DEFAULT="no"
-echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
-read -r _SAVE_INPUT
-_SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
-case "$_SAVE_INPUT" in
-    y|Y|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
-    *) SAVE_SNAPSHOTS="false" ;;
-esac
-unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
-echo ""
+if [ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ]; then
+    case "$AMAIL_SAVE_SNAPSHOTS" in
+        true|True|TRUE|1|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
+        *) SAVE_SNAPSHOTS="false" ;;
+    esac
+    info "save_raw_snapshots = $SAVE_SNAPSHOTS (from AMAIL_SAVE_SNAPSHOTS)"
+else
+    _SAVE_CURRENT=$(read_config "save_raw_snapshots")
+    _SAVE_DEFAULT="yes"
+    [ "$_SAVE_CURRENT" = "false" ] && _SAVE_DEFAULT="no"
+    echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
+    read -r _SAVE_INPUT
+    _SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
+    case "$_SAVE_INPUT" in
+        y|Y|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
+        *) SAVE_SNAPSHOTS="false" ;;
+    esac
+    unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
+fi
 MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
 
 WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"
