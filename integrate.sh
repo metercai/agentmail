@@ -410,7 +410,6 @@ if $USE_PRODUCT_CODE; then
         ADMIN_KEY="$NEW_ADMIN_KEY"
         SYSTEM_ID="$NEW_SYSTEM_ID"
         AMAIL_DOMAIN="$NEW_DOMAIN"
-        echo ""
         echo -e "  ${BOLD}$T_ACTIVATED${NC}"
         echo "  ├─ system_id:  ${SYSTEM_ID:-?}"
         echo "  ├─ domain:     ${AMAIL_DOMAIN:-?}"

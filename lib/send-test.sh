@@ -18,6 +18,7 @@ trap cleanup_test EXIT
 ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
 ADMIN_EMAIL=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
 SYSTEM_ID=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null)
+HAS_AGENT_SCOPE=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; s=' '.join(json.load(sys.stdin).get('scopes',[])); print('true' if 'agent' in s else 'false')" 2>/dev/null)
 
 if [ -z "$SYSTEM_ID" ]; then
     echo "  $T_FAILED (cannot determine system_id)"
@@ -27,7 +28,12 @@ else
     TEST_DOMAIN=$(cat "$HOME/.hermes/amail_gateway.json" 2>/dev/null \
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null)
 
-    if [ -z "$ADMIN_EMAIL" ]; then
+    if [ "$HAS_AGENT_SCOPE" = "true" ] && [ -n "$ADMIN_EMAIL" ] && echo "$ADMIN_EMAIL" | grep -q '@'; then
+        # ── Admin key has agent scope + email → can send directly ──
+        TEST_AGENT_KEY="$ADMIN_KEY"
+        SENDER="$ADMIN_EMAIL"
+    else
+        # ── Admin key cannot send directly → create an agent key ──
         # ── New activation: SystemAdmin (email="") cannot send directly ──
         # Must create an agent key under a domain address
         if [ -z "$TEST_DOMAIN" ]; then
@@ -58,11 +64,6 @@ else
 
             SENDER="$TEST_EMAIL"
         fi
-    else
-        # ── Old-style activation / manual key: admin has an email ──
-        # Can send directly after adding a whitelist entry
-        TEST_AGENT_KEY="$ADMIN_KEY"
-        SENDER="$ADMIN_EMAIL"
     fi
 
     if [ -n "${TEST_AGENT_KEY:-}" ]; then
