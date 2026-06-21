@@ -196,20 +196,19 @@ import sys,json
 entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
 for d in entries:
     print(d['domain'])
-# If system has no bare domains but AMAIL_DOMAIN is set, show it as available
-if not entries:
-    import os
-    env_domain = os.environ.get('AMAIL_DOMAIN','')
-    if env_domain:
-        print(env_domain)
 " 2>/dev/null)
         DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
-        # If system has no bare domains but AMAIL_DOMAIN is configured, add it
+        # If system has no bare domains, check if admin key is a bare-domain key (DomainAdmin)
         _EXTRA_DOMAIN=""
-        if [ "$DOMAIN_COUNT" -eq 0 ] && [ -n "$AMAIL_DOMAIN" ]; then
-            _EXTRA_DOMAIN="$AMAIL_DOMAIN"
-            DOMAIN_COUNT=1
+        if [ "$DOMAIN_COUNT" -eq 0 ]; then
+            _ADMIN_EMAIL=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
+            if [ -n "$_ADMIN_EMAIL" ] && ! echo "$_ADMIN_EMAIL" | grep -q '@'; then
+                _EXTRA_DOMAIN="$_ADMIN_EMAIL"
+                DOMAIN_COUNT=1
+            fi
+            unset _ADMIN_EMAIL
         fi
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
@@ -247,6 +246,10 @@ domain_count = len(entries)
         # Single domain selection
         if echo "$DOMAIN_CHOICE" | grep -qE '^[0-9]+$' && [ "$DOMAIN_CHOICE" -ge 1 ] && [ "$DOMAIN_CHOICE" -le "$DOMAIN_COUNT" ]; then
             SELECTED_DOMAINS=$(echo "$BARE_DOMAINS" | sed -n "${DOMAIN_CHOICE}p")
+        fi
+        # If selection is from the shared domain fallback (not in BARE_DOMAINS)
+        if [ -z "$SELECTED_DOMAINS" ] && [ "$DOMAIN_CHOICE" = "1" ] && [ -n "$_EXTRA_DOMAIN" ]; then
+            SELECTED_DOMAINS="$_EXTRA_DOMAIN"
         fi
 
         if [ -n "$SELECTED_DOMAINS" ]; then
