@@ -348,7 +348,6 @@ elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
         step_ok "internal bridge address = $WEBHOOK_HOST"
     else
         WEBHOOK_MODE="bridge"
-        info "  Bridge will be auto-detected and deployed in Step 5a"
     fi
 else
     WEBHOOK_HOST="$AMAIL_WEBHOOK_HOST"
@@ -357,12 +356,6 @@ else
     else
         WEBHOOK_MODE="direct"
     fi
-fi
-
-if [ "$SAVE_SNAPSHOTS" = "true" ]; then
-    step_ok "snapshots = true (inbound/outbound mail will be persisted locally)"
-else
-    step_ok "snapshots = false (no local snapshot storage)"
 fi
 
 # ═══════════════════════════════════════════════════════════════
