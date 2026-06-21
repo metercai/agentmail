@@ -322,7 +322,6 @@ elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
     echo ""
     echo "  How does your Hermes Agent receive emails from the gateway?"
     echo "    Choose based on your Agent's network environment:"
-    echo ""
     echo "    [1] Agent has a public IP — gateway can directly push webhooks to it"
     echo "    [2] An amail-bridge is already deployed in your LAN / on this machine"
     echo "    [3] No bridge yet — auto-deploy one on this machine (recommended)"
