@@ -664,7 +664,10 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
             if p.exists():
                 try:
                     data = json.loads(p.read_text())
-                    routes = data.get("subscriptions", {}).get("routes", {})
+                    if "subscriptions" in data:
+                        routes = data["subscriptions"].get("routes", {})
+                    else:
+                        routes = data
                     route = routes.get("amail-inbound", {})
                     if route.get("preprocess") == "amail_gateway":
                         preprocess_ok = True
