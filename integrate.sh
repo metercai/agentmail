@@ -293,7 +293,7 @@ step_begin "$T_SNAP_CONFIG"
 _SAVE_DEFAULT="yes"
 [ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ] && _SAVE_DEFAULT="$AMAIL_SAVE_SNAPSHOTS"
 [ "$(read_config "save_raw_snapshots")" = "false" ] && [ -z "${AMAIL_SAVE_SNAPSHOTS:-}" ] && _SAVE_DEFAULT="no"
-echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
+echo -n "  $T_SNAP_PROMPT (yes/no): "
 read -r _SAVE_INPUT
 _SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
 case "$_SAVE_INPUT" in
