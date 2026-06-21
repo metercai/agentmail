@@ -73,7 +73,6 @@ if ! echo "$GATEWAY_URL" | grep -qE ':[0-9]+(/|$|#|\?)'; then
     else
         GATEWAY_URL="${GATEWAY_URL%/}:80"
     fi
-    info "No port specified, defaulting → $GATEWAY_URL"
 fi
 
 echo -n "  $T_CHECKING "
@@ -132,7 +131,7 @@ if ! $REUSED_KEY; then
             read -r -p "  $T_PC_PROMPT" PRODUCT_CODE
             [ -z "$PRODUCT_CODE" ] && step_fail "$T_PC_EMPTY"
             info "$T_PC_USING: ${PRODUCT_CODE:0:8}..."
-            info "  $T_PC_AUTO"
+            info "$T_PC_AUTO"
         else
             AUTO_KEY=""; AUTO_PATH=""
             for dir in "." "/tmp/amail-gateway"; do
@@ -292,8 +291,8 @@ step_begin "$T_SNAP_CONFIG"
 
 # Read current config value for display
 _SAVE_CURRENT=$(read_config "save_raw_snapshots")
-_SAVE_DEFAULT="no"
-[ "$_SAVE_CURRENT" = "true" ] && _SAVE_DEFAULT="yes"
+_SAVE_DEFAULT="yes"
+[ "$_SAVE_CURRENT" = "false" ] && _SAVE_DEFAULT="no"
 echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
 read -r _SAVE_INPUT
 _SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
