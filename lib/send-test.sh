@@ -72,7 +72,7 @@ else
         echo -n "  Creating test whitelist... "
         WL_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
             -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-            -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$TEST_DOMAIN'","direction":"all","value":"*@example.com"}' 2>/dev/null)
+            -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$SENDER'","direction":"all","value":"*@example.com"}' 2>/dev/null)
         TEST_WL_ID=$(echo "$WL_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
         [ -n "$TEST_WL_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
 
