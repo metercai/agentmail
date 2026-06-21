@@ -72,7 +72,7 @@ else
         echo -n "  Creating test whitelist... "
         WL_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
             -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-            -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$SENDER'","direction":"all","value":"*@example.com"}' 2>/dev/null)
+            -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$TEST_DOMAIN'","direction":"all","value":"*@example.com"}' 2>/dev/null)
         TEST_WL_ID=$(echo "$WL_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
         [ -n "$TEST_WL_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
 
@@ -81,7 +81,7 @@ else
         SEND_RESP=$(curl -s --max-time 15 -X POST "$GATEWAY_URL/api/v1/send" \
             -H "X-Api-Key: $TEST_AGENT_KEY" -H "Content-Type: application/json" \
             -d '{"to":"test@example.com","subject":"Amail Integration Test","markdown":"This is an automated integration test from amail integrate.sh."}' 2>/dev/null)
-        SEND_MSG_ID=$(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email_id','') or json.load(sys.stdin).get('message_id',''))" 2>/dev/null)
+        SEND_MSG_ID=$(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email_id','') or json.load(sys.stdin).get('message_id',''))" 2>/dev/null || true)
 
         if [ -n "$SEND_MSG_ID" ]; then
             echo "$T_OK (id=$SEND_MSG_ID)"
