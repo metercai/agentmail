@@ -47,6 +47,7 @@ else
                 -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
                 -d '{"id":"test-'${TEST_TS}'","email":"'${TEST_EMAIL}'"}' 2>/dev/null)
             TEST_ADDR_ID=$(echo "$ADDR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',{}).get('id',''))" 2>/dev/null || true)
+            [ -n "$TEST_ADDR_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
 
             echo -n "  Creating test API key... "
             KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
@@ -77,7 +78,7 @@ else
 
         # Send test email
         echo -n "  $T_TEST_SEND "
-        SEND_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/send" \
+        SEND_RESP=$(curl -s --max-time 15 -X POST "$GATEWAY_URL/api/v1/send" \
             -H "X-Api-Key: $TEST_AGENT_KEY" -H "Content-Type: application/json" \
             -d '{"to":"test@example.com","subject":"Amail Integration Test","markdown":"This is an automated integration test from amail integrate.sh."}' 2>/dev/null)
         SEND_MSG_ID=$(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email_id','') or json.load(sys.stdin).get('message_id',''))" 2>/dev/null)
