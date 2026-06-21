@@ -319,7 +319,6 @@ cfg['webhook_host'] = ''
 json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
-    echo ""
     echo "  How does your Hermes Agent receive emails from the gateway?"
     echo "    Choose based on your Agent's network environment:"
     echo "    [1] Agent has a public IP — gateway can directly push webhooks to it"
