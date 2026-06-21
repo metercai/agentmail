@@ -46,14 +46,14 @@ else
             ADDR_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/addresses" \
                 -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
                 -d '{"id":"test-'${TEST_TS}'","email":"'${TEST_EMAIL}'"}' 2>/dev/null)
-            TEST_ADDR_ID=$(echo "$ADDR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',{}).get('id',''))" 2>/dev/null)
+            TEST_ADDR_ID=$(echo "$ADDR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',{}).get('id',''))" 2>/dev/null || true)
 
             echo -n "  Creating test API key... "
             KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
                 -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
                 -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$TEST_EMAIL'","scopes":["agent"],"category":"agent","name":"amail-integration-test"}' 2>/dev/null)
-            TEST_AGENT_KEY=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null)
-            TEST_KEY_ID=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+            TEST_AGENT_KEY=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || true)
+            TEST_KEY_ID=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
             if [ -n "$TEST_AGENT_KEY" ]; then
                 echo "$T_OK (${TEST_AGENT_KEY:0:8}...)"
             else
