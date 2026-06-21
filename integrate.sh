@@ -394,7 +394,7 @@ display_result = {k: v for k, v in result.items() if k not in ("success", "path"
 print(json.dumps(display_result, indent=2, ensure_ascii=False))
 if not result.get("success"): sys.exit(1)
 PYEOF
-)[1] || EXIT_CODE=$?
+) || EXIT_CODE=$?
 [ $EXIT_CODE -ne 0 ] && step_fail "$T_CONFIG_FAIL"
 
 if $USE_PRODUCT_CODE; then
