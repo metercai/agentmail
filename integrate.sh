@@ -291,9 +291,15 @@ step_begin "$T_SNAP_CONFIG"
 
 # Read current config value for display
 _SAVE_DEFAULT="yes"
-[ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ] && _SAVE_DEFAULT="$AMAIL_SAVE_SNAPSHOTS"
-[ "$(read_config "save_raw_snapshots")" = "false" ] && [ -z "${AMAIL_SAVE_SNAPSHOTS:-}" ] && _SAVE_DEFAULT="no"
-echo -n "  $T_SNAP_PROMPT (yes/no): "
+if [ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ]; then
+    case "$AMAIL_SAVE_SNAPSHOTS" in
+        true|True|TRUE|1|yes|Yes|YES) _SAVE_DEFAULT="yes" ;;
+        *) _SAVE_DEFAULT="no" ;;
+    esac
+elif [ "$(read_config "save_raw_snapshots")" = "false" ]; then
+    _SAVE_DEFAULT="no"
+fi
+echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
 read -r _SAVE_INPUT
 _SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
 case "$_SAVE_INPUT" in
