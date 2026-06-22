@@ -1201,6 +1201,7 @@ def init_system(
         admin_key=admin_key,
         system_id=created_system_id,
         domain=created_domain,
+        system_name=system_name or result.get("system_name", ""),
         save_raw_snapshots=save_raw_snapshots,
         manager_address=manager_address,
         webhook_host=webhook_host,
@@ -1213,6 +1214,7 @@ def init_system(
         "admin_key": admin_key,
         "gateway_url": gateway_url,
         "domain": created_domain,
+        "system_name": system_name or result.get("system_name", ""),
     }
 
 
