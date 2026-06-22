@@ -322,7 +322,7 @@ else
             fi
             # Extract error message from response body
             if [ -n "$BODY" ]; then
-                ERROR_MSG=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','HTTP '$HTTP_CODE))" 2>/dev/null || echo "HTTP ${HTTP_CODE:-000}")
+                ERROR_MSG=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','HTTP {}'.format('$HTTP_CODE')))" 2>/dev/null || echo "HTTP ${HTTP_CODE:-000}")
             else
                 ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
             fi
