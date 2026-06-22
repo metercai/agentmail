@@ -58,6 +58,28 @@ echo "  Gateway:     $GATEWAY_URL"
 echo "  Agent email: $AGENT_EMAIL"
 echo "  Manager:     $MANAGER"
 
+# If no agent email found in current system, register a temporary one
+REGISTERED_AGENT=""
+if [ -z "$AGENT_EMAIL" ] || ! curl -s "${GATEWAY_URL}/api/v1/admin/systems/${SYSTEM_ID}/domains" \
+    -H "X-Api-Key: ${ADMIN_KEY}" 2>/dev/null | python3 -c "
+import sys, json; data = json.load(sys.stdin)
+ok = any('@' in d.get('domain','') for d in data)
+sys.exit(0 if ok else 1)
+"; then
+    # Register a test agent under this system
+    TS=$(date +%s)
+    AGENT_EMAIL="test-agent-${TS}@${AGENT_DOMAIN}"
+    echo "  Registering temporary agent: $AGENT_EMAIL"
+    ADDR_RESP=$(curl -s -X POST "${GATEWAY_URL}/api/v1/admin/systems/${SYSTEM_ID}/addresses" \
+        -H "X-Api-Key: ${ADMIN_KEY}" -H "Content-Type: application/json" \
+        -d "{\"id\":\"test-${TS}\",\"email\":\"${AGENT_EMAIL}\",\"manager_address\":\"${MANAGER}\"}" 2>/dev/null)
+    # Create whitelist for manager
+    curl -s -X POST "${GATEWAY_URL}/api/v1/admin/whitelists" \
+        -H "X-Api-Key: ${ADMIN_KEY}" -H "Content-Type: application/json" \
+        -d "{\"system_id\":\"${SYSTEM_ID}\",\"domain_addr\":\"${AGENT_EMAIL}\",\"direction\":\"all\",\"value\":\"${MANAGER}\"}" > /dev/null
+    REGISTERED_AGENT="$AGENT_EMAIL"
+fi
+
 # ── Build auth SMTP FROM ──
 b64_key=$(python3 -c "
 import base64, sys
@@ -160,4 +182,15 @@ else
     step_warn "超时 — 测试邮件已发送但未在 30 秒内收到 agent 回复"
     info "  amail.log delta: $(( $(wc -l < "$HOME/.hermes/amail.log" 2>/dev/null || echo 0) - BEFORE_LOG )) 行"
     info "  Stats sent: $NOW_SENT (before: $BEFORE_SENT), received: $NOW_RECV (before: $BEFORE_RECV)"
+fi
+
+# Cleanup temporary agent
+if [ -n "$REGISTERED_AGENT" ]; then
+    ADDR_ID=$(curl -s "${GATEWAY_URL}/api/v1/admin/systems/${SYSTEM_ID}/domains" \
+        -H "X-Api-Key: ${ADMIN_KEY}" 2>/dev/null | python3 -c "
+import sys, json; data = json.load(sys.stdin)
+ids = [x['id'] for x in data if x.get('domain','') == '$REGISTERED_AGENT']
+print(ids[0] if ids else '')
+" 2>/dev/null)
+    [ -n "$ADDR_ID" ] && curl -s -X DELETE "${GATEWAY_URL}/api/v1/admin/system-domains/${ADDR_ID}" -H "X-Api-Key: ${ADMIN_KEY}" > /dev/null
 fi
