@@ -298,7 +298,7 @@ else
             SYSTEM_NAME="${SYSTEM_NAME:-$SUGGEST}"
             SYSTEM_NAME=$(echo "$SYSTEM_NAME" | tr '[:upper:]' '[:lower:]')
             # Validate format
-            if ! echo "$SYSTEM_NAME" | grep -qE '^[a-z][a-z0-9-_]{2,7}$'; then
+            if ! echo "$SYSTEM_NAME" | grep -qE '^[a-z][a-z0-9_-]{2,7}$'; then
                 echo -e "  ${YELLOW}Must be lowercase letter + 2-7 more chars (letters, digits, hyphen, underscore)${NC}"
                 continue
             fi
