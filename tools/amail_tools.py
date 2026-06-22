@@ -1848,9 +1848,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         return
 
     client = _GatewayClient(gateway_url, admin_key)
-    # Use system_id suffix to guarantee unique email in the shared domain
-    suffix = system_id.replace('-', '')[-8:] if system_id else 'unknown'
-    email = f"{name}-{suffix}@{domain}"
+    email = f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config
