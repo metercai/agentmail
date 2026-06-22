@@ -20,18 +20,38 @@ if [ -z "$ADMIN_KEY" ] || [ -z "$GATEWAY_URL" ] || [ -z "$AGENT_DOMAIN" ] || [ -
     exit 0
 fi
 
-# Find agent email address from profiles
-AGENT_EMAIL=""
-for f in "$HOME/.hermes/profiles/"*/amail.json; do
-    [ -f "$f" ] || continue
-    AE=$(python3 -c "import json; print(json.load(open('$f')).get('email',''))" 2>/dev/null)
-    if [ -n "$AE" ]; then
-        AGENT_EMAIL="$AE"
-        break
-    fi
-done
+# Find agent email address — try env var first, then query API, then profiles
+AGENT_EMAIL="${AGENT_EMAIL:-}"
 if [ -z "$AGENT_EMAIL" ]; then
-    AGENT_EMAIL="agent@${AGENT_DOMAIN}"
+    # Query the system for registered email addresses
+    AGENT_EMAIL=$(curl -s "${GATEWAY_URL}/api/v1/admin/systems/${SYSTEM_ID}/domains" \
+        -H "X-Api-Key: ${ADMIN_KEY}" 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+# Find the first address entry (contains @) that has webhook_url
+for d in data:
+    dom = d.get('domain', '')
+    if '@' in dom and d.get('webhook_url'):
+        print(dom)
+        sys.exit(0)
+# Fallback: first address entry
+for d in data:
+    dom = d.get('domain', '')
+    if '@' in dom:
+        print(dom)
+        sys.exit(0)
+print('')
+" 2>/dev/null || echo "")
+fi
+if [ -z "$AGENT_EMAIL" ]; then
+    for f in "$HOME/.hermes/profiles/"*/amail.json; do
+        [ -f "$f" ] || continue
+        AE=$(python3 -c "import json; print(json.load(open('$f')).get('email',''))" 2>/dev/null)
+        if [ -n "$AE" ]; then AGENT_EMAIL="$AE"; break; fi
+    done
+fi
+if [ -z "$AGENT_EMAIL" ]; then
+    AGENT_EMAIL="${AGENT_EMAIL:-agent@${AGENT_DOMAIN}}"
 fi
 
 echo "  Gateway:     $GATEWAY_URL"
