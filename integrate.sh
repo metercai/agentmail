@@ -326,6 +326,10 @@ else
             else
                 ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
             fi
+            if echo "$ERROR_MSG" | grep -qi 'already claimed'; then
+                echo -e "  ${RED}Activation code has already been used — please use a fresh code${NC}"
+                step_fail "Activation code already claimed"
+            fi
             if echo "$ERROR_MSG" | grep -qi 'unique\|already taken\|conflict\|already in use'; then
                 echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
             else
