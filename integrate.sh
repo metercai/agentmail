@@ -330,12 +330,9 @@ else
                 echo -e "  ${RED}Activation code has already been used — please use a fresh code${NC}"
                 step_fail "Activation code already claimed"
             fi
-            if echo "$ERROR_MSG" | grep -qi 'unique\|already taken\|conflict\|already in use'; then
-                echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
-            else
-                echo -e "  ${RED}Activation failed: $ERROR_MSG${NC}"
-                step_fail "System activation failed"
-            fi
+            # Any other error: show message and retry
+            echo -e "  ${YELLOW}$ERROR_MSG${NC}"
+            echo -e "  ${YELLOW}Please choose a different name or check the activation code${NC}"
         done
         step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
     else
