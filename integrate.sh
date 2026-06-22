@@ -327,7 +327,7 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
     echo "  $T_WEBHOOK_MODE"
-    echo "    $T_CHOOSE based on your Agent's network environment:"
+    echo "    $T_CHOOSE_ENV"
     echo "    [1] $T_WEBHOOK_OPT1"
     echo "    [2] $T_WEBHOOK_OPT2"
     echo "    [3] $T_WEBHOOK_OPT3"

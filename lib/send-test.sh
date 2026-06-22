@@ -43,14 +43,14 @@ else
         else
             TEST_EMAIL="test-${TEST_TS}@${TEST_DOMAIN}"
 
-            echo -n "  Registering test address... "
+            echo -n "  ${T_TEST_REG} "
             ADDR_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/addresses" \
                 -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
                 -d '{"id":"test-'${TEST_TS}'","email":"'${TEST_EMAIL}'"}' 2>/dev/null)
             TEST_ADDR_ID=$(echo "$ADDR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',{}).get('id',''))" 2>/dev/null || true)
             [ -n "$TEST_ADDR_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
 
-            echo -n "  Creating test API key... "
+            echo -n "  ${T_TEST_API_KEY} "
             KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
                 -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
                 -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$TEST_EMAIL'","scopes":["agent"],"category":"agent","name":"amail-integration-test"}' 2>/dev/null)
@@ -70,7 +70,7 @@ else
 
     if [ -n "${TEST_AGENT_KEY:-}" ]; then
         # Whitelist for outbound send
-        echo -n "  Creating test whitelist... "
+        echo -n "  ${T_TEST_WHITELIST} "
         WL_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
             -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
             -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$SENDER'","direction":"all","value":"*@example.com"}' 2>/dev/null)

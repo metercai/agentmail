@@ -108,7 +108,13 @@ if [ "$LANG_CHOICE" = "zh" ]; then
     T_WEBHOOK_OPT1="Agent 有公网 IP — 网关可直接推送 webhook"
     T_WEBHOOK_OPT2="已有 amail-bridge 在运行 (局域网/本机)"
     T_WEBHOOK_OPT3="自动部署 amail-bridge (推荐)"
+T_CHOOSE_ENV="根据您的 Agent 网络环境选择:"
     T_DOMAIN_KEY_OK="系统管理员 key 已保存到 ~/.hermes/amail_system.key"
+    T_TEST_REG="注册测试地址..."
+    T_TEST_API_KEY="创建测试 API key..."
+    T_TEST_WHITELIST="创建测试白名单..."
+    T_PROFILES_REG_DISP="注册已有 profile 的 amail 地址..."
+    T_PROFILES_REG_SKIP_MSG="所有 profile 已注册，跳过"
 else
     # ── English (default) ──────────────────────────────────────────
     T_TITLE="amail Hermes Integration Wizard"
@@ -215,5 +221,11 @@ else
     T_WEBHOOK_OPT1="Agent has a public IP — gateway can directly push webhooks"
     T_WEBHOOK_OPT2="An amail-bridge is already deployed in your LAN / on this machine"
     T_WEBHOOK_OPT3="Auto-deploy an amail-bridge on this machine (recommended)"
+T_CHOOSE_ENV="Choose based on your Agent's network environment:"
     T_DOMAIN_KEY_OK="System admin key saved to ~/.hermes/amail_system.key"
+    T_TEST_REG="Registering test address..."
+    T_TEST_API_KEY="Creating test API key..."
+    T_TEST_WHITELIST="Creating test whitelist..."
+    T_PROFILES_REG_DISP="Registering amail addresses for existing profiles..."
+    T_PROFILES_REG_SKIP_MSG="All profiles already registered, skipping"
 fi

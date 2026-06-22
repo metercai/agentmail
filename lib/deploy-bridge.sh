@@ -51,7 +51,7 @@ json.dump(cfg, open(p, "w"), indent=2)
         if $USE_PRODUCT_CODE && [ -n "$SYSTEM_ADMIN_KEY" ]; then
             echo "$SYSTEM_ADMIN_KEY" > "$HOME/.hermes/amail_system.key"
             chmod 600 "$HOME/.hermes/amail_system.key"
-            step_ok "system admin key saved to ~/.hermes/amail_system.key"
+            step_ok "$T_DOMAIN_KEY_OK"
         fi
     else
         step_warn "domain admin key creation failed — continuing with system admin key"
