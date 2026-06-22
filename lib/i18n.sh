@@ -104,6 +104,11 @@ if [ "$LANG_CHOICE" = "zh" ]; then
     T_ERR_NO_TOOLS="找不到 amail_tools.py"
     T_ACTIVATED="系统已激活"
     T_ACT_FAIL="激活失败 — 请检查 product_code 是否有效或联系管理员"
+    T_WEBHOOK_MODE="网关如何转发邮件到您的 Hermes Agent?"
+    T_WEBHOOK_OPT1="Agent 有公网 IP — 网关可直接推送 webhook"
+    T_WEBHOOK_OPT2="已有 amail-bridge 在运行 (局域网/本机)"
+    T_WEBHOOK_OPT3="自动部署 amail-bridge (推荐)"
+    T_DOMAIN_KEY_OK="系统管理员 key 已保存到 ~/.hermes/amail_system.key"
 else
     # ── English (default) ──────────────────────────────────────────
     T_TITLE="amail Hermes Integration Wizard"
@@ -206,4 +211,9 @@ else
     T_ERR_NO_TOOLS="amail_tools.py not found"
     T_ACTIVATED="System activated"
     T_ACT_FAIL="Activation failed — check product code or contact administrator"
+    T_WEBHOOK_MODE="How does your Hermes Agent receive emails from the gateway?"
+    T_WEBHOOK_OPT1="Agent has a public IP — gateway can directly push webhooks"
+    T_WEBHOOK_OPT2="An amail-bridge is already deployed in your LAN / on this machine"
+    T_WEBHOOK_OPT3="Auto-deploy an amail-bridge on this machine (recommended)"
+    T_DOMAIN_KEY_OK="System admin key saved to ~/.hermes/amail_system.key"
 fi

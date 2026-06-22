@@ -326,12 +326,12 @@ cfg['webhook_host'] = ''
 json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
-    echo "  How does your Hermes Agent receive emails from the gateway?"
-    echo "    Choose based on your Agent's network environment:"
-    echo "    [1] Agent has a public IP — gateway can directly push webhooks to it"
-    echo "    [2] An amail-bridge is already deployed in your LAN / on this machine"
-    echo "    [3] No bridge yet — auto-deploy one on this machine (recommended)"
-    echo -n "  Choose [1/2/3] (default 3): "; read -r WH_MODE
+    echo "  $T_WEBHOOK_MODE"
+    echo "    $T_CHOOSE based on your Agent's network environment:"
+    echo "    [1] $T_WEBHOOK_OPT1"
+    echo "    [2] $T_WEBHOOK_OPT2"
+    echo "    [3] $T_WEBHOOK_OPT3"
+    echo -n "  $T_CHOOSE [1/2/3] (${T_DEFAULT} 3): "; read -r WH_MODE
     WH_MODE="${WH_MODE:-3}"
     if [ "$WH_MODE" = "1" ]; then
         WEBHOOK_MODE="direct"
