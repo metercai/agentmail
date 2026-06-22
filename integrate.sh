@@ -302,13 +302,15 @@ else
                 echo -e "  ${YELLOW}Must be lowercase letter + 2-7 more chars (letters, digits, hyphen, underscore)${NC}"
                 continue
             fi
-            # Call activation
-            ACTIVATE=$(curl -s -X POST "$GATEWAY_URL/api/v1/activate-system"                 -H "Content-Type: application/json"                 -d "{"code":"$PRODUCT_CODE","system_name":"$SYSTEM_NAME"}" 2>/dev/null)
-            HTTP_CODE=$(echo "$ACTIVATE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',400))" 2>/dev/null || echo "400")
+            # Call activation (capture HTTP code + body)
+            ACTIVATE=$(curl -s -w '%{http_code}' -X POST "$GATEWAY_URL/api/v1/activate-system"                 -H "Content-Type: application/json"                 -d "{"code":"$PRODUCT_CODE","system_name":"$SYSTEM_NAME"}" 2>/dev/null)
+            HTTP_CODE="${ACTIVATE: -3}"
+            BODY="${ACTIVATE::-3}"
+            # Check success via HTTP code 200-201
             if echo "$HTTP_CODE" | grep -qE '^20[01]$'; then
-                ADMIN_KEY=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || echo "")
-                SYSTEM_ID=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
-                AMAIL_DOMAIN=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null || echo "")
+                ADMIN_KEY=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || echo "")
+                SYSTEM_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
+                AMAIL_DOMAIN=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null || echo "")
                 if [ -n "$ADMIN_KEY" ] && [ -n "$SYSTEM_ID" ] && [ -n "$AMAIL_DOMAIN" ]; then
                     echo -e "  ${GREEN}System activated:${NC}"
                     echo "  ├─ system_id:  $SYSTEM_ID"
@@ -318,8 +320,13 @@ else
                     break
                 fi
             fi
-            ERROR_MSG=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','Unknown error'))" 2>/dev/null || echo "API call failed")
-            if echo "$ERROR_MSG" | grep -qi 'unique\|already taken\|conflict'; then
+            # Extract error message from response body
+            if [ -n "$BODY" ]; then
+                ERROR_MSG=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','HTTP '$HTTP_CODE))" 2>/dev/null || echo "HTTP ${HTTP_CODE:-000}")
+            else
+                ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
+            fi
+            if echo "$ERROR_MSG" | grep -qi 'unique\|already taken\|conflict\|already in use'; then
                 echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
             else
                 echo -e "  ${RED}Activation failed: $ERROR_MSG${NC}"
