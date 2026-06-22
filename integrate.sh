@@ -302,18 +302,11 @@ else
                 echo -e "  ${YELLOW}Must be lowercase letter + 2-7 more chars (letters, digits, hyphen, underscore)${NC}"
                 continue
             fi
-            # Call activation (capture HTTP code + body)
-            ACTIVATE=$(curl -s -w '%{http_code}' -X POST "$GATEWAY_URL/api/v1/activate-system"                 -H "Content-Type: application/json"                 -d "{"code":"$PRODUCT_CODE","system_name":"$SYSTEM_NAME"}" 2>/dev/null)
-            # Debug: show the JSON being sent
-            JSON_BODY="{\"code\":\"$PRODUCT_CODE\",\"system_name\":\"$SYSTEM_NAME\"}"
-            echo "  [DEBUG] JSON_LEN=${#JSON_BODY} PRODUCT_CODE_LEN=${#PRODUCT_CODE} SYSTEM_NAME_LEN=${#SYSTEM_NAME}" >&2
-            echo "  [DEBUG] PRODUCT_CODE=[$PRODUCT_CODE]" >&2
-            echo "  [DEBUG] SYSTEM_NAME=[$SYSTEM_NAME]" >&2
-            echo "  [DEBUG] RAW=[$ACTIVATE]" >&2
+                        # Call activation using Python (reliable)
+            export PRODUCT_CODE SYSTEM_NAME GATEWAY_URL
+            ACTIVATE=$(python3 "$SCRIPT_DIR/lib/activate_system.py" 2>/dev/null)
             HTTP_CODE="${ACTIVATE: -3}"
-            echo "  [DEBUG] HTTP_CODE=[$HTTP_CODE]" >&2
             BODY="${ACTIVATE::-3}"
-            echo "  [DEBUG] BODY=[$BODY]" >&2
             # Check success via HTTP code 200-201
             if echo "$HTTP_CODE" | grep -qE '^20[01]$'; then
                 ADMIN_KEY=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || echo "")
