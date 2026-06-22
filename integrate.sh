@@ -308,7 +308,6 @@ case "$_SAVE_INPUT" in
     *) SAVE_SNAPSHOTS="false" ;;
 esac
 unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
-echo ""
 MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
 
 WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"

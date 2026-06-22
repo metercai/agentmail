@@ -1,7 +1,6 @@
 # Step 10: online send/receive test
 # ═══════════════════════════════════════════════════════════════
-echo ""
-echo -e "${BOLD}  ${T_TEST}${NC}"
+step_begin "$T_TEST"
 
 TEST_TS=$(date +%s)
 TEST_KEY_ID=""
