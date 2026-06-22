@@ -628,6 +628,17 @@ def verify_integration(gateway_url: str = "", admin_key: str = "") -> dict:
         except Exception as e:
             add("admin_key", False, str(e), "Check admin_key is correct and gateway is running")
 
+    # Also read gateway config for optional system_name
+    cfg_path = Path.home() / ".hermes" / "amail_gateway.json"
+    if cfg_path.exists():
+        try:
+            local_cfg = json.loads(cfg_path.read_text())
+            sn = local_cfg.get("system_name", "")
+            if sn:
+                add("system_name", True, f"shared domain identifier: {sn}")
+        except Exception:
+            pass
+
     # 3. Webhook route (check default + named profile subscriptions)
     has_amail = False
     routes_checked = []
