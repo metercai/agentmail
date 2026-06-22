@@ -47,7 +47,15 @@ else:
     ]
     for amail_json, name, profile_dir in default_configs:
         if os.path.exists(amail_json):
-            break
+            # Re-register if system_id changed
+            try:
+                import json as _j
+                with open(amail_json) as _f:
+                    _pf = _j.load(_f)
+                if _pf.get("system_id", "") == config.get("system_id", ""):
+                    break  # same system, already registered
+            except Exception:
+                break  # can't read, assume already registered
     else:
         # No default amail.json — register it
         try:
@@ -64,7 +72,16 @@ else:
                 continue
             amail_json = os.path.join(profile_dir, "amail.json")
             if os.path.exists(amail_json):
-                continue
+                # Re-register if system_id changed (re-activation with new code)
+                try:
+                    import json as _json
+                    with open(amail_json) as _f:
+                        _pf = _json.load(_f)
+                    _old_sid = _pf.get("system_id", "")
+                    if _old_sid == config.get("system_id", ""):
+                        continue  # same system, already registered
+                except Exception:
+                    continue  # can't read, skip
             try:
                 _auto_register_email(name, profile_dir, config)
                 count += 1
