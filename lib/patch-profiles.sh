@@ -82,7 +82,8 @@ PYEOF
         esac
     done <<< "$REG_OUTPUT"
     if [ "${REG_COUNT:-0}" -gt 0 ]; then
-        step_ok "$T_PROFILES_REG_DONE" | sed "s/{count}/$REG_COUNT/"
+        _msg="${T_PROFILES_REG_DONE/{count}/$REG_COUNT}"
+        step_ok "$_msg"
     else
         step_ok "$T_PROFILES_REG_SKIP_MSG"
     fi
