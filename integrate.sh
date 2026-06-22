@@ -52,9 +52,24 @@ fi
 
 # ═══════════════════════════════════════════════════════════════
 echo ""
-echo -e "${BOLD}──────────────────────────────────────────────────────────${NC}"
-echo -e "${BOLD}  ${T_TITLE}${NC}"
-echo -e "${BOLD}──────────────────────────────────────────────────────────${NC}"
+python3 << PYEOF
+import shutil, sys
+
+title = "$T_TITLE"
+tw = shutil.get_terminal_size().columns
+bw = min(tw, 58) if tw >= 50 else 50
+w = sum(2 if ord(c) > 0x2e80 else 1 for c in title)
+left = (bw - w) // 2
+right = bw - w - left
+
+line = "═" * bw
+spaces_l = " " * left
+spaces_r = " " * right
+
+print(f"\033[1m╔{line}╗\033[0m")
+print(f"\033[1m║{spaces_l}{title}{spaces_r}║\033[0m")
+print(f"\033[1m╚{line}╝\033[0m")
+PYEOF
 
 # ═══════════════════════════════════════════════════════════════
 # Step 1: gateway_url
