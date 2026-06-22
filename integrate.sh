@@ -304,6 +304,11 @@ else
             fi
             # Call activation (capture HTTP code + body)
             ACTIVATE=$(curl -s -w '%{http_code}' -X POST "$GATEWAY_URL/api/v1/activate-system"                 -H "Content-Type: application/json"                 -d "{"code":"$PRODUCT_CODE","system_name":"$SYSTEM_NAME"}" 2>/dev/null)
+            # Debug: show the JSON being sent
+            JSON_BODY="{\"code\":\"$PRODUCT_CODE\",\"system_name\":\"$SYSTEM_NAME\"}"
+            echo "  [DEBUG] JSON_LEN=${#JSON_BODY} PRODUCT_CODE_LEN=${#PRODUCT_CODE} SYSTEM_NAME_LEN=${#SYSTEM_NAME}" >&2
+            echo "  [DEBUG] PRODUCT_CODE=[$PRODUCT_CODE]" >&2
+            echo "  [DEBUG] SYSTEM_NAME=[$SYSTEM_NAME]" >&2
             echo "  [DEBUG] RAW=[$ACTIVATE]" >&2
             HTTP_CODE="${ACTIVATE: -3}"
             echo "  [DEBUG] HTTP_CODE=[$HTTP_CODE]" >&2
