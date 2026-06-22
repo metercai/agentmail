@@ -736,6 +736,7 @@ def _save_gateway_config(
     admin_key: str,
     system_id: str,
     domain: str = "",
+    system_name: str = "",
     save_raw_snapshots: bool = False,
     manager_address: str = "",
     webhook_host: str = "",
@@ -748,6 +749,7 @@ def _save_gateway_config(
         "gateway_url": gateway_url,
         "admin_key": admin_key,
         "system_id": system_id,
+        "system_name": system_name,
         "save_raw_snapshots": save_raw_snapshots,
     }
     if domain:
@@ -1166,6 +1168,7 @@ def init_system(
     client = _GatewayClient(gateway_url, "")
     result = client.activate_system(
         code=product_code,
+        system_name=system_name or None,
         domain=domain or None,
     )
 
@@ -1556,6 +1559,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     # Agent identity (for direct_message / mentioned)
     config = _load_profile_config()
     agent_email = config.get("email", "") if config else ""
+    system_name = config.get("system_name", "") if config else ""
 
     if not agent_email:
         logger.warning("[amail_gateway] No email configured for this profile — inbound preprocessing skipped")
@@ -1596,8 +1600,10 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
 
     def _base_email(email: str) -> str:
         """Strip persona prefix: support.alice@agent.com -> alice@agent.com"""
-        persona, profile = parse_amail_persona(email)
+        persona, profile, sys_name = parse_amail_persona(email, system_name)
         domain = email.split('@', 1)[1] if '@' in email else ''
+        if sys_name:
+            return f"{profile}.{sys_name}@{domain}"
         return f"{profile}@{domain}"
 
     to_raw = _to_list(result.get("to", []))
@@ -1638,7 +1644,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
             my_to_addr = addr
             break
 
-    persona, profile = parse_amail_persona(my_to_addr) if my_to_addr else ('', '')
+    persona, profile, _sys_name = parse_amail_persona(my_to_addr, system_name) if my_to_addr else ('', '', '')
     if persona:
         # Validate persona against configured personalities
         configured = list_personas()
@@ -1804,15 +1810,18 @@ def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> No
 
 # ── Hook: auto-register email on profile creation ──────────────
 
-def parse_amail_persona(email: str) -> tuple:
+def parse_amail_persona(email: str, system_name: str = "") -> tuple:
     """Parse persona and profile from an amail address.
     
     Format: persona.profile@domain  or  profile@domain
+    For shared domain: persona.profile.sys_name@domain
     
-    Returns (persona, profile_name) where persona may be empty string.
+    Returns (persona, profile_name, sys_name) where sys_name may be empty string.
     Examples:
-        'support.alice@agent.com' -> ('support', 'alice')
-        'alice@agent.com'         -> ('', 'alice')
+        'support.alice@agent.com'                -> ('support', 'alice', '')
+        'alice@agent.com'                        -> ('', 'alice', '')
+        'ql-biopharm.mycompany@amail.token.tm'   -> ('', 'ql-biopharm', 'mycompany')
+        'support.ql-biopharm.myco@amail.token.tm' -> ('support', 'ql-biopharm', 'myco')
     """
     local = email.split('@')[0] if '@' in email else email
     if '.' in local:
@@ -1848,7 +1857,11 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         return
 
     client = _GatewayClient(gateway_url, admin_key)
-    email = f"{name}@{domain}"
+    system_name = config.get("system_name", "") or ""
+    if system_name:
+        email = f"{name}.{system_name}@{domain}"
+    else:
+        email = f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config
