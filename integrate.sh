@@ -280,24 +280,73 @@ print(f'    [{domain_count+1}] Enter a new domain')
         step_ok "domains: $SELECTED_DOMAINS ($DOMAIN_OK_COUNT OK)"
     fi
 else
-    step_begin "$T_DOMAIN"
-    while true; do
-        if [ -z "$AMAIL_DOMAIN" ]; then
-            read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
-        fi
-        if [ -z "$AMAIL_DOMAIN" ]; then
-            step_fail "$T_DOMAIN_EMPTY"
-        fi
-        # Check if domain already exists globally
-        if domain_exists_globally "$AMAIL_DOMAIN"; then
-            echo -e "  ${YELLOW}Domain '$AMAIL_DOMAIN' already exists — choose a different one${NC}"
-            AMAIL_DOMAIN=""
-        else
-            break
-        fi
-    done
-    step_ok "domain = $AMAIL_DOMAIN"
-    SYSTEM_ID=""
+    if $IS_SHARED_DOMAIN; then
+        # Shared domain: activate immediately with system_name
+        SYSTEM_NAME=""
+        echo ""
+        echo -e "  ${BOLD}Shared domain system — enter a system identifier${NC}"
+        echo -e "  ${BOLD}Email format: profile.SYS_NAME@shared.domain${NC}"
+        echo ""
+        while true; do
+            # Suggest default from system_id
+            SUGGEST=""
+            if [ -n "${SYSTEM_ID:-}" ]; then
+                SUGGEST=$(echo "$SYSTEM_ID" | tr -d '-' | head -c 8)
+            fi
+            [ -z "$SUGGEST" ] && SUGGEST=$(echo "$PRODUCT_CODE" | tr -d '-' | head -c 6)
+            read -r -p "  System identifier (3-8 chars, [a-z0-9-_]): " SYSTEM_NAME
+            SYSTEM_NAME="${SYSTEM_NAME:-$SUGGEST}"
+            SYSTEM_NAME=$(echo "$SYSTEM_NAME" | tr '[:upper:]' '[:lower:]')
+            # Validate format
+            if ! echo "$SYSTEM_NAME" | grep -qE '^[a-z][a-z0-9-_]{2,7}$'; then
+                echo -e "  ${YELLOW}Must be lowercase letter + 2-7 more chars (letters, digits, hyphen, underscore)${NC}"
+                continue
+            fi
+            # Call activation
+            ACTIVATE=$(curl -s -X POST "$GATEWAY_URL/api/v1/activate-system"                 -H "Content-Type: application/json"                 -d "{"code":"$PRODUCT_CODE","system_name":"$SYSTEM_NAME"}" 2>/dev/null)
+            HTTP_CODE=$(echo "$ACTIVATE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',400))" 2>/dev/null || echo "400")
+            if echo "$HTTP_CODE" | grep -qE '^20[01]$'; then
+                ADMIN_KEY=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || echo "")
+                SYSTEM_ID=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
+                AMAIL_DOMAIN=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null || echo "")
+                if [ -n "$ADMIN_KEY" ] && [ -n "$SYSTEM_ID" ] && [ -n "$AMAIL_DOMAIN" ]; then
+                    echo -e "  ${GREEN}System activated:${NC}"
+                    echo "  ├─ system_id:  $SYSTEM_ID"
+                    echo "  ├─ domain:     $AMAIL_DOMAIN"
+                    echo "  └─ identifier: $SYSTEM_NAME"
+                    USE_PRODUCT_CODE=false
+                    break
+                fi
+            fi
+            ERROR_MSG=$(echo "$ACTIVATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','Unknown error'))" 2>/dev/null || echo "API call failed")
+            if echo "$ERROR_MSG" | grep -qi 'unique\|already taken\|conflict'; then
+                echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
+            else
+                echo -e "  ${RED}Activation failed: $ERROR_MSG${NC}"
+                step_fail "System activation failed"
+            fi
+        done
+        step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
+    else
+        step_begin "$T_DOMAIN"
+        while true; do
+            if [ -z "$AMAIL_DOMAIN" ]; then
+                read -r -p "  $T_DOMAIN_HINT" AMAIL_DOMAIN
+            fi
+            if [ -z "$AMAIL_DOMAIN" ]; then
+                step_fail "$T_DOMAIN_EMPTY"
+            fi
+            # Check if domain already exists globally
+            if domain_exists_globally "$AMAIL_DOMAIN"; then
+                echo -e "  ${YELLOW}Domain '$AMAIL_DOMAIN' already exists — choose a different one${NC}"
+                AMAIL_DOMAIN=""
+            else
+                break
+            fi
+        done
+        step_ok "domain = $AMAIL_DOMAIN"
+        SYSTEM_ID=""
+    fi
 fi
 
 # ═══════════════════════════════════════════════════════════════
@@ -390,6 +439,7 @@ export INTEGRATE_AMAIL_DOMAIN="$AMAIL_DOMAIN"
 export INTEGRATE_SAVE_SNAPSHOTS="$SAVE_SNAPSHOTS"
 export INTEGRATE_MANAGER_ADDRESS="$MANAGER_ADDRESS"
 export INTEGRATE_WEBHOOK_HOST="$WEBHOOK_HOST"
+export INTEGRATE_SYSTEM_NAME="$SYSTEM_NAME"
 export INTEGRATE_PRODUCT_CODE="$PRODUCT_CODE"
 export INTEGRATE_ADMIN_KEY="$ADMIN_KEY"
 export INTEGRATE_USE_PRODUCT_CODE="$USE_PRODUCT_CODE"
@@ -404,6 +454,7 @@ kwargs = dict(
     save_raw_snapshots=os.environ.get("INTEGRATE_SAVE_SNAPSHOTS", "false") == "true",
     manager_address=os.environ.get("INTEGRATE_MANAGER_ADDRESS", "") or "",
     webhook_host=os.environ.get("INTEGRATE_WEBHOOK_HOST", "") or "",
+    system_name=os.environ.get("INTEGRATE_SYSTEM_NAME", "") or "",
 )
 if os.environ.get("INTEGRATE_USE_PRODUCT_CODE", "") == "true":
     kwargs["product_code"] = os.environ.get("INTEGRATE_PRODUCT_CODE", "")
