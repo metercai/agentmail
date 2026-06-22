@@ -1743,6 +1743,10 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     my_addr = result.get("my_amail_addr", "")
     if mid and my_addr:
         store_inbound_message(mid, refs, my_addr, preprocessed_payload=result)
+        # Lightweight log entry
+        _from = headers.get("from", raw_headers.get("from", ""))
+        _subj = headers.get("subject", raw_headers.get("subject", ""))
+        _log_amail("inbound", str(_from), my_addr, str(_subj))
 
     return result
 
@@ -2573,6 +2577,27 @@ def _raw_email_dir() -> Path:
         profile_dir = Path.home() / ".hermes"
     return Path(profile_dir) / "raw_email"
 
+
+
+def _log_amail(direction: str, from_addr: str, to_addr: str, subject: str) -> None:
+    """Append a lightweight email processing log entry (not dependent on save_raw_snapshots).
+    
+    Log is written to ~/.hermes/amail.log for integration test verification.
+    """
+    import json as _json
+    log_path = Path.home() / ".hermes" / "amail.log"
+    entry = _json.dumps({
+        "ts": datetime.now().isoformat(),
+        "dir": direction,
+        "from": from_addr,
+        "to": to_addr,
+        "subj": subject,
+    }, ensure_ascii=False)
+    try:
+        with open(log_path, "a") as f:
+            f.write(entry + "\n")
+    except Exception:
+        logger.debug("Failed to write amail log: %s", log_path)
 
 def store_inbound_message(
     message_id: str,
