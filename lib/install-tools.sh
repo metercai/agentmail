@@ -1,7 +1,6 @@
 # Step 6: Install amail tools into Hermes
 # ═══════════════════════════════════════════════════════════════
-echo ""
-echo -e "${BOLD}  $T_TOOLS${NC}"
+step_begin "$T_TOOLS"
 
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
 TOOLS_DST="$HERMES_DIR/tools/amail_tools.py"
