@@ -1,102 +1,141 @@
-# Step 10: online send/receive test
+# Step 10: online send/receive test — bidirectional SMTP → agent → reply
 # ═══════════════════════════════════════════════════════════════
 step_begin "$T_TEST"
 
-TEST_TS=$(date +%s)
-TEST_KEY_ID=""
-TEST_ADDR_ID=""
-TEST_WL_ID=""
-
-cleanup_test() {
-    [ -n "$TEST_KEY_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/api-keys/$TEST_KEY_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-    [ -n "$TEST_ADDR_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/system-domains/$TEST_ADDR_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-    [ -n "$TEST_WL_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/whitelists/$TEST_WL_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-}
-trap cleanup_test EXIT
-
-# Get admin info
-ADMIN_INFO=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null)
-ADMIN_EMAIL=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email',''))" 2>/dev/null)
-SYSTEM_ID=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null)
-HAS_AGENT_SCOPE=$(echo "$ADMIN_INFO" | python3 -c "import sys,json; s=' '.join(json.load(sys.stdin).get('scopes',[])); print('true' if 'agent' in s else 'false')" 2>/dev/null)
-
-if [ -z "$SYSTEM_ID" ]; then
-    echo "  $T_FAILED (cannot determine system_id)"
+CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
+if [ ! -f "$CONFIG_FILE" ]; then
     step_warn "$T_TEST_FAIL_KEY"
+    exit 0
+fi
+
+# ── Load config ──
+ADMIN_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_key',''))" 2>/dev/null)
+GATEWAY_URL=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('gateway_url',''))" 2>/dev/null)
+AGENT_DOMAIN=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('domain',''))" 2>/dev/null)
+SYSTEM_ID=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('system_id',''))" 2>/dev/null)
+MANAGER=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('manager_address',''))" 2>/dev/null)
+
+if [ -z "$ADMIN_KEY" ] || [ -z "$GATEWAY_URL" ] || [ -z "$AGENT_DOMAIN" ] || [ -z "$MANAGER" ]; then
+    step_warn "Missing required config — check $CONFIG_FILE"
+    exit 0
+fi
+
+# Find agent email address from profiles
+AGENT_EMAIL=""
+for f in "$HOME/.hermes/profiles/"*/amail.json; do
+    [ -f "$f" ] || continue
+    AE=$(python3 -c "import json; print(json.load(open('$f')).get('email',''))" 2>/dev/null)
+    if [ -n "$AE" ]; then
+        AGENT_EMAIL="$AE"
+        break
+    fi
+done
+if [ -z "$AGENT_EMAIL" ]; then
+    AGENT_EMAIL="agent@${AGENT_DOMAIN}"
+fi
+
+echo "  Gateway:     $GATEWAY_URL"
+echo "  Agent email: $AGENT_EMAIL"
+echo "  Manager:     $MANAGER"
+
+# ── Build auth SMTP FROM ──
+b64_key=$(python3 -c "
+import base64, sys
+try:
+    key = bytes.fromhex('$ADMIN_KEY')
+    print(base64.b64encode(key).decode().rstrip('='))
+except: sys.exit(1)
+" 2>/dev/null || echo "")
+if [ -z "$b64_key" ]; then
+    step_warn "Failed to encode admin key"
+    exit 0
+fi
+encoded_manager=$(echo "$MANAGER" | sed 's/@/=/g')
+AUTH_FROM="${b64_key}=${encoded_manager}@auth.local"
+
+# ── Baseline: amail.log + stats ──
+BEFORE_LOG=$(wc -l < "$HOME/.hermes/amail.log" 2>/dev/null || echo 0)
+BEFORE_SENT=$(curl -s "$GATEWAY_URL/api/v1/stats/agent/me?email=${AGENT_EMAIL}" \
+    -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('sent',-1))" 2>/dev/null || echo -1)
+BEFORE_RECV=$(curl -s "$GATEWAY_URL/api/v1/stats/agent/me?email=${AGENT_EMAIL}" \
+    -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('received',-1))" 2>/dev/null || echo -1)
+
+echo -n "  Sending welcome email via SMTP... "
+
+# ── SMTP send with auth ──
+SMTP_HOST=$(echo "$GATEWAY_URL" | sed 's|^https\?://||;s|:.*||')
+SMTP_PORT=25
+
+SEND_OUTPUT=$(python3 << PYEOF 2>&1
+import socket, base64
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(15)
+    s.connect(("$SMTP_HOST", $SMTP_PORT))
+    def r(): return s.recv(4096).decode()
+    r()  # banner
+    s.sendall(b"EHLO amail-integration-test\\r\\n")
+    r()
+    s.sendall(b"MAIL FROM:<${AUTH_FROM}>\\r\\n")
+    mail_resp = r()
+    s.sendall(b"RCPT TO:<${AGENT_EMAIL}>\\r\\n")
+    rcpt_resp = r()
+    s.sendall(b"DATA\\r\\n")
+    data_resp = r()
+    body = "From: $MANAGER\\nTo: $AGENT_EMAIL\\nSubject: 🎉 Welcome! Your amail integration is live\\n\\nHello! This is your first email delivered through your new amail system.\\n\\nPlease reply with the current server time to confirm the mail loop is working.\\n\\n--\\nThis confirms: ✅ SMTP inbound ✅ Webhook delivery ✅ Agent processing ✅ Outbound reply\\n."
+    s.sendall(body.encode() + b"\\r\\n.\\r\\n")
+    data_end = r()
+    s.sendall(b"QUIT\\r\\n")
+    s.close()
+    print(f"MAIL:{mail_resp.strip()}|RCPT:{rcpt_resp.strip()}|DATA:{data_end.strip()}")
+except Exception as e:
+    print(f"ERROR:{e}")
+PYEOF
+)
+
+echo "$SEND_OUTPUT"
+
+if echo "$SEND_OUTPUT" | grep -q 'DATA:250 OK\|DATA:250 2'; then
+    echo "  $T_OK"
 else
-    # Get primary domain from config
-    TEST_DOMAIN=$(cat "$HOME/.hermes/amail_gateway.json" 2>/dev/null \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null)
+    echo "  $T_FAILED"
+    info "  SMTP response: $SEND_OUTPUT"
+    step_warn "SMTP send failed — check gateway connectivity and agent address"
+    exit 0
+fi
 
-    if [ "$HAS_AGENT_SCOPE" = "true" ] && [ -n "$ADMIN_EMAIL" ] && echo "$ADMIN_EMAIL" | grep -q '@'; then
-        # ── Admin key has agent scope + email → can send directly ──
-        TEST_AGENT_KEY="$ADMIN_KEY"
-        SENDER="$ADMIN_EMAIL"
-    else
-        # ── Admin key cannot send directly → create an agent key ──
-        # ── New activation: SystemAdmin (email="") cannot send directly ──
-        # Must create an agent key under a domain address
-        if [ -z "$TEST_DOMAIN" ]; then
-            echo "  $T_FAILED (no domain configured, cannot create test agent key)"
-            step_warn "$T_TEST_FAIL_KEY"
-        else
-            TEST_EMAIL="test-${TEST_TS}@${TEST_DOMAIN}"
+# ── Poll for delivery (5s × 6 = 30s max) ──
+VERIFIED=false
+for i in $(seq 1 6); do
+    sleep 5
+    NOW_LOG=$(wc -l < "$HOME/.hermes/amail.log" 2>/dev/null || echo 0)
+    LOG_DELTA=$((NOW_LOG - BEFORE_LOG))
 
-            echo -n "  ${T_TEST_REG} "
-            ADDR_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/addresses" \
-                -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-                -d '{"id":"test-'${TEST_TS}'","email":"'${TEST_EMAIL}'"}' 2>/dev/null)
-            TEST_ADDR_ID=$(echo "$ADDR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',{}).get('id',''))" 2>/dev/null || true)
-            [ -n "$TEST_ADDR_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
+    NOW_SENT=$(curl -s "$GATEWAY_URL/api/v1/stats/agent/me?email=${AGENT_EMAIL}" \
+        -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('sent',-1))" 2>/dev/null || echo -1)
+    NOW_RECV=$(curl -s "$GATEWAY_URL/api/v1/stats/agent/me?email=${AGENT_EMAIL}" \
+        -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('received',-1))" 2>/dev/null || echo -1)
 
-            echo -n "  ${T_TEST_API_KEY} "
-            KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
-                -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-                -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$TEST_EMAIL'","scopes":["agent"],"category":"agent","name":"amail-integration-test"}' 2>/dev/null)
-            TEST_AGENT_KEY=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || true)
-            TEST_KEY_ID=$(echo "$KEY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
-            if [ -n "$TEST_AGENT_KEY" ]; then
-                echo "$T_OK (${TEST_AGENT_KEY:0:8}...)"
-            else
-                echo "$T_FAILED"
-                step_warn "$T_TEST_FAIL_KEY"
-                TEST_AGENT_KEY=""
-            fi
+    LOG_OK=false
+    STATS_OK=false
 
-            SENDER="$TEST_EMAIL"
-        fi
+    # amail.log should show inbound + outbound entries
+    if [ "$LOG_DELTA" -ge 2 ] && tail -1 "$HOME/.hermes/amail.log" 2>/dev/null | grep -q '"Re:'; then
+        LOG_OK=true
     fi
+    # Stats should show +1 sent and +1 received
+    [ "$NOW_SENT" -gt "$BEFORE_SENT" ] && [ "$NOW_RECV" -gt "$BEFORE_RECV" ] && STATS_OK=true
 
-    if [ -n "${TEST_AGENT_KEY:-}" ]; then
-        # Whitelist for outbound send
-        echo -n "  ${T_TEST_WHITELIST} "
-        WL_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/admin/whitelists" \
-            -H "X-Api-Key: $ADMIN_KEY" -H "Content-Type: application/json" \
-            -d '{"system_id":"'$SYSTEM_ID'","domain_addr":"'$SENDER'","direction":"all","value":"*@example.com"}' 2>/dev/null)
-        TEST_WL_ID=$(echo "$WL_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
-        [ -n "$TEST_WL_ID" ] && echo "$T_OK" || echo "$T_FAILED (non-fatal)"
-
-        # Send test email
-        echo -n "  $T_TEST_SEND "
-        SEND_RESP=$(curl -s --max-time 15 -X POST "$GATEWAY_URL/api/v1/send" \
-            -H "X-Api-Key: $TEST_AGENT_KEY" -H "Content-Type: application/json" \
-            -d '{"to":"test@example.com","subject":"Amail Integration Test","markdown":"This is an automated integration test from amail integrate.sh."}' 2>/dev/null)
-        SEND_MSG_ID=$(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email_id','') or json.load(sys.stdin).get('message_id',''))" 2>/dev/null || true)
-
-        if [ -n "$SEND_MSG_ID" ]; then
-            echo "$T_OK (id=$SEND_MSG_ID)"
-            step_ok "$T_TEST_OK"
-        else
-            echo "$T_FAILED"
-            info "  response: $(echo "$SEND_RESP" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin),indent=2))" 2>/dev/null || echo "$SEND_RESP")"
-            step_warn "$T_TEST_FAIL_SEND"
-        fi
-
-        # Cleanup
-        echo -n "  $T_TEST_CLEAN "
-        [ -n "$TEST_KEY_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/api-keys/$TEST_KEY_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-        [ -n "$TEST_ADDR_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/system-domains/$TEST_ADDR_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-        [ -n "$TEST_WL_ID" ] && curl -s -X DELETE "$GATEWAY_URL/api/v1/admin/whitelists/$TEST_WL_ID" -H "X-Api-Key: $ADMIN_KEY" > /dev/null 2>&1
-        echo "$T_OK"
+    if $LOG_OK && $STATS_OK; then
+        VERIFIED=true
+        break
     fi
+done
+
+if $VERIFIED; then
+    step_ok "双向收发验证通过 — agent 已接收并回复了测试邮件"
+else
+    step_warn "超时 — 测试邮件已发送但未在 30 秒内收到 agent 回复"
+    info "  amail.log delta: $(( $(wc -l < "$HOME/.hermes/amail.log" 2>/dev/null || echo 0) - BEFORE_LOG )) 行"
+    info "  Stats sent: $NOW_SENT (before: $BEFORE_SENT), received: $NOW_RECV (before: $BEFORE_RECV)"
 fi
