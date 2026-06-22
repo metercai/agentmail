@@ -30,7 +30,7 @@ step=0
 step_begin() {
     step=$((step + 1))
     echo ""
-    echo -e "${BOLD}${BLUE}[${step}]${NC} $1"
+    echo -e "${BOLD}${BLUE}[${step}/${TOTAL_STEPS:-10}]${NC} $1"
 }
 step_ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 step_warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }

@@ -20,14 +20,15 @@ if [ -n "$AMAIL_DOMAIN" ] && [ -n "$ADMIN_KEY" ] && [ -n "$GATEWAY_URL" ] && [ -
             DOMAIN_ADMIN_KEY="$ADMIN_KEY"
             step_ok "domain admin key already in use ($AMAIL_DOMAIN)"
         else
-            step_begin "Create domain-level admin key for ${AMAIL_DOMAIN}"
+            echo ""
+            echo -e "${BOLD}  Creating domain-level admin key for ${AMAIL_DOMAIN}...${NC}"
         DOMAIN_KEY_RESP=$(curl -s -X POST "$GATEWAY_URL/api/v1/api-keys" \
             -H "X-Api-Key: $ADMIN_KEY" \
             -H "Content-Type: application/json" \
             -d '{"system_id":"'$SYSTEM_ID'","email_address":"'$AMAIL_DOMAIN'","scopes":["system"],"category":"domain"}' 2>/dev/null)
         DOMAIN_ADMIN_KEY=$(echo "$DOMAIN_KEY_RESP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("raw_key",""))' 2>/dev/null)
         if [ -n "$DOMAIN_ADMIN_KEY" ]; then
-            step_ok "domain admin key created ($AMAIL_DOMAIN)"
+            echo "  ✓ domain admin key created ($AMAIL_DOMAIN)"
         elif echo "$DOMAIN_KEY_RESP" | grep -qi "UNIQUE constraint"; then
             # Key already exists — try to fetch existing raw_key
             step_ok "domain admin key already exists ($AMAIL_DOMAIN) — reusing"

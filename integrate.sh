@@ -8,6 +8,7 @@
 #        [6] install tools   [7] patch webhook   [8] patch profiles
 #        [9] diagnostics     [10] send/receive test
 # =============================================================================
+TOTAL_STEPS=10
 
 set -eo pipefail
 
