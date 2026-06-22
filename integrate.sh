@@ -420,17 +420,14 @@ if $USE_PRODUCT_CODE; then
     fi
 fi
 
+source "$LIB_DIR/deploy-bridge.sh"
+
 CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
 if [ -f "$CONFIG_FILE" ]; then
     step_ok "$T_CONFIG_OK $CONFIG_FILE"
 else
     step_warn "$T_CONFIG_WARN $CONFIG_FILE"
 fi
-
-# ═══════════════════════════════════════════════════════════════
-# Step 5a: bridge deployment + domain key
-# ═══════════════════════════════════════════════════════════════
-source "$LIB_DIR/deploy-bridge.sh"
 
 # ═══════════════════════════════════════════════════════════════
 # Steps 6-10
