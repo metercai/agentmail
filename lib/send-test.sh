@@ -43,7 +43,9 @@ b64_key=$(python3 -c "
 import base64, sys
 try:
     key = bytes.fromhex('$ADMIN_KEY')
-    print(base64.b64encode(key).decode().rstrip('='))
+    raw = base64.b64encode(key).decode()
+    # Remove padding for embedding (will be re-added on decode)
+    print(raw.rstrip('='))
 except: sys.exit(1)
 " 2>/dev/null || echo "")
 if [ -z "$b64_key" ]; then
