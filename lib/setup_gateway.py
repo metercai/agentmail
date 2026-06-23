@@ -49,30 +49,36 @@ def ensure_webhook_config():
             # Old format exists but needs migration
             log_step("Migrating webhook config to platforms.webhook.extra...")
 
-    # Add proper webhook platform config
-    import secrets
+    # Add proper webhook platform config + toolsets via YAML parse
+    import secrets, yaml as _yaml
     secret = secrets.token_hex(32)
-    wh_config = f"""
-platforms:
-    webhook:
-        enabled: true
-        extra:
-            host: 0.0.0.0
-            port: 8644
-            secret: {secret}
-
-platform_toolsets:
-    webhook:
-        - amail
-        - web
-        - file
-        - terminal
-        - search
-        - delegation
-"""
-    with open(config_path, 'a') as f:
-        f.write(wh_config)
-    log_ok("Webhook platform config added to config.yaml (platforms.webhook.extra)")
+    
+    with open(config_path) as f:
+        cfg = _yaml.safe_load(f) or {}
+    
+    changed = False
+    
+    # Ensure platforms.webhook
+    platforms = cfg.setdefault("platforms", {})
+    if "webhook" not in platforms:
+        platforms["webhook"] = {
+            "enabled": True,
+            "extra": {"host": "0.0.0.0", "port": 8644, "secret": secret},
+        }
+        changed = True
+        log_ok("Webhook platform config added to config.yaml")
+    
+    # Ensure platform_toolsets.webhook
+    pts = cfg.setdefault("platform_toolsets", {})
+    if "webhook" not in pts:
+        pts["webhook"] = ["amail", "web", "file", "terminal", "search", "delegation"]
+        changed = True
+        log_ok("platform_toolsets.webhook added (amail + delegation + ...)")
+    
+    if changed:
+        with open(config_path, 'w') as f:
+            _yaml.safe_dump(cfg, f, default_flow_style=False, allow_unicode=True)
+    
     return True
 
 def gateway_installed() -> bool:
