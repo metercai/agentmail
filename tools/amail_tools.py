@@ -1910,6 +1910,8 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         if not webhook_host:
             # integrate.sh set webhook_host="" → gateway is local
             webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/amail-inbound"
+            # Local loopback: skip signature verification
+            webhook_secret = "_INSECURE_NO_AUTH"
         else:
             # Remote gateway → call bridge API to get webhook_url
             # Protocol: IP:port → http, domain:port → https
