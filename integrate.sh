@@ -327,13 +327,20 @@ else
             else
                 ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
             fi
-            if echo "$ERROR_MSG" | grep -qi 'already claimed'; then
+            if echo "$HTTP_CODE" | grep -qE '^429$'; then
+                # Rate limited — extract wait time from detail
+                WAIT_MSG=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail',''))" 2>/dev/null || echo "please wait")
+                echo -e "  ${YELLOW}Rate limited — $WAIT_MSG${NC}"
+                echo -e "  ${YELLOW}Please wait before trying again${NC}"
+            elif echo "$ERROR_MSG" | grep -qi 'already claimed'; then
                 echo -e "  ${RED}Activation code has already been used — please use a fresh code${NC}"
                 step_fail "Activation code already claimed"
+            elif echo "$HTTP_CODE" | grep -qE '^40[0-9]$' && echo "$ERROR_MSG" | grep -qi 'already taken\|already in use\|conflict'; then
+                echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
+            else
+                echo -e "  ${YELLOW}$ERROR_MSG${NC}"
+                echo -e "  ${YELLOW}Please choose a different name or check the activation code${NC}"
             fi
-            # Any other error: show message and retry
-            echo -e "  ${YELLOW}$ERROR_MSG${NC}"
-            echo -e "  ${YELLOW}Please choose a different name or check the activation code${NC}"
         done
         step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
     else
