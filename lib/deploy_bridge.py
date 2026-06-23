@@ -67,9 +67,14 @@ def format_webhook_host(ip: str) -> str:
 def write_bridge_config(path: str, mode: str, addr: str, gw: str,
                         ak: str, sid: str, api_key: str = ""):
     """Write amail_bridge.toml."""
+    log_path = os.path.expanduser("~/.hermes/amail-bridge.log")
     lines = [
         f'addr = "{addr}"',
         f'mode = "{mode}"',
+        '',
+        '[logging]',
+        f'file = "{log_path}"',
+        'level = "info"',
         '',
         '[pull]',
         f'gateway_url = "{gw}"',
