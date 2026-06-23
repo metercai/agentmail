@@ -422,7 +422,7 @@ if $USE_PRODUCT_CODE; then
     fi
 fi
 
-source "$LIB_DIR/deploy-bridge.sh"
+python3 "$LIB_DIR/deploy_bridge.py"
 
 CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
 if [ -f "$CONFIG_FILE" ]; then
