@@ -281,68 +281,23 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
 else
     if $IS_SHARED_DOMAIN; then
-        # Shared domain: activate immediately with system_name
-        SYSTEM_NAME=""
-        echo ""
-        echo -e "  ${BOLD}Shared domain system — enter a system identifier${NC}"
-        echo -e "  ${BOLD}Email format: profile.SYS_NAME@shared.domain${NC}"
-        echo ""
-        while true; do
-            # Suggest default from system_id
-            SUGGEST=""
-            if [ -n "${SYSTEM_ID:-}" ]; then
-                SUGGEST=$(echo "$SYSTEM_ID" | tr -d '-' | head -c 8)
-            fi
-            [ -z "$SUGGEST" ] && SUGGEST=$(echo "$PRODUCT_CODE" | tr -d '-' | head -c 6)
-            read -r -p "  System identifier (3-8 chars, [a-z0-9-_]): " SYSTEM_NAME
-            SYSTEM_NAME="${SYSTEM_NAME:-$SUGGEST}"
-            SYSTEM_NAME=$(echo "$SYSTEM_NAME" | tr '[:upper:]' '[:lower:]')
-            # Validate format
-            if ! echo "$SYSTEM_NAME" | grep -qE '^[a-z][a-z0-9_-]{2,7}$'; then
-                echo -e "  ${YELLOW}Must be lowercase letter + 2-7 more chars (letters, digits, hyphen, underscore)${NC}"
-                continue
-            fi
-                        # Call activation using Python (reliable)
-            export PRODUCT_CODE SYSTEM_NAME GATEWAY_URL
-            ACTIVATE=$(python3 "$SCRIPT_DIR/lib/activate_system.py" 2>/dev/null)
-            HTTP_CODE="${ACTIVATE: -3}"
-            BODY="${ACTIVATE::-3}"
-            # Check success via HTTP code 200-201
-            if echo "$HTTP_CODE" | grep -qE '^20[01]$'; then
-                ADMIN_KEY=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('raw_key',''))" 2>/dev/null || echo "")
-                SYSTEM_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
-                AMAIL_DOMAIN=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('domain',''))" 2>/dev/null || echo "")
-                if [ -n "$ADMIN_KEY" ] && [ -n "$SYSTEM_ID" ] && [ -n "$AMAIL_DOMAIN" ]; then
-                    echo -e "  ${GREEN}System activated:${NC}"
-                    echo "  ├─ system_id:  $SYSTEM_ID"
-                    echo "  ├─ domain:     $AMAIL_DOMAIN"
-                    echo "  └─ identifier: $SYSTEM_NAME"
-                    USE_PRODUCT_CODE=false
-                    break
-                fi
-            fi
-            # Extract error message from response body
-            if [ -n "$BODY" ]; then
-                ERROR_MSG=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','HTTP {}'.format('$HTTP_CODE')))" 2>/dev/null || echo "HTTP ${HTTP_CODE:-000}")
-            else
-                ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
-            fi
-            if echo "$HTTP_CODE" | grep -qE '^429$'; then
-                WAIT_MSG=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail',''))" 2>/dev/null || echo "please wait")
-                echo -e "  ${YELLOW}Rate limited — $WAIT_MSG${NC}"
-                echo -e "  ${YELLOW}Please wait before trying again${NC}"
-            elif echo "$ERROR_MSG" | grep -qi 'already claimed'; then
-                echo -e "  ${RED}Activation code has already been used — please use a fresh code${NC}"
+        # Shared domain: activate via Python (reliable)
+        export GATEWAY_URL PRODUCT_CODE
+        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/lib/amail_integrate.py" 2>/dev/null)
+        # Parse result markers
+        SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::system-id::\(.*\)/\1/')
+        ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::admin-key::\(.*\)/\1/')
+        AMAIL_DOMAIN=$(echo "$ACTIVATE_RESULT" | grep '^::set-domain::' | sed 's/.*::domain::\(.*\)/\1/')
+        SYSTEM_NAME=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-name::' | sed 's/.*::system-name::\(.*\)/\1/')
+        if [ -n "$SYSTEM_ID" ] && [ -n "$ADMIN_KEY" ]; then
+            USE_PRODUCT_CODE=false
+            step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
+        else
+            if echo "$ACTIVATE_RESULT" | grep -q 'code_claimed'; then
                 step_fail "Activation code already claimed"
-            elif echo "$HTTP_CODE" | grep -qE '^40[0-9]$' && echo "$ERROR_MSG" | grep -qi 'already taken\|already in use\|conflict'; then
-                echo -e "  ${YELLOW}Identifier '$SYSTEM_NAME' is already taken — choose another${NC}"
-            else
-                echo -e "  ${YELLOW}$ERROR_MSG${NC}"
-                echo -e "  ${YELLOW}Please choose a different name or check the activation code${NC}"
             fi
-        done
-        step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
-    else
+            step_fail "System activation failed"
+        fi    else
         step_begin "$T_DOMAIN"
         while true; do
             if [ -z "$AMAIL_DOMAIN" ]; then
