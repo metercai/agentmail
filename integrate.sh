@@ -207,12 +207,7 @@ if ! $USE_PRODUCT_CODE; then
     while true; do
         # Refresh domain list
         DOMAINS_JSON=$(curl -s "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-        BARE_DOMAINS=$(echo "$DOMAINS_JSON" | python3 -c "
-import sys,json
-entries = [d for d in json.load(sys.stdin) if '@' not in d.get('domain','')]
-for d in entries:
-    print(d['domain'])
-" 2>/dev/null)
+        BARE_DOMAINS=$(python3 "$SCRIPT_DIR/lib/list_domains.py" 2>/dev/null)
         DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
@@ -283,7 +278,7 @@ else
     if $IS_SHARED_DOMAIN; then
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
-        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/lib/amail_integrate.py" 2>/dev/null)
+        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/lib/activate_system.py" 2>/dev/null)
         # Parse result markers
         SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::system-id::\(.*\)/\1/')
         ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::admin-key::\(.*\)/\1/')
@@ -413,28 +408,7 @@ export INTEGRATE_SYSTEM_NAME="$SYSTEM_NAME"
 export INTEGRATE_PRODUCT_CODE="$PRODUCT_CODE"
 export INTEGRATE_ADMIN_KEY="$ADMIN_KEY"
 export INTEGRATE_USE_PRODUCT_CODE="$USE_PRODUCT_CODE"
-python3 << 'PYEOF'
-import sys, json, os
-sys.path.insert(0, os.environ["SCRIPT_DIR"] + "/tools")
-from amail_tools import setup
-kwargs = dict(
-    gateway_url=os.environ.get("INTEGRATE_GATEWAY_URL", ""),
-    system_id=os.environ.get("INTEGRATE_SYSTEM_ID", ""),
-    domain=os.environ.get("INTEGRATE_AMAIL_DOMAIN", "") or "",
-    save_raw_snapshots=os.environ.get("INTEGRATE_SAVE_SNAPSHOTS", "false") == "true",
-    manager_address=os.environ.get("INTEGRATE_MANAGER_ADDRESS", "") or "",
-    webhook_host=os.environ.get("INTEGRATE_WEBHOOK_HOST", "") or "",
-    system_name=os.environ.get("INTEGRATE_SYSTEM_NAME", "") or "",
-)
-if os.environ.get("INTEGRATE_USE_PRODUCT_CODE", "") == "true":
-    kwargs["product_code"] = os.environ.get("INTEGRATE_PRODUCT_CODE", "")
-else:
-    kwargs["admin_key"] = os.environ.get("INTEGRATE_ADMIN_KEY", "")
-result = setup(**kwargs)
-display_result = {k: v for k, v in result.items() if k not in ("success", "path")}
-print(json.dumps(display_result, indent=2, ensure_ascii=False))
-if not result.get("success"): sys.exit(1)
-PYEOF
+python3 "$SCRIPT_DIR/lib/setup_system.py" 2>&1
 ) || EXIT_CODE=$?
 _ERR_MSG=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error','') or d.get('detail',''))" 2>/dev/null || echo "")
 [ $EXIT_CODE -ne 0 ] && step_fail "Activation failed: ${_ERR_MSG:-Unknown error}"
