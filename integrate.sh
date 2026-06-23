@@ -422,6 +422,7 @@ if $USE_PRODUCT_CODE; then
     fi
 fi
 
+export GATEWAY_URL ADMIN_KEY SYSTEM_ID AMAIL_DOMAIN WEBHOOK_MODE WEBHOOK_HOST USE_PRODUCT_CODE
 python3 "$LIB_DIR/deploy_bridge.py"
 
 CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
