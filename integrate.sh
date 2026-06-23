@@ -268,7 +268,7 @@ else
     if $IS_SHARED_DOMAIN; then
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
-        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/lib/activate_system.py" 2>/dev/null)
+        ACTIVATE_RESULT=$(python3 "$LIB_DIR/activate_system.py")
         # Parse result markers
         SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::set-system-id::\(.*\)/\1/')
         ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::set-admin-key::\(.*\)/\1/')
