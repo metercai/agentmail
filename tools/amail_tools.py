@@ -1936,8 +1936,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
                 webhook_url = resp_data.get("webhook_url", "")
                 logger.info("[amail_gateway] Bridge returned webhook_url=%s", webhook_url)
             except Exception as e:
-                logger.error("[amail_gateway] Bridge unreachable: %s", e)
-                return
+                logger.warning("[amail_gateway] Bridge unreachable: %s (continuing without bridge webhook)", e)
+                # Don't block registration — bridge can be set up later
+                webhook_url = ""
 
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
