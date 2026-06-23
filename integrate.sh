@@ -438,30 +438,8 @@ fi
 source "$LIB_DIR/install-tools.sh"
 source "$LIB_DIR/patch-webhook.sh"
 
-# Restart Hermes gateway to load webhook config
-HERMES_WH_PORT=$(python3 -c "
-import os
-try:
-    import yaml
-    with open(os.path.expanduser('~/.hermes/config.yaml')) as f:
-        cfg = yaml.safe_load(f)
-    print(cfg.get('webhook',{}).get('extra',{}).get('port','8644'))
-except: print('8644')
-" 2>/dev/null || echo "8644")
-
-if curl -s "http://127.0.0.1:${HERMES_WH_PORT}/health" > /dev/null 2>&1; then
-    step_ok "Hermes webhook reachable (port ${HERMES_WH_PORT})"
-else
-    step_begin "Restarting Hermes gateway (webhook)"
-    hermes gateway stop 2>/dev/null; sleep 1
-    hermes gateway start 2>/dev/null || hermes gateway install 2>/dev/null || true
-    sleep 3
-    if curl -s "http://127.0.0.1:${HERMES_WH_PORT}/health" > /dev/null 2>&1; then
-        step_ok "Hermes webhook restarted (port ${HERMES_WH_PORT})"
-    else
-        step_warn "Hermes webhook port ${HERMES_WH_PORT} unreachable — send test may time out"
-    fi
-fi
+# Setup Hermes gateway + webhook (install service, configure, restart)
+python3 "$LIB_DIR/setup_gateway.py"
 source "$LIB_DIR/patch-profiles.sh"
 source "$LIB_DIR/diagnostics.sh"
 step_begin "Send/receive test"
