@@ -232,6 +232,21 @@ def main():
     # Wait for reply
     verified = poll_stats(gw, ak, agent_email)
 
+    # Check amail processing log for diagnostic info
+    log_path = os.path.expanduser("~/.hermes/amail.log")
+    if os.path.exists(log_path):
+        with open(log_path) as f:
+            amail_lines = [l.strip() for l in f.readlines() if l.strip()]
+        recent = amail_lines[-5:] if len(amail_lines) > 5 else amail_lines
+        if recent:
+            log_info(f"amail.log (last {len(recent)}):")
+            for line in recent:
+                log_info(f"  {line}")
+        else:
+            log_info("amail.log: empty (preprocessor did not log)")
+    else:
+        log_info("amail.log: not found (preprocessor never ran)")
+
     log_info(f"Stats sent: ..., received: ...")
     if verified:
         log_ok("Bidirectional send/receive verified")

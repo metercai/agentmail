@@ -468,20 +468,34 @@ def _load_gateway_config() -> Optional[dict]:
 
 
 def _load_profile_config() -> Optional[dict]:
-    """Load per-profile gateway config from profile directory."""
+    """Load per-profile gateway config from profile directory.
+    
+    Tries in order:
+    1. HERMES_PROFILE_DIR/amail.json (set by agent process)
+    2. ~/.hermes/amail.json (root profile fallback)
+    3. ~/.hermes/amail_gateway.json (legacy)
+    """
     profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
-    if not profile_dir:
-        return None
-
-    # Try amail.json first (primary), then amail_gateway.json (legacy)
-    for fname in ("amail.json", "amail_gateway.json"):
-        config_path = Path(profile_dir) / fname
+    
+    search_paths = []
+    if profile_dir:
+        search_paths.extend([
+            Path(profile_dir) / "amail.json",
+            Path(profile_dir) / "amail_gateway.json",
+        ])
+    # Always try root profile as fallback
+    search_paths.extend([
+        Path.home() / ".hermes" / "amail.json",
+        Path.home() / ".hermes" / "amail_gateway.json",
+    ])
+    
+    for config_path in search_paths:
         if config_path.is_file():
             try:
                 return json.loads(config_path.read_text())
             except Exception:
                 pass
-
+    
     return None
 
 
