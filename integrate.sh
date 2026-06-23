@@ -442,5 +442,9 @@ source "$LIB_DIR/patch-webhook.sh"
 python3 "$LIB_DIR/setup_gateway.py"
 source "$LIB_DIR/patch-profiles.sh"
 source "$LIB_DIR/diagnostics.sh"
+
+# Restart gateway to pick up webhook routes registered by Step 8
+python3 "$LIB_DIR/setup_gateway.py" --restart-only
+
 step_begin "Send/receive test"
 python3 "$SCRIPT_DIR/lib/send_test.py"

@@ -1999,6 +1999,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             "manager_address": manager_address,
             "save_raw_snapshots": config.get("save_raw_snapshots", False),
             "webhook_host": config.get("webhook_host", ""),
+            "webhook_secret": webhook_secret,
             "_wh_port": wh_port if wh_config else 0,
         })
 

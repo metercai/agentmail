@@ -93,8 +93,54 @@ def webhook_reachable(port: int) -> bool:
     except:
         return False
 
+
+def kill_and_restart_gateway(port: int) -> bool:
+    """Kill and restart Hermes gateway. Returns True if webhook reachable after."""
+    started = False
+
+    # Try systemd service
+    if gateway_installed():
+        try:
+            subprocess.run(["hermes", "gateway", "stop"],
+                capture_output=True, timeout=10)
+            time.sleep(1)
+            subprocess.run(["hermes", "gateway", "start"],
+                capture_output=True, timeout=10)
+            time.sleep(3)
+            started = webhook_reachable(port)
+        except:
+            pass
+
+    # Fall back: run gateway in background
+    if not started:
+        try:
+            log_path = os.path.expanduser("~/.hermes/gateway.log")
+            with open(log_path, 'a') as lf:
+                subprocess.Popen(
+                    ["hermes", "gateway", "run", "--accept-hooks"],
+                    stdout=lf, stderr=lf,
+                    start_new_session=True
+                )
+            time.sleep(5)
+            started = webhook_reachable(port)
+        except Exception as e:
+            log_warn(f"Gateway run failed: {e}")
+
+    # Verify
+    for _ in range(5):
+        if webhook_reachable(port):
+            return True
+        time.sleep(2)
+    return False
+
 def main():
+    restart_only = "--restart-only" in sys.argv
     port = read_webhook_port()
+
+    if restart_only:
+        log_step("Restarting Hermes gateway for webhook routes...")
+        kill_and_restart_gateway(port)
+        return 0 if webhook_reachable(port) else 1
 
     # 1. Ensure webhook config
     ensure_webhook_config()
@@ -115,44 +161,11 @@ def main():
         log_ok(f"Hermes webhook reachable (port {port})")
         return 0
 
-    # 4. Start gateway (try install first, fall back to run in background)
+    # 4. Start gateway
     log_step("Starting Hermes gateway...")
-    started = False
-    
-    # First try systemd service
-    if gateway_installed():
-        try:
-            subprocess.run(["hermes", "gateway", "stop"],
-                capture_output=True, timeout=10)
-            time.sleep(1)
-            subprocess.run(["hermes", "gateway", "start"],
-                capture_output=True, timeout=10)
-            time.sleep(3)
-            started = webhook_reachable(port)
-        except:
-            pass
-    
-    # Fall back: run gateway as foreground process in background
-    if not started:
-        try:
-            log_path = os.path.expanduser("~/.hermes/gateway.log")
-            with open(log_path, 'a') as lf:
-                subprocess.Popen(
-                    ["hermes", "gateway", "run", "--accept-hooks"],
-                    stdout=lf, stderr=lf,
-                    start_new_session=True
-                )
-            time.sleep(5)
-            started = webhook_reachable(port)
-        except Exception as e:
-            log_warn(f"Gateway run failed: {e}")
-
-    # 5. Verify
-    for _ in range(5):
-        if webhook_reachable(port):
-            log_ok(f"Hermes webhook restarted (port {port})")
-            return 0
-        time.sleep(2)
+    if kill_and_restart_gateway(port):
+        log_ok(f"Hermes webhook restarted (port {port})")
+        return 0
 
     log_warn(f"Hermes webhook port {port} unreachable")
     log_warn("  Bridge forwarding will fail — restart Hermes manually")
