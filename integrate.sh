@@ -328,7 +328,6 @@ else
                 ERROR_MSG="HTTP ${HTTP_CODE:-000} (no response body)"
             fi
             if echo "$HTTP_CODE" | grep -qE '^429$'; then
-                # Rate limited — extract wait time from detail
                 WAIT_MSG=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail',''))" 2>/dev/null || echo "please wait")
                 echo -e "  ${YELLOW}Rate limited — $WAIT_MSG${NC}"
                 echo -e "  ${YELLOW}Please wait before trying again${NC}"
