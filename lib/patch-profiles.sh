@@ -71,14 +71,13 @@ else:
             if not os.path.isdir(profile_dir):
                 continue
             amail_json = os.path.join(profile_dir, "amail.json")
-            amail_json = os.path.join(profile_dir, "amail.json")
             if os.path.exists(amail_json):
                 try:
                     with open(amail_json) as f:
                         _pf = json.load(f)
                     if _pf.get("system_id") == config.get("system_id", ""):
                         continue  # same system, already registered
-                    info "  Re-registering ${name} (system changed)"
+                    print(f"  Re-registering {name} (system changed)", file=sys.stderr)
                 except Exception:
                     continue  # can't read, skip
             try:
