@@ -263,10 +263,10 @@ else
         export GATEWAY_URL PRODUCT_CODE
         ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/lib/activate_system.py" 2>/dev/null)
         # Parse result markers
-        SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::system-id::\(.*\)/\1/')
-        ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::admin-key::\(.*\)/\1/')
-        AMAIL_DOMAIN=$(echo "$ACTIVATE_RESULT" | grep '^::set-domain::' | sed 's/.*::domain::\(.*\)/\1/')
-        SYSTEM_NAME=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-name::' | sed 's/.*::system-name::\(.*\)/\1/')
+        SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::set-system-id::\(.*\)/\1/')
+        ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::set-admin-key::\(.*\)/\1/')
+        AMAIL_DOMAIN=$(echo "$ACTIVATE_RESULT" | grep '^::set-domain::' | sed 's/.*::set-domain::\(.*\)/\1/')
+        SYSTEM_NAME=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-name::' | sed 's/.*::set-system-name::\(.*\)/\1/')
         if [ -n "$SYSTEM_ID" ] && [ -n "$ADMIN_KEY" ]; then
             USE_PRODUCT_CODE=false
             step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
