@@ -21,7 +21,9 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
     while True:
         print("\n  Shared domain system — enter a system identifier", file=sys.stderr)
         print("  Email format: profile.SYS_NAME@shared.domain", file=sys.stderr)
-        raw = input("  System identifier (3-8 chars, [a-z0-9_-]): ").strip()
+        sys.stderr.write("  System identifier (3-8 chars, [a-z0-9_-]): ")
+        sys.stderr.flush()
+        raw = input().strip()
         try:
             name = validate_sysname(raw)
         except SystemExit:
