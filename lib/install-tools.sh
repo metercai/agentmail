@@ -8,37 +8,7 @@ TOOLS_DST="$HERMES_DIR/tools/amail_tools.py"
 if [ -f "$TOOLS_DST" ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
     step_ok "$T_TOOLS_SKIP"
 else
-    # Copy the tool 
-# Install amail skill (handles inbound email webhook payloads)
-SKILL_DIR="$HOME/.hermes/skills/amail"
-if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
-    mkdir -p "$SKILL_DIR"
-    cat > "$SKILL_DIR/SKILL.md" << 'SKILLEOF'
----
-description: Handle incoming amail webhook payloads — process emails and reply via SMTP
-toolset: amail
----
-
-You are processing an inbound email delivered via amail webhook.
-
-The webhook payload contains:
-- `from`: sender email
-- `to`: recipient email (your agent address)
-- `subject`: email subject
-- `body`: plain text body
-- `headers`: email headers
-- `attachments`: list of attachment objects
-- `mail_id`: unique email identifier
-
-Process the email:
-1. Read the body and determine the intent
-2. For the welcome test email (from integration setup), reply with the current time
-3. Use the `send_mail` tool to reply — set `to` to the sender's address, `subject` to "Re: " + original subject
-SKILLEOF
-    step_ok "amail skill installed"
-fi
-
-file
+    # Copy the tool file
     mkdir -p "$HERMES_DIR/tools"
     echo -n "  $T_TOOLS_COPY "
     if cp "$TOOLS_PY" "$TOOLS_DST" 2>/dev/null; then
@@ -62,7 +32,7 @@ needs_write = False
 # Add tool names to _HERMES_CORE_TOOLS if not present
 tool_names = ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"]
 for name in tool_names:
-    if f'"{name}"' not in content.strip():
+    if f'"$name"' not in content.strip():
         content = re.sub(r'(_HERMES_CORE_TOOLS\\s*=\\s*\\[)', r'\\1\\n    "' + name + '",', content, count=1)
         needs_write = True
 
@@ -72,7 +42,7 @@ if '"amail"' not in content:
         "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",
         "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],
         "includes": [],
-    },'''
+    },'"'
     content = re.sub(r'(TOOLSETS\\s*=\\s*\\{)', r'\\1\\n' + amail_block, content, count=1)
     needs_write = True
 
@@ -90,4 +60,25 @@ PYEOF
     fi
 fi
 
-# ═══════════════════════════════════════════════════════════════
+# ── Install amail skill ─────────────────────────────────────────
+SKILL_DIR="$HOME/.hermes/skills/amail"
+SKILL_SRC="$SCRIPT_DIR/skill/SKILL.md"
+mkdir -p "$SKILL_DIR"
+if cp "$SKILL_SRC" "$SKILL_DIR/SKILL.md" 2>/dev/null; then
+    step_ok "amail skill installed"
+else
+    step_warn "amail skill copy failed (missing $SKILL_SRC)"
+fi
+
+# ── Install skill for named profiles ────────────────────────────
+PROFILES_DIR="$HOME/.hermes/profiles"
+if [ -d "$PROFILES_DIR" ]; then
+    for prof in "$PROFILES_DIR"/*/; do
+        prof_name=$(basename "$prof")
+        prof_skill_dir="$prof/skills/amail"
+        if [ ! -f "$prof_skill_dir/SKILL.md" ]; then
+            mkdir -p "$prof_skill_dir"
+            cp "$SKILL_SRC" "$prof_skill_dir/SKILL.md" 2>/dev/null
+        fi
+    done
+fi
