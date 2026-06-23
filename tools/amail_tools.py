@@ -1824,23 +1824,38 @@ def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> No
 # ── Hook: auto-register email on profile creation ──────────────
 
 def parse_amail_persona(email: str, system_name: str = "") -> tuple:
-    """Parse persona and profile from an amail address.
+    """Parse persona, profile, and system_name from an amail address.
     
-    Format: persona.profile@domain  or  profile@domain
-    For shared domain: persona.profile.sys_name@domain
+    Returns (persona, profile_name, sys_name).
     
-    Returns (persona, profile_name, sys_name) where sys_name may be empty string.
-    Examples:
-        'support.alice@agent.com'                -> ('support', 'alice', '')
-        'alice@agent.com'                        -> ('', 'alice', '')
-        'ql-biopharm.mycompany@amail.token.tm'   -> ('', 'ql-biopharm', 'mycompany')
-        'support.ql-biopharm.myco@amail.token.tm' -> ('support', 'ql-biopharm', 'myco')
+    Shared domain (three-part: persona.profile.sys_name@domain):
+      'support.ql-biopharm.myco@amail.token.tm'  → ('support', 'ql-biopharm', 'myco')
+      'ql-biopharm.myco@amail.token.tm'           → ('', 'ql-biopharm', 'myco')
+      'myco@amail.token.tm'                       → ('', 'default', 'myco')  ← short form
+    
+    Non-shared domain (two-part: persona.profile@domain):
+      'support.alice@agent.com'  → ('support', 'alice', '')
+      'alice@agent.com'          → ('', 'alice', '')
     """
     local = email.split('@')[0] if '@' in email else email
-    if '.' in local:
-        persona, profile = local.split('.', 1)
-        return (persona, profile)
-    return ('', local)
+    parts = local.split('.')
+    
+    # If system_name is known and local part matches → short form (default agent)
+    if system_name and len(parts) == 1 and parts[0] == system_name:
+        return ('', 'default', system_name)
+    
+    # Three-part: persona.profile.sys_name@domain
+    if system_name and len(parts) >= 2 and parts[-1] == system_name:
+        sys_name = parts[-1]
+        profile_parts = parts[:-1]
+        if len(profile_parts) >= 2:
+            return ('.'.join(profile_parts[:-1]), profile_parts[-1], sys_name)
+        return ('', profile_parts[0], sys_name)
+    
+    # Traditional: persona.profile@domain
+    if len(parts) >= 2:
+        return ('.'.join(parts[:-1]), parts[-1], '')
+    return ('', parts[0], '')
 
 
 def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
@@ -1872,9 +1887,15 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     client = _GatewayClient(gateway_url, admin_key)
     system_name = config.get("system_name", "") or ""
     if system_name:
-        email = f"{name}.{system_name}@{domain}"
+        if name == "default":
+            email = f"{system_name}@{domain}"
+            alias_email = f"default.{system_name}@{domain}"
+        else:
+            email = f"{name}.{system_name}@{domain}"
+            alias_email = ""
     else:
         email = f"{name}@{domain}"
+        alias_email = ""
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config
@@ -1946,6 +1967,19 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             value=manager_address,
             description="Agent ↔ Manager (auto-created)",
         )
+
+    # Register alias for default profile (sys_name@domain + default.sys_name@domain)
+    if alias_email:
+        alias_result = client.register_email(
+            system_id=system_id,
+            mx_domain=config["domain"],
+            email=alias_email,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
+            manager_address=manager_address,
+            generate_code=False,
+        )
+        logger.info("[amail_gateway] Registered alias %s → %s: %s", alias_email, email, alias_result)
         logger.info("[amail_gateway] Whitelisted manager %s for agent %s", manager_address, email)
 
     # Extract activation code from combined response
