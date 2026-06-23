@@ -15,7 +15,7 @@ def register_emails():
         print("no_config")
         return
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools"))
     from amail_tools import _auto_register_email
 
     gw = config.get("gateway_url", "")

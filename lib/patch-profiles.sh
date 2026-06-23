@@ -26,7 +26,7 @@ else
 
     # Register existing profiles that don't have amail.json yet
     step_ok "$T_PROFILES_REG_DISP"
-    REG_OUTPUT=$(python3 "$SCRIPT_DIR/lib/register_profiles.py" 2>/dev/null)
+    REG_OUTPUT=$(python3 "$SCRIPT_DIR/lib/register_profiles.py")
     REG_COUNT=0
     while IFS= read -r line; do
         case "$line" in
