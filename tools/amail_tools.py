@@ -1956,8 +1956,12 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     logger.info("[amail_gateway] Registered email %s: %s", email, result)
 
     if result.get("status") not in ("created", 200, 201):
-        logger.error("[amail_gateway] Failed to register email %s: %s — skipping activation code generation", email, result)
-        return
+        msg = str(result.get("error", "")) + " " + str(result.get("detail", ""))
+        if "already exists" in msg.lower():
+            logger.info("[amail_gateway] Email %s already registered — reusing", email)
+        else:
+            logger.error("[amail_gateway] Failed to register email %s: %s — skipping activation code generation", email, result)
+            return
 
     # Allow agent to send email to its own manager (for contact approval requests)
     if manager_address:
