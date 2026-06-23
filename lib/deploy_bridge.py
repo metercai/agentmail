@@ -176,11 +176,14 @@ def main():
         url = f"https://github.com/metercai/amail-bridge/releases/download/{ver}/amail-bridge-{ver}-x86_64-unknown-linux-gnu.tar.gz"
         log_step(f"Downloading bridge {ver}...")
         try:
-            subprocess.run(["curl", "-sL", url], stdout=subprocess.PIPE, timeout=60,
-                check=True)  # just check it's reachable
-            subprocess.run(
-                f"curl -sL '{url}' | tar xz -C '{bridge_dir}' amail-bridge",
-                shell=True, timeout=60)
+            # Download and extract
+            dl = subprocess.run(
+                ["curl", "-sL", url],
+                capture_output=True, timeout=60)
+            if dl.returncode == 0:
+                subprocess.run(
+                    ["tar", "xz", "-C", bridge_dir, "amail-bridge"],
+                    input=dl.stdout, timeout=30, capture_output=True)
         except: pass
 
     if not os.access(bridge_bin, os.X_OK):
