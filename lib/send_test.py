@@ -210,7 +210,7 @@ def main():
     sid = config.get("system_id", "")
     domain = config.get("domain", "")
     manager = os.environ.get("MANAGER", config.get("manager_address", "925457@qq.com"))
-    agent_email = os.environ.get("AGENT_EMAIL", get_agent_email(config))
+    agent_email = os.environ.get("AGENT_EMAIL") or get_agent_email(config)
 
     print()
     print("  Send/receive test")
