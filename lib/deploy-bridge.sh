@@ -84,6 +84,10 @@ json.dump(cfg, open(p, "w"), indent=2)
                 else
                     WEBHOOK_HOST="${BRIDGE_ADDR}:38081"
                 fi
+                # Ensure port is present
+                if ! echo "$WEBHOOK_HOST" | grep -qE ':\d+$'; then
+                    WEBHOOK_HOST="${WEBHOOK_HOST}:38081"
+                fi
             fi
 
             # Update amail_gateway.json with resolved webhook_host
