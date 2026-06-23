@@ -26,68 +26,7 @@ else
 
     # Register existing profiles that don't have amail.json yet
     step_ok "$T_PROFILES_REG_DISP"
-    REG_OUTPUT=$(python3 << PYEOF
-import sys, os
-sys.path.insert(0, "$SCRIPT_DIR/tools")
-from amail_tools import _auto_register_email, _load_gateway_config
-config = _load_gateway_config()
-if not config or not config.get("admin_key"):
-    print("no_config")
-else:
-    base_dir = os.path.expanduser(os.environ.get("HERMES_PROFILES_DIR",
-        "~/.hermes/profiles"))
-    home_dir = os.path.expanduser(os.environ.get("HERMES_HOME",
-        "~/.hermes"))
-    count = 0
-
-    # Default profile: check hermes home root (not under profiles/)
-    default_configs = [
-        (os.path.join(home_dir, "amail.json"), "default", home_dir),
-        (os.path.join(home_dir, "hermes-agent", "amail.json"), "default", os.path.join(home_dir, "hermes-agent")),
-    ]
-    for amail_json, name, profile_dir in default_configs:
-        if os.path.exists(amail_json):
-            # Re-register if system_id changed
-            try:
-                import json as _j
-                with open(amail_json) as _f:
-                    _pf = _j.load(_f)
-                if _pf.get("system_id", "") == config.get("system_id", ""):
-                    break  # same system, already registered
-            except Exception:
-                break  # can't read, assume already registered
-    else:
-        # No default amail.json — register it
-        try:
-            _auto_register_email("default", home_dir, config)
-            count += 1
-        except Exception as e:
-            print(f"failed:default:{e}")
-
-    # Named profiles: scan profiles/ directory
-    if os.path.isdir(base_dir):
-        for name in sorted(os.listdir(base_dir)):
-            profile_dir = os.path.join(base_dir, name)
-            if not os.path.isdir(profile_dir):
-                continue
-            amail_json = os.path.join(profile_dir, "amail.json")
-            if os.path.exists(amail_json):
-                try:
-                    with open(amail_json) as f:
-                        _pf = json.load(f)
-                    if _pf.get("system_id") == config.get("system_id", ""):
-                        continue  # same system, already registered
-                    print(f"  Re-registering {name} (system changed)", file=sys.stderr)
-                except Exception:
-                    continue  # can't read, skip
-            try:
-                _auto_register_email(name, profile_dir, config)
-                count += 1
-            except Exception as e:
-                print(f"failed:{name}:{e}")
-    print(f"registered:{count}")
-PYEOF
-)
+    REG_OUTPUT=$(python3 "$SCRIPT_DIR/lib/register_profiles.py" 2>/dev/null)
     REG_COUNT=0
     while IFS= read -r line; do
         case "$line" in
