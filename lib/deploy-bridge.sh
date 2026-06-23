@@ -59,7 +59,16 @@ json.dump(cfg, open(p, "w"), indent=2)
 
     # Bridge deployment
     if [ -n "$WEBHOOK_HOST" ] && [ "$WEBHOOK_MODE" != "internal" ]; then
-        step_begin "Deploy amail-bridge"
+        step_begin "Deploy amail-bridge ($WEBHOOK_HOST)"
+        _bridge_addr="$WEBHOOK_HOST"
+    elif [ "$WEBHOOK_MODE" = "bridge" ]; then
+        step_begin "Deploy amail-bridge (auto-detect)"
+        _bridge_addr=""
+    else
+        _bridge_addr=""
+    fi
+
+    if [ -n "$_bridge_addr" ] || [ "$WEBHOOK_MODE" = "bridge" ]; then
 
         BRIDGE_DIR="$HOME/.hermes/bin"
         BRIDGE_BIN="${AMAIL_BRIDGE_BIN:-$BRIDGE_DIR/amail-bridge}"
