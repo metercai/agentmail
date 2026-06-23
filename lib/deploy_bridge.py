@@ -65,7 +65,8 @@ def format_webhook_host(ip: str) -> str:
         return f"{ip}:38081"
 
 def write_bridge_config(path: str, mode: str, addr: str, gw: str,
-                        ak: str, sid: str, api_key: str = ""):
+                        ak: str, sid: str, api_key: str = "",
+                        webhook_secret: str = ""):
     """Write amail_bridge.toml."""
     log_path = os.path.expanduser("~/.hermes/amail-bridge.log")
     lines = [
@@ -82,6 +83,8 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
         f'system_id = "{sid}"',
         'poll_interval_sec = 10',
     ]
+    if webhook_secret:
+        lines.append(f'webhook_secret = "{webhook_secret}"')
     if api_key:
         lines.insert(lines.index('[pull]') + 1, f'api_key = "{api_key}"')
     with open(path, 'w') as f:
@@ -210,8 +213,20 @@ def main():
     bridge_domain = f"bridge-{uuid.uuid4().hex[:8]}"
     bridge_key = create_api_key(gw, ak, sid, bridge_domain, ["bridge"], "bridge")
 
+    # Read webhook secret from Hermes config
+    webhook_secret = ""
+    try:
+        import yaml
+        hermes_cfg_path = os.path.expanduser("~/.hermes/config.yaml")
+        with open(hermes_cfg_path) as f:
+            hc = yaml.safe_load(f)
+        webhook_secret = hc.get("platforms", {}).get("webhook", {}).get("extra", {}).get("secret", "")
+    except:
+        pass
+
     write_bridge_config(bridge_cfg, bridge_mode, wh_host or "127.0.0.1:38081",
-                        gw, ak, sid, api_key=bridge_key)
+                        gw, ak, sid, api_key=bridge_key,
+                        webhook_secret=webhook_secret)
 
     # Update gateway config
     gw_cfg_path = os.path.join(home, "amail_gateway.json")
