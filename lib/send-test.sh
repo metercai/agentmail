@@ -28,18 +28,12 @@ if [ -z "$AGENT_EMAIL" ]; then
         -H "X-Api-Key: ${ADMIN_KEY}" 2>/dev/null | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-# Prefer the default agent address (short form: sys-name@domain or explicit default.*)
+# Prefer the default agent address (short form: sys-name@domain)
 for d in data:
     dom = d.get('domain', '')
-    if '@' in dom:
-        # Try short form: local part has no dot → default agent
-        if '.' not in dom.split('@')[0]:
-            print(dom)
-            sys.exit(0)
-        # Explicit default.* form
-        if dom.startswith('default.'):
-            print(dom)
-            sys.exit(0)
+    if '@' in dom and '.' not in dom.split('@')[0]:
+        print(dom)
+        sys.exit(0)
 # Fallback: first address with webhook
 for d in data:
     dom = d.get('domain', '')

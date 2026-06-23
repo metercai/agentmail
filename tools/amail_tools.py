@@ -1889,13 +1889,10 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     if system_name:
         if name == "default":
             email = f"{system_name}@{domain}"
-            alias_email = f"default.{system_name}@{domain}"
         else:
             email = f"{name}.{system_name}@{domain}"
-            alias_email = ""
     else:
         email = f"{name}@{domain}"
-        alias_email = ""
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config
@@ -1968,18 +1965,6 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             description="Agent ↔ Manager (auto-created)",
         )
 
-    # Register alias for default profile (sys_name@domain + default.sys_name@domain)
-    if alias_email:
-        alias_result = client.register_email(
-            system_id=system_id,
-            mx_domain=config["domain"],
-            email=alias_email,
-            webhook_url=webhook_url,
-            webhook_secret=webhook_secret,
-            manager_address=manager_address,
-            generate_code=False,
-        )
-        logger.info("[amail_gateway] Registered alias %s → %s: %s", alias_email, email, alias_result)
         logger.info("[amail_gateway] Whitelisted manager %s for agent %s", manager_address, email)
 
     # Extract activation code from combined response
