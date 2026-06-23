@@ -1945,7 +1945,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
                 webhook_url = ""
 
         # Bridge delivers to local Hermes → skip HMAC signature verification
-        webhook_secret = "_INSECURE_NO_AUTH"
+        webhook_secret = "INSECURE_NO_AUTH"
 
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
