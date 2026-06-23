@@ -36,7 +36,7 @@ else
         esac
     done <<< "$REG_OUTPUT"
     if [ "${REG_COUNT:-0}" -gt 0 ]; then
-        _msg="${T_PROFILES_REG_DONE/{count}/$REG_COUNT}"
+        _msg="Registered amail addresses for ${REG_COUNT} profile(s)"
         step_ok "$_msg"
     else
         step_ok "$T_PROFILES_REG_SKIP_MSG"

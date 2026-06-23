@@ -1912,8 +1912,11 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         else:
             # Remote gateway → call bridge API to get webhook_url
             # Protocol: IP:port → http, domain:port → https
-            if re.match(r'^\d+\.\d+\.\d+\.\d+:', webhook_host):
+            if re.match(r'^(\d+\.\d+\.\d+\.\d+|\[.*\]):', webhook_host):
                 bridge_base = f"http://{webhook_host}"
+            elif '[' in webhook_host and ']' in webhook_host:
+                # IPv6 without port — add default bridge port
+                bridge_base = f"http://{webhook_host.rstrip(']')}:38081]"
             else:
                 bridge_base = f"https://{webhook_host}"
 
@@ -2039,7 +2042,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
                 current_port = wh_config["port"]
                 last_port = prof.get("_wh_port", 0)
                 if current_port != last_port:
-                    if re.match(r'^\d+\.\d+\.\d+\.\d+:', webhook_host):
+                    if re.match(r'^(\d+\.\d+\.\d+\.\d+|\[.*\]):', webhook_host):
                         bridge_base = f"http://{webhook_host}"
                     else:
                         bridge_base = f"https://{webhook_host}"
