@@ -89,7 +89,12 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
 
 def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
     """Start bridge process. Returns True if running."""
-    # Kill old
+    # Kill all old bridge processes (pkill by process name)
+    subprocess.run(['pkill', '-f', 'amail-bridge.*amail_bridge.toml'],
+        capture_output=True, timeout=5)
+    time.sleep(1)
+    
+    # Kill by PID file as fallback
     if os.path.exists(pid_path):
         try:
             old_pid = int(open(pid_path).read().strip())
