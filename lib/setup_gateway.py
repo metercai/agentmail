@@ -12,18 +12,20 @@ def log_warn(msg: str):
     print(f"  ⚠ {msg}")
 
 def read_webhook_port() -> int:
-    """Read webhook port from Hermes config.yaml."""
+    """Read webhook port from Hermes config.yaml (platforms.webhook.extra.port)."""
     config_path = os.path.expanduser("~/.hermes/config.yaml")
     try:
         import yaml
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
-        return int(cfg.get("webhook", {}).get("extra", {}).get("port", 8644))
+        wh_cfg = cfg.get("platforms", {}).get("webhook", {}) or cfg.get("webhook", {})
+        return int(wh_cfg.get("extra", {}).get("port", 8644))
     except:
         return 8644
 
 def ensure_webhook_config():
-    """Ensure webhook section exists in config.yaml."""
+    """Ensure webhook platform section exists in config.yaml.
+    Hermes uses platforms.webhook.extra (not top-level webhook.extra)."""
     config_path = os.path.expanduser("~/.hermes/config.yaml")
     if not os.path.exists(config_path):
         log_warn(f"Config not found: {config_path}")
@@ -32,23 +34,36 @@ def ensure_webhook_config():
     with open(config_path) as f:
         content = f.read()
 
-    if "webhook:" in content and "enabled:" in content[content.index("webhook:"):]:
-        return True  # already configured
+    # Check if platform-level webhook is configured
+    if "platforms:" in content and "webhook:" in content:
+        idx = content.index("platforms:")
+        rest = content[idx:]
+        if "host:" in rest and "port:" in rest:
+            return True  # already configured
 
-    # Add webhook config
+    # Also check old-style top-level webhook config
+    if content.count("webhook:") >= 2 or ("webhook:" in content and "enabled:" in content):
+        idx = content.index("webhook:")
+        rest = content[idx:content.index("\n", idx)+200]
+        if "port:" in rest:
+            # Old format exists but needs migration
+            log_step("Migrating webhook config to platforms.webhook.extra...")
+
+    # Add proper webhook platform config
     import secrets
     secret = secrets.token_hex(32)
     wh_config = f"""
-webhook:
-    enabled: true
-    extra:
-        host: 0.0.0.0
-        port: 8644
-        secret: {secret}
+platforms:
+    webhook:
+        enabled: true
+        extra:
+            host: 0.0.0.0
+            port: 8644
+            secret: {secret}
 """
     with open(config_path, 'a') as f:
         f.write(wh_config)
-    log_ok("Webhook config added to config.yaml")
+    log_ok("Webhook platform config added to config.yaml (platforms.webhook.extra)")
     return True
 
 def gateway_installed() -> bool:
