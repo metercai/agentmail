@@ -18,9 +18,9 @@ SYSTEM_NAME = ""
 def prompt_activate(gateway_url: str, product_code: str) -> dict:
     """Interactive activation loop. Returns {system_id, admin_key, domain, system_name}"""
     global SYSTEM_NAME
+    print("\n  Shared domain system — enter a system identifier", file=sys.stderr)
+    print("  Email format: profile.SYS_NAME@shared.domain", file=sys.stderr)
     while True:
-        print("\n  Shared domain system — enter a system identifier", file=sys.stderr)
-        print("  Email format: profile.SYS_NAME@shared.domain", file=sys.stderr)
         sys.stderr.write("  System identifier (3-8 chars, [a-z0-9_-]): ")
         sys.stderr.flush()
         raw = input().strip()

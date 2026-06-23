@@ -212,7 +212,6 @@ def main():
     manager = os.environ.get("MANAGER", config.get("manager_address", "925457@qq.com"))
     agent_email = os.environ.get("AGENT_EMAIL") or get_agent_email(config)
 
-    print()
     print("  Send/receive test")
     print(f"  Gateway:     {gw}")
     print(f"  Agent email: {agent_email}")

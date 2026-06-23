@@ -1918,6 +1918,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             elif '[' in webhook_host and ']' in webhook_host:
                 # IPv6 without port — add default bridge port
                 bridge_base = f"http://{webhook_host.rstrip(']')}:38081]"
+            elif ':' in webhook_host and '.' not in webhook_host:
+                # Raw IPv6 (no brackets) — wrap and add port
+                bridge_base = f"http://[{webhook_host}]:38081"
             else:
                 bridge_base = f"https://{webhook_host}"
 
