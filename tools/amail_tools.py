@@ -548,6 +548,7 @@ def setup(
             admin_key=admin_key,
             system_id=system_id,
             domain=domain or "admin.local",
+            system_name=system_name,
             save_raw_snapshots=save_raw_snapshots,
             manager_address=manager_address,
             webhook_host=webhook_host,
