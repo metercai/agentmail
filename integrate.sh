@@ -3,10 +3,17 @@
 # =============================================================================
 # Usage: bash integrate.sh
 #
-# Steps: [1] gateway connect  [2] auth method  [3] domain
-#        [4] basic config    [5] save / activate  [5a] bridge + domain key
-#        [6] install tools   [7] patch webhook   [8] patch profiles
-#        [9] diagnostics     [10] send/receive test
+# Steps:
+#   [1] Gateway connectivity
+#   [2] Auth method (admin_key / product code)
+#   [3] Domain selection (admin_key) / Activation + system_name (product code)
+#   [4] Basic config (snapshots, manager address, webhook mode)
+#   [5] Save config + deploy bridge
+#   [6] Install Hermes tools
+#   [7] Patch webhook subscriptions
+#   [8] Register profile addresses
+#   [9] Diagnostics
+#  [10] Send/receive test
 # =============================================================================
 TOTAL_STEPS=10
 
