@@ -266,6 +266,7 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
 else
     if $IS_SHARED_DOMAIN; then
+        step_begin "Shared domain activation"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
         ACTIVATE_RESULT=$(python3 "$LIB_DIR/activate_system.py")
