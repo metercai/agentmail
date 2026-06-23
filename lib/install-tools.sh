@@ -8,7 +8,37 @@ TOOLS_DST="$HERMES_DIR/tools/amail_tools.py"
 if [ -f "$TOOLS_DST" ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
     step_ok "$T_TOOLS_SKIP"
 else
-    # Copy the tool file
+    # Copy the tool 
+# Install amail skill (handles inbound email webhook payloads)
+SKILL_DIR="$HOME/.hermes/skills/amail"
+if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+    mkdir -p "$SKILL_DIR"
+    cat > "$SKILL_DIR/SKILL.md" << 'SKILLEOF'
+---
+description: Handle incoming amail webhook payloads — process emails and reply via SMTP
+toolset: amail
+---
+
+You are processing an inbound email delivered via amail webhook.
+
+The webhook payload contains:
+- `from`: sender email
+- `to`: recipient email (your agent address)
+- `subject`: email subject
+- `body`: plain text body
+- `headers`: email headers
+- `attachments`: list of attachment objects
+- `mail_id`: unique email identifier
+
+Process the email:
+1. Read the body and determine the intent
+2. For the welcome test email (from integration setup), reply with the current time
+3. Use the `send_mail` tool to reply — set `to` to the sender's address, `subject` to "Re: " + original subject
+SKILLEOF
+    step_ok "amail skill installed"
+fi
+
+file
     mkdir -p "$HERMES_DIR/tools"
     echo -n "  $T_TOOLS_COPY "
     if cp "$TOOLS_PY" "$TOOLS_DST" 2>/dev/null; then
