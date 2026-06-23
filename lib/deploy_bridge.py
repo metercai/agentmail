@@ -104,8 +104,12 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
 
     log_path = os.path.expanduser("~/.hermes/bridge.log")
     with open(log_path, 'a') as lf:
-        proc = subprocess.Popen([bin_path, '-c', cfg_path],
-            stdout=lf, stderr=lf, start_new_session=True)
+        proc = subprocess.Popen(
+            [bin_path, '-c', cfg_path],
+            stdout=lf, stderr=lf,
+            start_new_session=True,  # daemonize
+            preexec_fn=os.setpgrp    # detach from terminal
+        )
 
     time.sleep(1.5)
     if proc.poll() is None:
