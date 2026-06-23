@@ -437,6 +437,22 @@ fi
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 source "$LIB_DIR/install-tools.sh"
 source "$LIB_DIR/patch-webhook.sh"
+
+# Check Hermes webhook port — user may need to restart Hermes
+HERMES_WH_PORT=$(python3 -c "
+import os
+try:
+    import yaml
+    with open(os.path.expanduser('~/.hermes/config.yaml')) as f:
+        cfg = yaml.safe_load(f)
+    print(cfg.get('webhook',{}).get('extra',{}).get('port','8644'))
+except: print('8644')
+" 2>/dev/null || echo "8644")
+if curl -s "http://127.0.0.1:${HERMES_WH_PORT}/health" > /dev/null 2>&1; then
+    step_ok "Hermes webhook reachable (port ${HERMES_WH_PORT})"
+else
+    step_warn "Hermes webhook port ${HERMES_WH_PORT} unreachable — run 'hermes restart' after integration"
+fi
 source "$LIB_DIR/patch-profiles.sh"
 source "$LIB_DIR/diagnostics.sh"
 step_begin "Send/receive test"
