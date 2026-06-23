@@ -107,8 +107,7 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
         proc = subprocess.Popen(
             [bin_path, '-c', cfg_path],
             stdout=lf, stderr=lf,
-            start_new_session=True,  # daemonize
-            preexec_fn=os.setpgrp    # detach from terminal
+            start_new_session=True  # daemonize
         )
 
     time.sleep(1.5)
