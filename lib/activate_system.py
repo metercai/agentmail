@@ -19,8 +19,8 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
     """Interactive activation loop. Returns {system_id, admin_key, domain, system_name}"""
     global SYSTEM_NAME
     while True:
-        print("\n  Shared domain system — enter a system identifier")
-        print("  Email format: profile.SYS_NAME@shared.domain")
+        print("\n  Shared domain system — enter a system identifier", file=sys.stderr)
+        print("  Email format: profile.SYS_NAME@shared.domain", file=sys.stderr)
         raw = input("  System identifier (3-8 chars, [a-z0-9_-]): ").strip()
         try:
             name = validate_sysname(raw)
@@ -35,10 +35,10 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
             resp = urllib.request.urlopen(req, timeout=15)
             body = json.loads(resp.read())
             SYSTEM_NAME = body.get("system_name", name)
-            print(f"  System activated:")
-            print(f"  ├─ system_id:  {body.get('system_id','')}")
-            print(f"  ├─ domain:     {body.get('domain','')}")
-            print(f"  └─ identifier: {SYSTEM_NAME}")
+            print(f"  System activated:", file=sys.stderr)
+            print(f"  ├─ system_id:  {body.get('system_id','')}", file=sys.stderr)
+            print(f"  ├─ domain:     {body.get('domain','')}", file=sys.stderr)
+            print(f"  └─ identifier: {SYSTEM_NAME}", file=sys.stderr)
             return {
                 "system_id": body.get("system_id", ""),
                 "admin_key": body.get("raw_key", ""),
@@ -52,16 +52,16 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
                 print(f"  Activation code already claimed — use a fresh code", file=sys.stderr)
                 sys.exit(1)
             elif e.code == 409:
-                print(f"  Identifier '{name}' is already taken — choose another")
+                print(f"  Identifier '{name}' is already taken — choose another", file=sys.stderr)
             elif e.code == 429:
                 m = re.search(r'(\d+)', detail)
                 wait = max(int(m.group(1)) if m else 5, 1)
-                print(f"  Rate limited — retry after {wait}s")
-                print(f"  Please wait before trying again")
+                print(f"  Rate limited — retry after {wait}s", file=sys.stderr)
+                print(f"  Please wait before trying again", file=sys.stderr)
                 time.sleep(wait)
             else:
-                print(f"  {detail or error}")
-                print(f"  Please try a different name or check the code")
+                print(f"  {detail or error}", file=sys.stderr)
+                print(f"  Please try a different name or check the code", file=sys.stderr)
 
 if __name__ == "__main__":
     import sys
