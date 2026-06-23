@@ -60,6 +60,14 @@ platforms:
             host: 0.0.0.0
             port: 8644
             secret: {secret}
+
+platform_toolsets:
+    webhook:
+        - amail
+        - web
+        - file
+        - terminal
+        - search
 """
     with open(config_path, 'a') as f:
         f.write(wh_config)
