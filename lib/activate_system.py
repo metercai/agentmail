@@ -60,7 +60,7 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
                 wait = max(int(m.group(1)) if m else 5, 1)
                 print(f"  Rate limited — retry after {wait}s", file=sys.stderr)
                 print(f"  Please wait before trying again", file=sys.stderr)
-                time.sleep(wait)
+                # User reads the message and decides when to retry
             else:
                 print(f"  {detail or error}", file=sys.stderr)
                 print(f"  Please try a different name or check the code", file=sys.stderr)
