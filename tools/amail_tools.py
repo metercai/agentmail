@@ -1237,7 +1237,7 @@ def init_system(
 # Agent Tools
 # ═══════════════════════════════════════════════════════════════
 
-async def send_mail(
+def send_mail(
     to: Union[str, List[str]],
     subject: str,
     body: str,
@@ -1375,7 +1375,7 @@ async def send_mail(
     if out_msg_id and not message_id:
         try:
             initial_summary = f"Subject: {subject}\nStatus: awaiting response"
-            await set_email_summary(out_msg_id, initial_summary)
+            set_email_summary(out_msg_id, initial_summary)
             thread_bootstrapped = True
             logger.info("[amail] Thread summary bootstrapped for new email: %s", out_msg_id)
         except Exception as e:
@@ -1396,7 +1396,7 @@ async def send_mail(
         return {"success": False, "error": f"Send failed: {error}"}
 
 
-async def manage_contacts(
+def manage_contacts(
     action: str,
     address: Optional[str] = None,
     direction: str = "all",
@@ -1505,7 +1505,7 @@ async def manage_contacts(
 
 # ── Contact profile (for context awareness) ──────────────────────
 
-async def contact_profile(address: str = "", name: str = "") -> dict:
+def contact_profile(address: str = "", name: str = "") -> dict:
     """Look up a contact profile by address or name.
 
     At least one of address or name must be provided.
@@ -1537,7 +1537,7 @@ async def contact_profile(address: str = "", name: str = "") -> dict:
 
 
 
-async def set_contact_profile(address: str, profile: str) -> dict:
+def set_contact_profile(address: str, profile: str) -> dict:
     """Store or update a contact profile. The gateway handles JSON merge,
     name extraction, and name index maintenance atomically.
     """
@@ -2226,8 +2226,8 @@ except ImportError:
     def tool_result(x): return x  # noqa: E743
 
 
-async def _handle_send_mail(args, **_kw):
-    return tool_result(await send_mail(
+def _handle_send_mail(args, **_kw):
+    return tool_result(send_mail(
         to=args.get("to", ""),
         subject=args.get("subject", ""),
         body=args.get("body", ""),
@@ -2237,8 +2237,8 @@ async def _handle_send_mail(args, **_kw):
     ))
 
 
-async def _handle_manage_contacts(args, **_kw):
-    return tool_result(await manage_contacts(
+def _handle_manage_contacts(args, **_kw):
+    return tool_result(manage_contacts(
         action=args.get("action", "check"),
         address=args.get("address"),
         direction=args.get("direction", "all"),
@@ -2347,8 +2347,8 @@ registry.register(
 )
 
 # register contact_profile tool
-async def _handle_contact_profile(args, **_kw):
-    return tool_result(await contact_profile(
+def _handle_contact_profile(args, **_kw):
+    return tool_result(contact_profile(
         address=args.get("address", ""),
         name=args.get("name", ""),
     ))
@@ -2387,8 +2387,8 @@ registry.register(
 )
 
 # register set_contact_profile tool
-async def _handle_set_contact_profile(args, **_kw):
-    return tool_result(await set_contact_profile(
+def _handle_set_contact_profile(args, **_kw):
+    return tool_result(set_contact_profile(
         address=args.get("address", ""),
         profile=args.get("profile", ""),
     ))
@@ -2785,7 +2785,7 @@ def _store_message_meta(message_id: str, references: Optional[str] = None) -> No
 #    key: thread:{thread_id}, value: summary text
 # ═══════════════════════════════════════════════════════════════
 
-async def email_summary(message_id: str) -> dict:
+def email_summary(message_id: str) -> dict:
     """Look up the stored summary for the email thread containing this message.
 
     Uses semantic endpoint GET /admin/thread-summary/:message_id which
@@ -2802,7 +2802,7 @@ async def email_summary(message_id: str) -> dict:
     return {"thread_id": message_id, "summary": ""}
 
 
-async def set_email_summary(message_id: str, summary: str) -> dict:
+def set_email_summary(message_id: str, summary: str) -> dict:
     """Store or update the summary for the email thread containing this message.
 
     Resolves message_id → thread_id, then writes the summary to gateway
@@ -2829,8 +2829,8 @@ async def set_email_summary(message_id: str, summary: str) -> dict:
 
 # ── Registry: email_summary ─────────────────────────────────────
 
-async def _handle_email_summary(args, **_kw):
-    return tool_result(await email_summary(
+def _handle_email_summary(args, **_kw):
+    return tool_result(email_summary(
         message_id=args.get("message_id", ""),
     ))
 
@@ -2864,8 +2864,8 @@ registry.register(
 
 # ── Registry: set_email_summary ─────────────────────────────────
 
-async def _handle_set_email_summary(args, **_kw):
-    return tool_result(await set_email_summary(
+def _handle_set_email_summary(args, **_kw):
+    return tool_result(set_email_summary(
         message_id=args.get("message_id", ""),
         summary=args.get("summary", ""),
     ))
