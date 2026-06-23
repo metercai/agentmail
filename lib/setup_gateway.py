@@ -68,6 +68,7 @@ platform_toolsets:
         - file
         - terminal
         - search
+        - delegation
 """
     with open(config_path, 'a') as f:
         f.write(wh_config)
