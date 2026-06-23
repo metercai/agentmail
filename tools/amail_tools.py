@@ -1910,8 +1910,6 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         if not webhook_host:
             # integrate.sh set webhook_host="" → gateway is local
             webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/amail-inbound"
-            # Local loopback: skip signature verification
-            webhook_secret = "_INSECURE_NO_AUTH"
         else:
             # Remote gateway → call bridge API to get webhook_url
             # Protocol: IP:port → http, domain:port → https
@@ -1945,6 +1943,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
                 logger.warning("[amail_gateway] Bridge unreachable: %s (continuing without bridge webhook)", e)
                 # Don't block registration — bridge can be set up later
                 webhook_url = ""
+
+        # Bridge delivers to local Hermes → skip HMAC signature verification
+        webhook_secret = "_INSECURE_NO_AUTH"
 
         # Ensure amail-inbound route exists (idempotent)
         _ensure_webhook_route("amail-inbound", webhook_secret, profile_dir=profile_dir)
