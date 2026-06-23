@@ -89,7 +89,7 @@ def main():
         log_step("Installing Hermes gateway service...")
         try:
             subprocess.run(["hermes", "gateway", "install"],
-                check=True, timeout=60, capture_output=True)
+                input=b"Y\nY\n", check=True, timeout=60, capture_output=True)
             log_ok("Gateway service installed")
         except Exception as e:
             log_warn(f"Gateway install failed: {e}")
@@ -100,17 +100,37 @@ def main():
         log_ok(f"Hermes webhook reachable (port {port})")
         return 0
 
-    # 4. Restart gateway
+    # 4. Start gateway (try install first, fall back to run in background)
     log_step("Starting Hermes gateway...")
-    try:
-        subprocess.run(["hermes", "gateway", "stop"],
-            capture_output=True, timeout=10)
-        time.sleep(1)
-        subprocess.run(["hermes", "gateway", "start"],
-            capture_output=True, timeout=10)
-        time.sleep(3)
-    except:
-        pass
+    started = False
+    
+    # First try systemd service
+    if gateway_installed():
+        try:
+            subprocess.run(["hermes", "gateway", "stop"],
+                capture_output=True, timeout=10)
+            time.sleep(1)
+            subprocess.run(["hermes", "gateway", "start"],
+                capture_output=True, timeout=10)
+            time.sleep(3)
+            started = webhook_reachable(port)
+        except:
+            pass
+    
+    # Fall back: run gateway as foreground process in background
+    if not started:
+        try:
+            log_path = os.path.expanduser("~/.hermes/gateway.log")
+            with open(log_path, 'a') as lf:
+                subprocess.Popen(
+                    ["hermes", "gateway", "run", "--accept-hooks"],
+                    stdout=lf, stderr=lf,
+                    start_new_session=True
+                )
+            time.sleep(5)
+            started = webhook_reachable(port)
+        except Exception as e:
+            log_warn(f"Gateway run failed: {e}")
 
     # 5. Verify
     for _ in range(5):
