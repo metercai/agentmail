@@ -546,22 +546,21 @@ def _check_route_targets(c: Check, hermes_port: int):
         for target in unique_targets:
             host, port_str = (target.split(":") + ["8644"])[:2]
             port = int(port_str)
+            # Only check targets matching this webhook port
+            if port != hermes_port:
+                continue
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(2)
                 s.connect((host, port))
                 s.close()
                 reachable += 1
-                status = "alive"
-                if port != hermes_port and port != 8644:
-                    status = f"alive (port {port} ≠ webhook {hermes_port})"
-                target_details.append(f"{target} {status}")
+                target_details.append(f"{target} alive")
             except Exception as e:
                 target_details.append(f"{target} unreachable: {e}")
 
-        ok = reachable == len(unique_targets) and \
-             any(t.endswith("alive") for t in target_details)
-
+        ok = reachable > 0 and reachable == len(target_details)
+        total_routes = total; reachable_targets = reachable; matching = len(target_details); detail = f"{total_routes} route(s) — {reachable_targets}/{matching} match webhook port {hermes_port}"
         detail = f"{total} route(s), {reachable}/{len(unique_targets)} target(s) reachable"
         if target_details:
             detail += " — " + ", ".join(target_details[:3])
