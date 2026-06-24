@@ -450,9 +450,8 @@ step_begin "$T_WEBHOOK"
 source "$LIB_DIR/patch-webhook.sh"
 source "$LIB_DIR/patch-profiles.sh"
 unset PATCH_STEP_PARENT
-
-# Setup Hermes gateway + webhook (install service, configure, restart)
-python3 "$LIB_DIR/setup_gateway.py"
+# Force gateway restart to pick up patched webhook.py
+python3 "$LIB_DIR/setup_gateway.py" --restart-only
 
 # Step 9: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
