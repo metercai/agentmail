@@ -10,10 +10,9 @@
 #   [4] Basic config (snapshots, manager address, webhook mode)
 #   [5] Save config + deploy bridge
 #   [6] Install Hermes tools
-#   [7] Patch webhook subscriptions
-#   [8] Register profile addresses
-#   [9] Diagnostics
-#  [10] Send/receive test
+#   [7] Patch webhook + profile hooks
+#   [8] Diagnostics
+#   [9] Send/receive test
 # =============================================================================
 TOTAL_STEPS=9
 
