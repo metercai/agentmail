@@ -226,7 +226,19 @@ def __log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
     }
     if pong_status:
         entry["pong_status"] = pong_status
-    _log_dir = _os.environ.get("AGENTMAIL_HOME", _os.path.expanduser("~/.agentmail/default"))
+    _log_dir = _os.environ.get("AGENTMAIL_HOME", "")
+    if not _log_dir:
+        _amail = _os.path.expanduser("~/.hermes/amail.json")
+        if _os.path.exists(_amail):
+            try:
+                import json as _json
+                _acfg = _json.load(open(_amail))
+                _email = _acfg.get("email", "")
+                if _email:
+                    _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
+            except: pass
+    if not _log_dir:
+        _log_dir = _os.path.expanduser("~/.agentmail/default")
     log_path = _os.path.join(_log_dir, "agentmail.log")
     try:
         with open(log_path, "a") as f:
