@@ -4,7 +4,7 @@
 # Usage: bash integrate.sh
 #
 # Steps:
-#   [1] Gateway connectivity + auth (admin_key / product code)
+#   [1] Gateway connectivity
 #   [2] Domain selection (admin_key) / Activation + system_name (product code)
 #   [3] Basic config (snapshots, manager address, webhook mode)
 #   [4] Save config + deploy bridge
@@ -60,7 +60,7 @@ echo ""
 TITLE="$T_TITLE" python3 "$SCRIPT_DIR/lib/print_banner.py"
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 1: Configure agentmail gateway + authentication                     ║
+# ║  Step 1: Configure agentmail gateway                                         ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 step_begin "$T_GATEWAY"
 
