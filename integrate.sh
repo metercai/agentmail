@@ -448,7 +448,14 @@ python3 "$LIB_DIR/setup_gateway.py"
 # Step 9: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 set +e  # non-zero from partial failures must not abort
-python3 "$SCRIPT_DIR/lib/check_status.py"
+AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail.json')).get('email',''))" 2>/dev/null || echo "")
+[ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; c=json.load(open('$HOME/.hermes/amail_gateway.json')); print(c.get('domain',''))" 2>/dev/null || echo "")
+if [ -n "$AMAIL_AGENT" ]; then
+    AGENT_FLAG="--agent $AMAIL_AGENT"
+else
+    AGENT_FLAG=""
+fi
+python3 "$SCRIPT_DIR/lib/check_status.py" $AGENT_FLAG
 STEP9_EXIT=$?
 set -e
 if [ $STEP9_EXIT -eq 0 ]; then
@@ -456,7 +463,7 @@ if [ $STEP9_EXIT -eq 0 ]; then
 else
     step_warn "$T_DIAG_PARTIAL"
 fi
-python3 "$SCRIPT_DIR/lib/check_status.py" --ping
+python3 "$SCRIPT_DIR/lib/check_status.py" --ping $AGENT_FLAG
 
 step_begin "Welcome email"
 python3 "$SCRIPT_DIR/lib/send_welcome.py"

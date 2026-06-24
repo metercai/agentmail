@@ -758,7 +758,12 @@ def _run_ping_test() -> int:
     cfg = json.loads(config_path.read_text())
     gw_url = cfg.get("gateway_url", "")
     ak = cfg.get("admin_key", "")
-    agent_email = f"tow@{cfg.get('domain', '')}"
+    amail_path = Path.home() / ".hermes" / "amail.json"
+    if amail_path.exists():
+        acfg = json.loads(amail_path.read_text())
+        agent_email = acfg.get("email", "")
+    if not agent_email:
+        agent_email = f"{cfg.get('system_name','tow')}@{cfg.get('domain','')}"
     manager = cfg.get("manager_address", "")
 
     if not all([gw_url, ak, agent_email, manager]):
