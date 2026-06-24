@@ -119,6 +119,28 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
     return False
 
 def main():
+    # Standalone restart: read configs instead of env vars
+    if "--restart" in sys.argv:
+        import json, os
+        gc_path = os.path.expanduser("~/.hermes/amail_gateway.json")
+        if os.path.exists(gc_path):
+            gc = json.load(open(gc_path))
+            os.environ.setdefault("GATEWAY_URL", gc.get("gateway_url", ""))
+            os.environ.setdefault("ADMIN_KEY", gc.get("admin_key", ""))
+            os.environ.setdefault("SYSTEM_ID", gc.get("system_id", ""))
+            os.environ.setdefault("AMAIL_DOMAIN", gc.get("domain", ""))
+            os.environ.setdefault("WEBHOOK_HOST", gc.get("webhook_host", ""))
+        bc_path = os.path.expanduser("~/.agentmail/amail_bridge.toml")
+        if os.path.exists(bc_path):
+            # Parse TOML for webhook_host from addr
+            import re as _re
+            with open(bc_path) as f:
+                for line in f:
+                    m = _re.match(r'^\s*addr\s*=\s*"([^"]+)"', line)
+                    if m:
+                        os.environ.setdefault("WEBHOOK_HOST", m.group(1))
+                        break
+
     # Read env vars from integrate.sh
     gw = os.environ.get("GATEWAY_URL", "")
     ak = os.environ.get("ADMIN_KEY", "")
