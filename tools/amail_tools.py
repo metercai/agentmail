@@ -114,6 +114,7 @@ class _GatewayClient:
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
         sender: Optional[str] = None,
+        message_id: Optional[str] = None,
     ) -> dict:
         """POST /api/v1/send"""
         payload: Dict[str, Any] = {
@@ -128,12 +129,17 @@ class _GatewayClient:
             payload["cc"] = cc
         if attachments:
             payload["attachments"] = attachments
-        if in_reply_to or references:
-            payload["headers"] = {}
-            if in_reply_to:
-                payload["headers"]["In-Reply-To"] = in_reply_to
-            if references:
-                payload["headers"]["References"] = references
+
+        headers = {}
+        if message_id:
+            headers["Message-ID"] = message_id
+        if in_reply_to:
+            headers["In-Reply-To"] = in_reply_to
+        if references:
+            headers["References"] = references
+        if headers:
+            payload["headers"] = headers
+
         return self._request("POST", "/api/v1/send", body=payload)
 
     # ── Attachment API ──────────────────────────────────────────
@@ -1348,6 +1354,8 @@ def send_mail(
     if upload_errors and not attachment_ids:
         return {"success": False, "error": "All attachments failed", "details": upload_errors}
 
+    import uuid as _uuid
+
     result = client.send_mail(
         to=",".join(to_list),
         subject=subject,
@@ -1357,10 +1365,11 @@ def send_mail(
         in_reply_to=in_reply_to,
         references=references,
         sender=sender,
+        message_id=_build_message_id(config),
     )
 
     # Store outbound message metadata for future replies
-    out_msg_id = result.get("message_id", "")
+    out_msg_id = result.get("message_id") or result.get("email_id") or ""
     if out_msg_id:
         _store_message_meta(out_msg_id, references=references)
 
@@ -2435,6 +2444,15 @@ registry.register(
 # ═══════════════════════════════════════════════════════════════
 
 # Local-only helpers for raw email snapshots (not gateway data)
+
+
+def _build_message_id(config: dict) -> str:
+    """Generate a Message-ID header value from the configured domain."""
+    import uuid as _uuid
+    domain = config.get("domain", "") or "amail.local"
+    return f"<{_uuid.uuid4().hex}@{domain}>"
+
+
 def _sanitize_message_id(message_id: str) -> str:
     mid = message_id.strip().lstrip("<").rstrip(">")
     for ch in "/\\:*?\"<>|@ ":
