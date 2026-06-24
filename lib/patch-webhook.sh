@@ -1,6 +1,8 @@
 # Step 7: Patch Hermes — webhook preprocessor
 # ═══════════════════════════════════════════════════════════════
-step_begin "$T_WEBHOOK"
+if [ -z "${PATCH_STEP_PARENT:-}" ]; then
+    step_begin "$T_WEBHOOK"
+fi
 
 WEBHOOK_PY="$HERMES_DIR/gateway/platforms/webhook.py"
 

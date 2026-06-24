@@ -15,7 +15,7 @@
 #   [9] Diagnostics
 #  [10] Send/receive test
 # =============================================================================
-TOTAL_STEPS=10
+TOTAL_STEPS=9
 
 set -eo pipefail
 
@@ -266,7 +266,7 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
 else
     if $IS_SHARED_DOMAIN; then
-        step_begin "Shared domain activation"
+        step_begin "$T_ACTIVATE"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
         ACTIVATE_RESULT=$(python3 "$LIB_DIR/activate_system.py")
@@ -441,11 +441,16 @@ fi
 # ║  Steps 6-10: tools, webhook, profiles, diagnostics, send test              ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 source "$LIB_DIR/install-tools.sh"
+
+# Steps 7&8: Patch Hermes (webhook + profiles + register)
+PATCH_STEP_PARENT=1
+step_begin "$T_WEBHOOK"
 source "$LIB_DIR/patch-webhook.sh"
+source "$LIB_DIR/patch-profiles.sh"
+unset PATCH_STEP_PARENT
 
 # Setup Hermes gateway + webhook (install service, configure, restart)
 python3 "$LIB_DIR/setup_gateway.py"
-source "$LIB_DIR/patch-profiles.sh"
 
 # Step 9: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
@@ -459,9 +464,6 @@ else
     step_warn "$T_DIAG_PARTIAL"
 fi
 python3 "$SCRIPT_DIR/lib/check_status.py" --ping
-
-# Restart gateway to pick up webhook routes registered by Step 8
-python3 "$LIB_DIR/setup_gateway.py" --restart-only
 
 step_begin "Welcome email"
 python3 "$SCRIPT_DIR/lib/send_welcome.py"

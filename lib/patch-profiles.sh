@@ -1,6 +1,8 @@
 # Step 8: Patch Hermes — profile hooks
 # ═══════════════════════════════════════════════════════════════
-step_begin "$T_PROFILES"
+if [ -z "${PATCH_STEP_PARENT:-}" ]; then
+    step_begin "$T_PROFILES"
+fi
 
 PROFILES_PY="$HERMES_DIR/hermes_cli/profiles.py"
 
