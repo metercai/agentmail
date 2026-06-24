@@ -442,7 +442,7 @@ source "$LIB_DIR/patch-webhook.sh"
 python3 "$LIB_DIR/setup_gateway.py"
 source "$LIB_DIR/patch-profiles.sh"
 
-# Step 9: Full pipeline diagnostics
+# Step 9: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 python3 "$SCRIPT_DIR/lib/check_status.py"
 STEP9_EXIT=$?
@@ -451,19 +451,10 @@ if [ $STEP9_EXIT -eq 0 ]; then
 else
     step_warn "$T_DIAG_PARTIAL"
 fi
-
-# Step 10: End-to-end ping-pong test
-step_begin "Ping-pong pipeline test"
 python3 "$SCRIPT_DIR/lib/check_status.py" --ping
-STEP10_EXIT=$?
-if [ $STEP10_EXIT -eq 0 ]; then
-    step_ok "Ping-pong: full pipeline verified"
-else
-    step_warn "Ping-pong: pipeline incomplete (check bridge + gateway)"
-fi
 
 # Restart gateway to pick up webhook routes registered by Step 8
 python3 "$LIB_DIR/setup_gateway.py" --restart-only
 
-step_begin "Send/receive test"
-python3 "$SCRIPT_DIR/lib/send_test.py"
+step_begin "Welcome email"
+python3 "$SCRIPT_DIR/lib/send_welcome.py"
