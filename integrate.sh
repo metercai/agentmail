@@ -182,16 +182,21 @@ fi
 if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
-    info "$T_DOMAIN_QUERY"
-    DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-    SELECTED_DOMAINS=""
-    DOMAIN_OK_COUNT=0
-
-    while true; do
-        # Refresh domain list
+    if [ -n "$AMAIL_DOMAIN" ]; then
+        SELECTED_DOMAINS="$AMAIL_DOMAIN"
+        DOMAIN_OK_COUNT=1
+        SYSTEM_NAME=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('system_name',''))" 2>/dev/null || echo "")
+        step_ok "domain = $AMAIL_DOMAIN (identifier: ${SYSTEM_NAME:-?})"
+    else
+        info "$T_DOMAIN_QUERY"
         DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-        BARE_DOMAINS=$(python3 "$SCRIPT_DIR/lib/list_domains.py" 2>/dev/null)
-        DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
+        SELECTED_DOMAINS=""
+        DOMAIN_OK_COUNT=0
+
+        while true; do
+            DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
+            BARE_DOMAINS=$(python3 "$SCRIPT_DIR/lib/list_domains.py" 2>/dev/null)
+            DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
         echo "$DOMAINS_JSON" | python3 -c "
@@ -251,11 +256,11 @@ print(f'    [{domain_count+1}] Enter a new domain')
             echo -e "${YELLOW}failed (will continue)${NC}"
         fi
     done
-
     # Use first domain as primary for downstream steps
     AMAIL_DOMAIN=$(echo "$SELECTED_DOMAINS" | awk '{print $1}')
     if [ -n "$AMAIL_DOMAIN" ]; then
         step_ok "domains: $SELECTED_DOMAINS ($DOMAIN_OK_COUNT OK)"
+    fi
     fi
 else
     if $IS_SHARED_DOMAIN; then
