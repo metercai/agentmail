@@ -204,11 +204,17 @@ if "PREPROCESS_REGISTRY.get" not in content:
         else:
             print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
-# ── Patch 4: add _log_ping_event helper (at end of file) ────
-if "def _log_ping_event" not in content or "~/.hermes/amail.log" in content:
-    log_fn = '''
-
-def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
+# ── Patch 4: ensure _log_ping_event helper (always replace) ────
+# Remove old instance if present, then append latest
+import re as _re4
+content, _nr = _re4.subn(
+    r'\n+def _log_ping_event\(.*?(?=\n(?:def |\Z))',
+    '',
+    content,
+    count=1,
+    flags=_re4.DOTALL
+)
+def __log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
     """Append a JSON line to agentmail.log for ping-pong tracking."""
     import json, os as _os
     from datetime import datetime, timezone
@@ -227,11 +233,10 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
             f.write(json.dumps(entry, ensure_ascii=False) + "\\n")
     except Exception:
         pass
-'''
-    content += log_fn
-    patched = True
-    print("Patch 4: _log_ping_event added", file=sys.stderr)
-
+import inspect as _ins
+content += "\n" + _ins.getsource(__log_ping_event)
+patched = True
+print("Patch 4: _log_ping_event added", file=sys.stderr)
 # ── Patch 5: add ping-pong interception (end-to-end test) ────
 if "__amail_ping__" not in content and "__amail_pong__" not in content:
     ping_block = '''
