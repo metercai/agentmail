@@ -183,13 +183,13 @@ if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
     info "$T_DOMAIN_QUERY"
-    DOMAINS_JSON=$(curl -s "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
+    DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
     SELECTED_DOMAINS=""
     DOMAIN_OK_COUNT=0
 
     while true; do
         # Refresh domain list
-        DOMAINS_JSON=$(curl -s "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
+        DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
         BARE_DOMAINS=$(python3 "$SCRIPT_DIR/lib/list_domains.py" 2>/dev/null)
         DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
