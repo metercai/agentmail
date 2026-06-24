@@ -205,7 +205,7 @@ if "PREPROCESS_REGISTRY.get" not in content:
             print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
 # ── Patch 4: add _log_ping_event helper (at end of file) ────
-if "_log_ping_event" not in content:
+if "def _log_ping_event" not in content or "~/.hermes/amail.log" in content:
     log_fn = '''
 
 def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):

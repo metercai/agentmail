@@ -750,6 +750,8 @@ def _run_ping_test() -> int:
     import uuid, time, json, socket, base64
     from pathlib import Path
 
+    global _AGENT_DIR
+
     config_path = Path.home() / ".hermes" / "amail_gateway.json"
     if not config_path.exists():
         print("✗ amail_gateway.json not found")
@@ -764,6 +766,9 @@ def _run_ping_test() -> int:
         agent_email = acfg.get("email", "")
     if not agent_email:
         agent_email = f"{cfg.get('system_name','tow')}@{cfg.get('domain','')}"
+    # Auto-set agent dir from resolved email
+    if _AGENT_DIR is None:
+        _AGENT_DIR = Path.home() / ".agentmail" / agent_email.replace("@", "_")
     manager = cfg.get("manager_address", "")
 
     if not all([gw_url, ak, agent_email, manager]):
