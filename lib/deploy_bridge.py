@@ -165,7 +165,7 @@ def main():
             ak = domain_key
 
     # ── Bridge deployment ────────────────────────────────────
-    bridge_dir = os.path.expanduser("~/.hermes/bin")
+    bridge_dir = os.path.expanduser("~/.agentmail/bin")
     bridge_bin = os.environ.get("AMAIL_BRIDGE_BIN",
         os.path.join(bridge_dir, "amail-bridge"))
     os.makedirs(bridge_dir, exist_ok=True)
