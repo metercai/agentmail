@@ -4,17 +4,16 @@
 # Usage: bash integrate.sh
 #
 # Steps:
-#   [1] Gateway connectivity
-#   [2] Auth method (admin_key / product code)
-#   [3] Domain selection (admin_key) / Activation + system_name (product code)
-#   [4] Basic config (snapshots, manager address, webhook mode)
-#   [5] Save config + deploy bridge
-#   [6] Install Hermes tools
-#   [7] Patch webhook + profile hooks
-#   [8] Diagnostics
-#   [9] Send/receive test
+#   [1] Gateway connectivity + auth (admin_key / product code)
+#   [2] Domain selection (admin_key) / Activation + system_name (product code)
+#   [3] Basic config (snapshots, manager address, webhook mode)
+#   [4] Save config + deploy bridge
+#   [5] Install Hermes tools
+#   [6] Patch webhook + profile hooks
+#   [7] Diagnostics
+#   [8] Send/receive test
 # =============================================================================
-TOTAL_STEPS=9
+TOTAL_STEPS=8
 
 set -eo pipefail
 
@@ -61,7 +60,7 @@ echo ""
 TITLE="$T_TITLE" python3 "$SCRIPT_DIR/lib/print_banner.py"
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 1: Gateway connectivity                                              ║
+# ║  Step 1: Configure agentmail gateway + authentication                     ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 step_begin "$T_GATEWAY"
 
@@ -86,11 +85,6 @@ HEALTH=$(curl -s -o /dev/null -w '%{http_code}' "$GATEWAY_URL/health" 2>/dev/nul
 UPTIME=$(curl -s "$GATEWAY_URL/health" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('uptime_secs','?'))" 2>/dev/null || echo "?")
 echo -e "${GREEN}$T_OK${NC}"
 step_ok "$T_GATEWAY_OK ${UPTIME}s)"
-
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 2: Authentication (admin_key or product code)                        ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
-step_begin "$T_AUTH"
 
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
