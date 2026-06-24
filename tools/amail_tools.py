@@ -2718,6 +2718,8 @@ def store_inbound_message(
         "thread_id": thread_id,
         "my_amail_addr": my_amail_addr,
     })
+    # Metadata is now pre-populated by the Rust gateway before webhook delivery,
+    # but store it here as well for safety (local-only or gateway without the Rust fix).
     config = _load_profile_config()
     if config:
         client = _GatewayClient(config["gateway_url"], config["api_key"])
