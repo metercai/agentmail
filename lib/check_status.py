@@ -26,15 +26,30 @@ CROSS  = '\u2717'
 
 # ── Path constants ─────────────────────────────────────────────
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+AGENTMAIL_HOME = Path.home() / ".agentmail"
 GW_CONFIG   = HERMES_HOME / "amail_gateway.json"
-BRIDGE_CFG  = HERMES_HOME / "amail_bridge.toml"
-BRIDGE_PID  = HERMES_HOME / "bridge.pid"
-BRIDGE_LOG  = HERMES_HOME / "amail-bridge.log"
+BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
+BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
+BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
 HERMES_CFG  = HERMES_HOME / "config.yaml"
 SUBS_FILE   = HERMES_HOME / "webhook_subscriptions.json"
 PROFILES_DIR = HERMES_HOME / "profiles"
-AMAIL_LOG   = HERMES_HOME / "amail.log"
-ROUTES_FILE = HERMES_HOME / "amail_routes.toml"
+ROUTES_FILE = AGENTMAIL_HOME / "amail_routes.toml"
+
+# Agent-scoped paths (require --agent argument for per-agent data)
+_AGENT_DIR: Path | None = None
+
+def _agentmail_log() -> Path:
+    global _AGENT_DIR
+    if _AGENT_DIR:
+        return _AGENT_DIR / "agentmail.log"
+    return Path.home() / ".agentmail" / "default" / "agentmail.log"
+
+def _agentmail_raw() -> Path:
+    global _AGENT_DIR
+    if _AGENT_DIR:
+        return _AGENT_DIR
+    return Path.home() / ".agentmail" / "default"
 
 # ── TOML-like parser (bare keys + sections) ────────────────────
 def _parse_toml(text: str) -> dict[str, dict[str, str]]:
@@ -677,14 +692,14 @@ def check_profiles(c: Check):
 
 def _check_recent_email_activity(c: Check):
     """P1: Extract recent email activity from amail.log."""
-    if not AMAIL_LOG.exists():
+    if not _agentmail_log().exists():
         c.add("profile", "recent_activity", False,
-              "amail.log not found (no email processed yet)",
+              "agentmail.log not found (no email processed yet)",
               "No activity is normal if no emails have arrived")
         return
 
     try:
-        lines = [l.strip() for l in AMAIL_LOG.read_text().splitlines()
+        lines = [l.strip() for l in _agentmail_log().read_text().splitlines()
                  if l.strip()]
         if not lines:
             c.add("profile", "recent_activity", False,
@@ -792,8 +807,8 @@ def _run_ping_test() -> int:
         print(f"✗ SMTP send failed: {e}")
         return 1
 
-    # Poll amail.log for pong_returned — append results incrementally
-    amail_log = Path.home() / ".hermes" / "amail.log"
+    # Poll agentmail.log for pong_returned — append results incrementally
+    amail_log = _agentmail_log()
     deadline = time.time() + 60
     found_ping = found_pong = found_sent = False
     ping_ts = pong_ts = sent_ts = ""
@@ -853,7 +868,7 @@ def _run_ping_test() -> int:
         return 1
 
     # Verify raw email snapshots were saved
-    raw_dir = Path.home() / ".hermes" / "raw_email"
+    raw_dir = _agentmail_raw()
     snap_ok = 0
     snap_total = 0
     snap_check_msg = ""
@@ -893,6 +908,14 @@ def _run_ping_test() -> int:
 #  Main
 # ═══════════════════════════════════════════════════════════════
 def main():
+    global _AGENT_DIR
+    if "--agent" in sys.argv:
+        try:
+            ia = sys.argv.index("--agent")
+            agent = sys.argv[ia + 1]
+            _AGENT_DIR = Path.home() / ".agentmail" / agent.replace("@", "_")
+        except (ValueError, IndexError):
+            pass
     if "--ping" in sys.argv:
         return _run_ping_test()
 

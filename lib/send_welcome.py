@@ -233,7 +233,8 @@ def main():
     verified = poll_stats(gw, ak, agent_email)
 
     # Check amail processing log for diagnostic info
-    log_path = os.path.expanduser("~/.hermes/amail.log")
+    ag_home = os.environ.get("AGENTMAIL_HOME", os.path.expanduser("~/.agentmail/default"))
+    log_path = os.path.join(ag_home, "agentmail.log")
     if os.path.exists(log_path):
         with open(log_path) as f:
             amail_lines = [l.strip() for l in f.readlines() if l.strip()]

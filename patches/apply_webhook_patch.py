@@ -91,6 +91,21 @@ def _resolve_anchors(git_root: str, commit: str) -> dict:
     return anchors
 
 
+def _auto_detect_anchors(lines: list) -> dict:
+    """Auto-scan file for anchor positions by known string markers."""
+    anchors = {}
+    for i, line in enumerate(lines, 1):
+        if "from typing import " in line and "typing" not in anchors:
+            anchors["typing"] = i
+        if "logger = logging.getLogger(__name__)" in line and "logger" not in anchors:
+            anchors["logger"] = i
+        if "# Format prompt from template" in line and "prompt" not in anchors:
+            anchors["prompt"] = i
+        if "# Non-blocking" in line and "non_blocking" not in anchors:
+            anchors["non_blocking"] = i
+    return anchors
+
+
 # ── Main ──────────────────────────────────────────────────────
 
 if len(sys.argv) < 2:
@@ -109,6 +124,7 @@ with open(target) as f:
     content = f.read()
 
 lines = content.split('\n')
+_original_lines = list(lines)  # snapshot for diagnosis
 patched = False
 
 # ── Patch 1: add Callable to typing import ────────────────────
@@ -188,9 +204,109 @@ if "PREPROCESS_REGISTRY.get" not in content:
         else:
             print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
+# ── Patch 4: add _log_ping_event helper (at end of file) ────
+if "_log_ping_event" not in content:
+    log_fn = '''
+
+def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
+    """Append a JSON line to agentmail.log for ping-pong tracking."""
+    import json, os as _os
+    from datetime import datetime, timezone
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "dir": dir_, "ping_id": ping_id,
+        "from": payload.get("from", ""),
+        "to": payload.get("to", ""),
+    }
+    if pong_status:
+        entry["pong_status"] = pong_status
+    _log_dir = _os.environ.get("AGENTMAIL_HOME", _os.path.expanduser("~/.agentmail/default"))
+    log_path = _os.path.join(_log_dir, "agentmail.log")
+    try:
+        with open(log_path, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\\n")
+    except Exception:
+        pass
+'''
+    content += log_fn
+    patched = True
+    print("Patch 4: _log_ping_event added", file=sys.stderr)
+
+# ── Patch 5: add ping-pong interception (end-to-end test) ────
+if "__amail_ping__" not in content and "__amail_pong__" not in content:
+    ping_block = '''
+        # ── Ping-pong interception (end-to-end test) ────────────────
+        ping_subject = (payload.get("subject") or "").strip()
+        if ping_subject.startswith("__amail_ping__:"):
+            ping_id = ping_subject.split(":", 1)[1].strip()
+            if ping_id:
+                try:
+                    import json as _json, os as _os, sys as _sys
+                    from datetime import datetime, timezone
+                    _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "tools")
+                    _sys.path.insert(0, _os.path.abspath(_tools_dir))
+                    from amail_tools import send_mail as _send_mail
+                    pong_body = _json.dumps({
+                        "ping_id": ping_id,
+                        "event": {"prompt": prompt, "route": route_name,
+                                  "delivery_id": delivery_id, "skills": skills},
+                    }, indent=2)
+                    _log_ping_event("ping_intercepted", ping_id, payload, "")
+                    pong_result = _send_mail(
+                        to=payload.get("from", ""),
+                        subject="__amail_pong__:" + ping_id, body=pong_body,
+                        message_id=payload.get("message_id") or "",
+                    )
+                    pong_status = "ok" if pong_result.get("success") else pong_result.get("error", "?")
+                except Exception as _e:
+                    pong_status = str(_e)
+                    logger.error("[ping] send_mail failed: %s", _e)
+                _log_ping_event("pong_sent", ping_id, payload, pong_status)
+            return web.json_response({"pong": ping_id, "status": "pong_sent"})
+
+        elif ping_subject.startswith("__amail_pong__:"):
+            ping_id = ping_subject.split(":", 1)[1].strip()
+            if ping_id:
+                _log_ping_event("pong_returned", ping_id, payload, "")
+            return web.json_response({"pong": ping_id, "status": "pong_returned"})
+
+'''
+    # Insert before "# Non-blocking" comment
+    target_line = "# Non-blocking"
+    if target_line in content:
+        content = content.replace(target_line, ping_block + "        " + target_line, 1)
+        patched = True
+        print("Patch 5: ping-pong interception inserted", file=sys.stderr)
+    else:
+        print("WARNING: could not find '# Non-blocking' — patch 5 skipped", file=sys.stderr)
+
 if patched:
     with open(target, "w") as f:
         f.write(content)
     print("OK")
 else:
     print("ALREADY PATCHED")
+
+# ── Version diagnosis ─────────────────────────────────────────
+# If commit is not in ANCHOR_MAP, auto-detect positions and
+# suggest a new entry for the Hermes team to commit.
+if hermes_commit != "unknown":
+    _in_map = any(
+        _is_ancestor(git_root, sc, hermes_commit)
+        for sc, _ in WEBHOOK_ANCHOR_MAP
+    )
+    if not _in_map:
+        detected = _auto_detect_anchors(_original_lines)
+        print(file=sys.stderr)
+        print(f"  ╔═══ NEW HERMES COMMIT: {hermes_commit}", file=sys.stderr)
+        print(f"  ║ Not in WEBHOOK_ANCHOR_MAP — auto-detected:", file=sys.stderr)
+        for k in ["typing", "logger", "prompt", "non_blocking"]:
+            v = detected.get(k, "?")
+            print(f"  ║   {k}: {v}", file=sys.stderr)
+        print(f"  ║", file=sys.stderr)
+        print(f"  ║ Suggested anchor entry:", file=sys.stderr)
+        print(f'  ║   ("{hermes_commit}", {{"typing": {detected.get("typing","?")},'
+              f' "logger": {detected.get("logger","?")},'
+              f' "prompt": {detected.get("prompt","?")}}}),', file=sys.stderr)
+        print(f"  ║ Add to WEBHOOK_ANCHOR_MAP and commit.", file=sys.stderr)
+        print(f"  ╚═══", file=sys.stderr)

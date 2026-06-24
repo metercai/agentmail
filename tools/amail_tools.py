@@ -2613,7 +2613,7 @@ def _save_outbound_snapshot(out_msg_id: str, my_addr: str, sender: str,
     safe_addr = _sanitize_message_id(my_addr)
     now = datetime.now()
     yyyymm = now.strftime("%Y%m")
-    snapshot_dir = _raw_email_dir() / safe_addr / yyyymm
+    snapshot_dir = _raw_email_dir() / yyyymm
     snapshot_path = snapshot_dir / f"out-{safe_mid}.json"
     payload = {
         "message_id": out_msg_id,
@@ -2661,21 +2661,27 @@ def _current_persona_name() -> Optional[str]:
     return name if name else None
 
 
+def _agentmail_dir() -> Path:
+    """Return the per-agent data directory (AGENTMAIL_HOME env, or fallback)."""
+    env = os.environ.get("AGENTMAIL_HOME", "")
+    if env:
+        return Path(env)
+    return Path.home() / ".agentmail" / "default"
+
+
 def _raw_email_dir() -> Path:
-    profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
-    if not profile_dir:
-        profile_dir = Path.home() / ".hermes"
-    return Path(profile_dir) / "raw_email"
+    """Return the directory for raw email snapshots (yyyymm subdir appended by caller)."""
+    return _agentmail_dir()
 
 
 
 def _log_amail(direction: str, from_addr: str, to_addr: str, subject: str) -> None:
     """Append a lightweight email processing log entry (not dependent on save_raw_snapshots).
     
-    Log is written to ~/.hermes/amail.log for integration test verification.
+    Log is written to {AGENTMAIL_HOME}/agentmail.log for integration test verification.
     """
     import json as _json
-    log_path = Path.home() / ".hermes" / "amail.log"
+    log_path = _agentmail_dir() / "agentmail.log"
     entry = _json.dumps({
         "ts": datetime.now().isoformat(),
         "dir": direction,
@@ -2733,7 +2739,7 @@ def store_inbound_message(
     safe_addr = _sanitize_message_id(my_amail_addr)
     now = datetime.now()
     yyyymm = now.strftime("%Y%m")
-    snapshot_dir = _raw_email_dir() / safe_addr / yyyymm
+    snapshot_dir = _raw_email_dir() / yyyymm
     snapshot_path = snapshot_dir / f"in-{safe_mid}.json"
     attch_dir = snapshot_dir / "attch" / safe_mid
 

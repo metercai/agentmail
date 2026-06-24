@@ -275,6 +275,11 @@ else
         ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::set-admin-key::\(.*\)/\1/')
         AMAIL_DOMAIN=$(echo "$ACTIVATE_RESULT" | grep '^::set-domain::' | sed 's/.*::set-domain::\(.*\)/\1/')
         SYSTEM_NAME=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-name::' | sed 's/.*::set-system-name::\(.*\)/\1/')
+        # Save raw system admin key immediately after activation
+        if [ -n "$SYSTEM_ID" ] && [ -n "$ADMIN_KEY" ]; then
+            mkdir -p "$HOME/.agentmail/.system_raw_key"
+            echo "$ADMIN_KEY" > "$HOME/.agentmail/.system_raw_key/${SYSTEM_ID}_admin.key"
+        fi
         if [ -n "$SYSTEM_ID" ] && [ -n "$ADMIN_KEY" ]; then
             USE_PRODUCT_CODE=false
             step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
@@ -444,8 +449,10 @@ source "$LIB_DIR/patch-profiles.sh"
 
 # Step 9: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
+set +e  # non-zero from partial failures must not abort
 python3 "$SCRIPT_DIR/lib/check_status.py"
 STEP9_EXIT=$?
+set -e
 if [ $STEP9_EXIT -eq 0 ]; then
     step_ok "$T_DIAG_ALL"
 else

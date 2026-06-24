@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy amail-bridge: domain key, bridge config, startup.
-Replaces deploy-bridge.sh — cleaner, testable Python."""
+"""Deploy amail-bridge: domain key, bridge config, startup."""
 import sys, os, json, subprocess, socket, time
 import urllib.request, urllib.error, re
 
@@ -68,7 +67,7 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
                         ak: str, sid: str, api_key: str = "",
                         webhook_secret: str = ""):
     """Write amail_bridge.toml."""
-    log_path = os.path.expanduser("~/.hermes/amail-bridge.log")
+    log_path = os.path.expanduser("~/.agentmail/amail-bridge.log")
     lines = [
         f'addr = "{addr}"',
         f'mode = "{mode}"',
@@ -105,8 +104,7 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
         except: pass
         os.remove(pid_path)
 
-    log_path = os.path.expanduser("~/.hermes/bridge.log")
-    with open(log_path, 'a') as lf:
+    with open(os.devnull, 'w') as lf:
         proc = subprocess.Popen(
             [bin_path, '-c', cfg_path],
             stdout=lf, stderr=lf,
@@ -167,8 +165,7 @@ def main():
             ak = domain_key
 
     # ── Bridge deployment ────────────────────────────────────
-    home = os.path.expanduser("~/.hermes")
-    bridge_dir = os.path.join(home, "bin")
+    bridge_dir = os.path.expanduser("~/.hermes/bin")
     bridge_bin = os.environ.get("AMAIL_BRIDGE_BIN",
         os.path.join(bridge_dir, "amail-bridge"))
     os.makedirs(bridge_dir, exist_ok=True)
@@ -206,7 +203,9 @@ def main():
 
     # Write bridge config
     bridge_mode = "pull" if wh_mode == "bridge" else "push"
-    bridge_cfg = os.path.join(home, "amail_bridge.toml")
+    cfg_dir = os.path.expanduser("~/.agentmail")
+    os.makedirs(cfg_dir, exist_ok=True)
+    bridge_cfg = os.path.join(cfg_dir, "amail_bridge.toml")
 
     # Create bridge API key
     import uuid
@@ -229,7 +228,7 @@ def main():
                         webhook_secret=webhook_secret)
 
     # Update gateway config
-    gw_cfg_path = os.path.join(home, "amail_gateway.json")
+    gw_cfg_path = os.path.expanduser("~/.hermes/amail_gateway.json")
     with open(gw_cfg_path) as f:
         gw_cfg = json.load(f)
     gw_cfg["webhook_host"] = wh_host
@@ -237,13 +236,13 @@ def main():
         json.dump(gw_cfg, f, indent=2)
 
     # Start bridge
-    pid_path = os.path.join(home, "bridge.pid")
+    pid_path = os.path.join(cfg_dir, "bridge.pid")
     if start_bridge(bridge_bin, bridge_cfg, pid_path):
         log_ok(f"bridge started (mode={bridge_mode}, {wh_host})")
         if bridge_key:
             log_ok(f"bridge API key created (category=bridge)")
     else:
-        log_warn(f"bridge failed to start — check {home}/bridge.log")
+        log_warn(f"bridge failed to start — check {cfg_dir}/bridge.log")
 
     return 0
 
