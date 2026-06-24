@@ -182,6 +182,10 @@ fi
 if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
+    # Read domain from stored config if env var not set
+    if [ -z "$AMAIL_DOMAIN" ] && [ -f "$HOME/.hermes/amail_gateway.json" ]; then
+        AMAIL_DOMAIN=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('domain',''))" 2>/dev/null || echo "")
+    fi
     if [ -n "$AMAIL_DOMAIN" ]; then
         SELECTED_DOMAINS="$AMAIL_DOMAIN"
         DOMAIN_OK_COUNT=1
