@@ -87,6 +87,21 @@ def _resolve_anchors(git_root: str, commit: str) -> dict:
     return anchors
 
 
+def _auto_detect_anchors(lines: list) -> dict:
+    """Auto-scan file for anchor positions by known string markers."""
+    anchors = {}
+    for i, line in enumerate(lines, 1):
+        if "_maybe_register_gateway_service(canon)" in line and "register" not in anchors:
+            anchors["register"] = i
+        if "return profile_dir" in line.strip() and "return" not in anchors:
+            # Only pick the first occurrence AFTER the register point
+            if "register" in anchors and i > anchors["register"]:
+                anchors["return"] = i
+        if "Profile '" in line and "deleted" in line and "delete" not in anchors:
+            anchors["delete"] = i
+    return anchors
+
+
 def _find_return_after_register(content: str, lines: list, register_line: int) -> int:
     """Find the first `return profile_dir` after the _maybe_register line."""
     search_start = register_line - 1  # 0-indexed
@@ -127,6 +142,7 @@ with open(target) as f:
     content = f.read()
 
 lines = content.split('\n')
+_original_lines = list(lines)
 patched = False
 
 hook_created = '''
@@ -205,3 +221,27 @@ if patched:
     print("OK")
 else:
     print("ALREADY PATCHED")
+
+# ── Version diagnosis ─────────────────────────────────────────
+if hermes_commit != "unknown":
+    _in_map = any(
+        _is_ancestor(git_root, sc, hermes_commit)
+        for sc, _ in PROFILES_ANCHOR_MAP
+    )
+    if not _in_map:
+        detected = _auto_detect_anchors(_original_lines)
+        print(file=sys.stderr)
+        print(f"  ╔═══ NEW HERMES COMMIT: {hermes_commit}", file=sys.stderr)
+        print(f"  ║ Not in PROFILES_ANCHOR_MAP — auto-detected:", file=sys.stderr)
+        for k in ["register", "return", "delete"]:
+            v = detected.get(k, "?")
+            print(f"  ║   {k}: {v}", file=sys.stderr)
+        print(f"  ║", file=sys.stderr)
+        print(f"  ║ Suggested anchor entry:", file=sys.stderr)
+        ret = detected.get("return", "?")
+        reg = detected.get("register", "?")
+        dlt = detected.get("delete", "?")
+        print(f'  ║   ("{hermes_commit}", {{"register": {reg},'
+              f' "return": {ret}, "delete": {dlt}}}),', file=sys.stderr)
+        print(f"  ║ Add to PROFILES_ANCHOR_MAP and commit.", file=sys.stderr)
+        print(f"  ╚═══", file=sys.stderr)

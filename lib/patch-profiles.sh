@@ -26,23 +26,7 @@ else
         fi
     fi
 
-    # Register existing profiles that don't have amail.json yet
-    step_ok "$T_PROFILES_REG_DISP"
-    REG_OUTPUT=$(python3 "$SCRIPT_DIR/lib/register_profiles.py")
-    REG_COUNT=0
-    while IFS= read -r line; do
-        case "$line" in
-            registered:*) REG_COUNT="${line#registered:}" ;;
-            failed:*)     info "  ⚠ ${line#failed:}" ;;
-            no_config)    info "  No gateway config — skip" ;;
-        esac
-    done <<< "$REG_OUTPUT"
-    if [ "${REG_COUNT:-0}" -gt 0 ]; then
-        _msg="Registered amail addresses for ${REG_COUNT} profile(s)"
-        step_ok "$_msg"
-    else
-        step_ok "$T_PROFILES_REG_SKIP_MSG"
-    fi
+    step_ok "$T_PROFILES_DONE"
 fi
 
 # ═══════════════════════════════════════════════════════════════

@@ -9,7 +9,7 @@
 #   [3] Basic config (snapshots, manager address, webhook mode)
 #   [4] Save config + deploy bridge
 #   [5] Install Hermes tools
-#   [6] Patch webhook + profile hooks
+#   [6] Configure Hermes (patches + profiles + gateway)
 #   [7] Diagnostics
 #   [8] Send/receive test
 # =============================================================================
@@ -177,7 +177,7 @@ else
 fi
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 3: Domain selection / shared-domain activation                       ║
+# ║  Step 2: Domain selection / shared-domain activation                       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
@@ -267,7 +267,7 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
     fi
 else
-    if $IS_SHARED_DOMAIN; then
+    if echo "$PRODUCT_CODE" | grep -q "^system"; then
         step_begin "$T_ACTIVATE"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
@@ -314,7 +314,7 @@ else
 fi
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 4: Basic configuration (snapshots, manager, webhook mode)            ║
+# ║  Step 3: Basic configuration (snapshots, manager, webhook mode)            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 step_begin "$T_SNAP_CONFIG"
 
@@ -391,7 +391,7 @@ else
 fi
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Step 5: Save config + deploy bridge                                       ║
+# ║  Step 4: Save config + deploy bridge                                       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 step_begin "$T_SAVE_CFG"
 
@@ -440,20 +440,17 @@ else
 fi
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Steps 6-10: tools, webhook, profiles, diagnostics, send test              ║
+# ║  Steps 5-8: tools, configure, diagnostics, test                            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 source "$LIB_DIR/install-tools.sh"
 
-# Steps 7&8: Patch Hermes (webhook + profiles + register)
+# Step 6: Configure Hermes (patches + profiles + gateway)
 PATCH_STEP_PARENT=1
 step_begin "$T_WEBHOOK"
-source "$LIB_DIR/patch-webhook.sh"
-source "$LIB_DIR/patch-profiles.sh"
+source "$LIB_DIR/configure_hermes.sh"
 unset PATCH_STEP_PARENT
-# Force gateway restart to pick up patched webhook.py
-python3 "$LIB_DIR/setup_gateway.py" --restart-only
 
-# Step 9: Full pipeline diagnostics + ping-pong test
+# Step 7: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 set +e  # non-zero from partial failures must not abort
 AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail.json')).get('email',''))" 2>/dev/null || echo "")
@@ -473,5 +470,6 @@ else
 fi
 python3 "$SCRIPT_DIR/lib/check_status.py" --ping $AGENT_FLAG
 
+# Step 10: Send welcome email
 step_begin "Welcome email"
 python3 "$SCRIPT_DIR/lib/send_welcome.py"

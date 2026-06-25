@@ -230,10 +230,24 @@ def main():
         sys.exit(1)
 
     # Wait for reply
-    verified = poll_stats(gw, ak, agent_email)
+    verified = poll_stats(gw, ak, agent_email, timeout_secs=120)
 
     # Check amail processing log for diagnostic info
-    ag_home = os.environ.get("AGENTMAIL_HOME", os.path.expanduser("~/.agentmail/default"))
+    ag_home = os.environ.get("AGENTMAIL_HOME", "")
+    if not ag_home:
+        acfg_home = os.path.expanduser("~/.hermes/amail.json")
+        if os.path.exists(acfg_home):
+            try:
+                with open(acfg_home) as f:
+                    acfg = json.load(f)
+                email = acfg.get("email", "")
+                if email:
+                    ag_home = f"~/.agentmail/{email.replace('@', '_')}"
+            except Exception:
+                pass
+    if not ag_home:
+        ag_home = "~/.agentmail/default"
+    ag_home = os.path.expanduser(ag_home)
     log_path = os.path.join(ag_home, "agentmail.log")
     if os.path.exists(log_path):
         with open(log_path) as f:

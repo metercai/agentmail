@@ -544,11 +544,8 @@ def _check_route_targets(c: Check, hermes_port: int):
         target_details = []
 
         for target in unique_targets:
-            host, port_str = (target.split(":") + ["8644"])[:2]
+            host, port_str = target.rsplit(":", 1)
             port = int(port_str)
-            # Only check targets matching this webhook port
-            if port != hermes_port:
-                continue
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(2)

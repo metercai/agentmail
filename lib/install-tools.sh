@@ -5,7 +5,20 @@ step_begin "$T_TOOLS"
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
 TOOLS_DST="$HERMES_DIR/tools/amail_tools.py"
 
-if [ -f "$TOOLS_DST" ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
+# Check if reinstall is needed: compare checksums
+NEED_COPY=false
+if [ ! -f "$TOOLS_DST" ]; then
+    NEED_COPY=true
+elif ! md5sum --quiet -c /dev/null 2>/dev/null; then
+    # md5sum not available — fall back to mtime comparison
+    [ "$TOOLS_PY" -nt "$TOOLS_DST" ] && NEED_COPY=true
+else
+    SRC_MD5=$(md5sum "$TOOLS_PY" 2>/dev/null | cut -d' ' -f1)
+    DST_MD5=$(md5sum "$TOOLS_DST" 2>/dev/null | cut -d' ' -f1)
+    [ "$SRC_MD5" != "$DST_MD5" ] && NEED_COPY=true
+fi
+
+if [ "$NEED_COPY" = false ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
     step_ok "$T_TOOLS_SKIP"
 else
     # Copy the tool file
@@ -61,14 +74,32 @@ PYEOF
 fi
 
 # ── Install amail skill ─────────────────────────────────────────
-SKILL_DIR="$HOME/.hermes/skills/amail"
 SKILL_SRC="$SCRIPT_DIR/skill/SKILL.md"
+DESC_SRC="$SCRIPT_DIR/skill/DESCRIPTION.md"
+SKILL_DIR="$HOME/.hermes/skills/amail"
 mkdir -p "$SKILL_DIR"
-if cp "$SKILL_SRC" "$SKILL_DIR/SKILL.md" 2>/dev/null; then
-    step_ok "amail skill installed"
-else
-    step_warn "amail skill copy failed (missing $SKILL_SRC)"
-fi
+for f_pair in "SKILL.md:SKILL_SRC" "DESCRIPTION.md:DESC_SRC"; do
+    fname="${f_pair%%:*}"
+    var="${f_pair##*:}"
+    eval src="\$$var"
+    dst="$SKILL_DIR/$fname"
+    if [ ! -f "$src" ]; then
+        step_warn "amail skill $fname copy failed (missing $src)"
+        continue
+    fi
+    need_copy=false
+    if [ ! -f "$dst" ]; then
+        need_copy=true
+    else
+        src_md5=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
+        dst_md5=$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1)
+        [ "$src_md5" != "$dst_md5" ] && need_copy=true
+    fi
+    if [ "$need_copy" = true ]; then
+        cp "$src" "$dst" 2>/dev/null
+    fi
+done
+step_ok "amail skill installed"
 
 # ── Install skill for named profiles ────────────────────────────
 PROFILES_DIR="$HOME/.hermes/profiles"
@@ -76,9 +107,23 @@ if [ -d "$PROFILES_DIR" ]; then
     for prof in "$PROFILES_DIR"/*/; do
         prof_name=$(basename "$prof")
         prof_skill_dir="$prof/skills/amail"
-        if [ ! -f "$prof_skill_dir/SKILL.md" ]; then
-            mkdir -p "$prof_skill_dir"
-            cp "$SKILL_SRC" "$prof_skill_dir/SKILL.md" 2>/dev/null
-        fi
+        for f_pair in "SKILL.md:SKILL_SRC" "DESCRIPTION.md:DESC_SRC"; do
+            fname="${f_pair%%:*}"
+            var="${f_pair##*:}"
+            eval src="\$$var"
+            dst="$prof_skill_dir/$fname"
+            need_copy=false
+            if [ ! -f "$dst" ]; then
+                need_copy=true
+            else
+                src_md5=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
+                dst_md5=$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1)
+                [ "$src_md5" != "$dst_md5" ] && need_copy=true
+            fi
+            if [ "$need_copy" = true ]; then
+                mkdir -p "$prof_skill_dir"
+                cp "$src" "$dst" 2>/dev/null
+            fi
+        done
     done
 fi

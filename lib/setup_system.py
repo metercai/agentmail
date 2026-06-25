@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Call setup() with environment variables. Used by integrate.sh Step 5."""
 import sys, json, os
-sys.path.insert(0, os.environ.get("SCRIPT_DIR", "") + "/tools")
-from amail_tools import setup
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "lib"))
+from setup import setup
 
 kwargs = dict(
     gateway_url=os.environ.get("INTEGRATE_GATEWAY_URL", ""),

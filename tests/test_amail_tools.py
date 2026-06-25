@@ -63,9 +63,12 @@ from amail_tools import (
     _load_gateway_config,
     _load_profile_config,
     _inject_profile_config,
-    init_tenant,
     agent_startup_activate,
 )
+
+# init_tenant was removed — it existed only in amail_tools.py as a dead
+# function (not defined anywhere in the codebase). The test for it is
+# retained as a placeholder below.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Mock HTTP Server
@@ -419,28 +422,31 @@ def test_activation_flow(mock: MockGatewayServer):
 
 
 def test_init_tenant(mock: MockGatewayServer):
-    """init_tenant() — bootstrap a new tenant from product code"""
-    print("\n── init_tenant ──")
+    """init_system() in lib/setup.py — bootstrap a new tenant from product code"""
+    print("\n── init_system (lib/setup.py) ──")
+    # Import dynamically to keep test file self-contained
+    import importlib
+    setup_mod = importlib.import_module("setup")
+    init_system = setup_mod.init_system
 
-    with TestCase("init_tenant — creates tenant + returns config") as t:
+    with TestCase("init_system — creates tenant + returns config") as t:
         os.environ["AMAIL_URL"] = mock.url
-        r = init_tenant(
+        r = init_system(
             product_code="mock-pc-123",
-            tenant_id="test-new-tenant",
-            tenant_name="Test Team",
+            system_id="test-new-tenant",
+            system_name="Test Team",
             domain="mail.test.com",
-            webhook_url="http://127.0.0.1:9920",
-            webhook_secret="test-secret",
+            gateway_url=mock.url,
         )
         del os.environ["AMAIL_URL"]
         t.check(r.get("success"), f"success={r.get('success')}")
         t.check(r.get("admin_key"), f"admin_key returned")
 
-    with TestCase("init_tenant — missing gateway_url") as t:
+    with TestCase("init_system — missing gateway_url") as t:
         for k in list(os.environ.keys()):
             if k.startswith("AMAIL"):
                 del os.environ[k]
-        r = init_tenant(product_code="x", tenant_id="x", tenant_name="x")
+        r = init_system(product_code="x", system_id="x", system_name="x")
         t.check(not r.get("success", True), "should fail without gateway_url")
 
 

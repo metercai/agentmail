@@ -83,7 +83,14 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
         'poll_interval_sec = 10',
     ]
     if webhook_secret:
-        lines.append(f'webhook_secret = "{webhook_secret}"')
+        lines.insert(-1, f'webhook_secret = "{webhook_secret}"')
+    lines.extend([
+        '',
+        '[health]',
+        'check_interval_sec = 30',
+        'fail_threshold = 6',
+        'connect_timeout_sec = 3',
+    ])
     if api_key:
         lines.insert(lines.index('[pull]') + 1, f'api_key = "{api_key}"')
     with open(path, 'w') as f:
@@ -119,27 +126,13 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
     return False
 
 def main():
-    # Standalone restart: read configs instead of env vars
+    # Standalone restart: just kill and restart bridge process
     if "--restart" in sys.argv:
-        import json, os
-        gc_path = os.path.expanduser("~/.hermes/amail_gateway.json")
-        if os.path.exists(gc_path):
-            gc = json.load(open(gc_path))
-            os.environ.setdefault("GATEWAY_URL", gc.get("gateway_url", ""))
-            os.environ.setdefault("ADMIN_KEY", gc.get("admin_key", ""))
-            os.environ.setdefault("SYSTEM_ID", gc.get("system_id", ""))
-            os.environ.setdefault("AMAIL_DOMAIN", gc.get("domain", ""))
-            os.environ.setdefault("WEBHOOK_HOST", gc.get("webhook_host", ""))
-        bc_path = os.path.expanduser("~/.agentmail/amail_bridge.toml")
-        if os.path.exists(bc_path):
-            # Parse TOML for webhook_host from addr
-            import re as _re
-            with open(bc_path) as f:
-                for line in f:
-                    m = _re.match(r'^\s*addr\s*=\s*"([^"]+)"', line)
-                    if m:
-                        os.environ.setdefault("WEBHOOK_HOST", m.group(1))
-                        break
+        bin_path = os.path.expanduser("~/.agentmail/bin/amail-bridge")
+        cfg_path = os.path.expanduser("~/.agentmail/amail_bridge.toml")
+        pid_path = os.path.expanduser("~/.agentmail/bridge.pid")
+        start_bridge(bin_path, cfg_path, pid_path)
+        return 0 if os.path.exists(pid_path) else 1
 
     # Read env vars from integrate.sh
     gw = os.environ.get("GATEWAY_URL", "")
@@ -229,10 +222,23 @@ def main():
     os.makedirs(cfg_dir, exist_ok=True)
     bridge_cfg = os.path.join(cfg_dir, "amail_bridge.toml")
 
-    # Create bridge API key
+    # Create bridge API key (use system-level key for higher privilege)
     import uuid
+    system_key = ""
+    system_key_path = os.path.join(
+        os.path.expanduser("~/.agentmail/.system_raw_key"), f"{sid}_admin.key"
+    )
+    if os.path.exists(system_key_path):
+        try:
+            with open(system_key_path) as f:
+                system_key = f.read().strip()
+        except Exception:
+            pass
+    bridge_ak = system_key or ak  # prefer system key, fallback to domain key
     bridge_domain = f"bridge-{uuid.uuid4().hex[:8]}"
-    bridge_key = create_api_key(gw, ak, sid, bridge_domain, ["bridge"], "bridge")
+    bridge_key = create_api_key(gw, bridge_ak, sid, bridge_domain, ["bridge"], "bridge")
+    if not bridge_key:
+        log_warn("bridge API key creation failed — bridge auth may not work")
 
     # Read webhook secret from Hermes config
     webhook_secret = ""

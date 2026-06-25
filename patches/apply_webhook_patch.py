@@ -214,7 +214,7 @@ content, _nr = _re4.subn(
     count=1,
     flags=_re4.DOTALL
 )
-def __log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
+def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
     """Append a JSON line to agentmail.log for ping-pong tracking."""
     import json, os as _os
     from datetime import datetime, timezone
@@ -241,12 +241,13 @@ def __log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
         _log_dir = _os.path.expanduser("~/.agentmail/default")
     log_path = _os.path.join(_log_dir, "agentmail.log")
     try:
+        _os.makedirs(_log_dir, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\\n")
     except Exception:
         pass
 import inspect as _ins
-content += "\n" + _ins.getsource(__log_ping_event)
+content += "\n" + _ins.getsource(_log_ping_event)
 patched = True
 print("Patch 4: _log_ping_event added", file=sys.stderr)
 # ── Patch 5: add ping-pong interception (end-to-end test) ────
