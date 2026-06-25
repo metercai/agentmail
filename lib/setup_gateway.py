@@ -132,9 +132,14 @@ def kill_and_restart_gateway(port: int) -> bool:
             log_path = os.path.expanduser("~/.hermes/gateway.log")
             env = os.environ.copy()
             ag_home = os.path.expanduser("~/.agentmail")
-            # Determine agent subdirectory from amail.json
-            amail_path = os.path.expanduser("~/.hermes/amail.json")
-            if os.path.exists(amail_path):
+            # Determine agent subdirectory from amail.json under ~/.agentmail/
+            amail_path = None
+            sid = os.environ.get("SYSTEM_ID", "")
+            if sid:
+                sub = os.path.join(ag_home, sid, "amail.json")
+                if os.path.isfile(sub):
+                    amail_path = sub
+            if amail_path and os.path.exists(amail_path):
                 with open(amail_path) as f:
                     acfg = json.load(f)
                 email = acfg.get("email", "")

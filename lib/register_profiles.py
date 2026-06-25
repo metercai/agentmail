@@ -3,11 +3,17 @@
 import sys, os, json, urllib.request, urllib.error
 
 def load_gateway_config():
-    path = os.path.expanduser("~/.hermes/amail_gateway.json")
-    if not os.path.exists(path):
-        return None
-    with open(path) as f:
-        return json.load(f)
+    # Use SYSTEM_ID env var to locate config directly
+    sid = os.environ.get("SYSTEM_ID", "")
+    if sid:
+        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+        if os.path.isfile(sub):
+            try:
+                with open(sub) as f:
+                    return json.load(f)
+            except Exception:
+                pass
+    return None
 
 def register_emails():
     config = load_gateway_config()

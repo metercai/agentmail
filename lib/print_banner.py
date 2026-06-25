@@ -2,7 +2,7 @@
 """Print a centered ASCII banner. Called by integrate.sh."""
 import shutil, sys, os
 
-title = os.environ.get("TITLE", "amail Hermes Integration Wizard")
+title = os.environ.get("TITLE", "Agentmail and  Hermes Integration Wizard")
 tw = shutil.get_terminal_size().columns
 bw = min(tw, 58) if tw >= 50 else 50
 w = sum(2 if ord(c) > 0x2e80 else 1 for c in title)

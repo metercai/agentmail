@@ -27,7 +27,28 @@ CROSS  = '\u2717'
 # ── Path constants ─────────────────────────────────────────────
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 AGENTMAIL_HOME = Path.home() / ".agentmail"
-GW_CONFIG   = HERMES_HOME / "amail_gateway.json"
+
+def _resolve_system_id(args: list[str] | None = None) -> str:
+    """Determine system_id: --system-id arg > HERMES_PROFILE_DIR/.agentmail > env var."""
+    if args:
+        for i, a in enumerate(args):
+            if a == "--system-id" and i + 1 < len(args):
+                return args[i + 1]
+    pdir = os.environ.get("HERMES_PROFILE_DIR", "")
+    if pdir:
+        pointer = Path(pdir) / ".agentmail"
+        if pointer.is_file():
+            try:
+                return json.loads(pointer.read_text()).get("system_id", "")
+            except Exception:
+                pass
+    return os.environ.get("SYSTEM_ID", "")
+
+def _gw_path(sid: str) -> Path:
+    return AGENTMAIL_HOME / sid / "amail_gateway.json"
+
+def _agent_path(sid: str) -> Path:
+    return AGENTMAIL_HOME / sid / "amail.json"
 BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
 BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
 BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
@@ -43,6 +64,18 @@ def _agentmail_log() -> Path:
     global _AGENT_DIR
     if _AGENT_DIR:
         return _AGENT_DIR / "agentmail.log"
+    # Fallback: scan system dir for amail.json to find email
+    sid = _resolve_system_id(sys.argv)
+    if sid:
+        aj = AGENTMAIL_HOME / sid / "amail.json"
+        if aj.is_file():
+            try:
+                email = json.loads(aj.read_text()).get("email", "")
+                if email:
+                    _AGENT_DIR = AGENTMAIL_HOME / email.replace("@", "_")
+                    return _AGENT_DIR / "agentmail.log"
+            except Exception:
+                pass
     return Path.home() / ".agentmail" / "default" / "agentmail.log"
 
 def _agentmail_raw() -> Path:
@@ -133,12 +166,15 @@ def _json_req(url: str, headers: dict | None = None,
         return 0, {"error": str(e)}
 
 
-def _read_gw_cfg() -> dict | None:
-    """Load amail_gateway.json, return None on failure."""
-    if not GW_CONFIG.exists():
+def _read_gw_cfg(sid: str = "") -> dict | None:
+    """Load ~/.agentmail/system-{sid}/amail_gateway.json, return None on failure."""
+    if not sid:
+        sid = _resolve_system_id(sys.argv)
+    p = _gw_path(sid) if sid else AGENTMAIL_HOME / "amail_gateway.json"
+    if not p.exists() or not p.is_file():
         return None
     try:
-        return json.loads(GW_CONFIG.read_text())
+        return json.loads(p.read_text())
     except Exception:
         return None
 
@@ -639,40 +675,37 @@ def check_profiles(c: Check):
     profiles_ok = 0
     details = []
 
-    # Default
-    default_amail = HERMES_HOME / "amail.json"
-    if default_amail.exists():
-        profiles_found += 1
-        try:
-            pf = json.loads(default_amail.read_text())
-            email = pf.get("email", "")
-            sid_ok = pf.get("system_id", "") == system_id
-            if email and sid_ok:
-                profiles_ok += 1
-                details.append(f"default: {email}")
-            elif email:
-                details.append(f"default: {email} (different system)")
-        except Exception:
-            details.append("default: unparseable")
-
-    # Named profiles
-    if PROFILES_DIR.is_dir():
-        for name in sorted(os.listdir(str(PROFILES_DIR))):
-            aj = PROFILES_DIR / name / "amail.json"
-            if not aj.exists():
-                continue
+    # Scan ~/.agentmail/{system_id}/ for root + named profiles
+    sysdir = AGENTMAIL_HOME / system_id
+    if sysdir.is_dir():
+        # Root profile: amail.json
+        root_aj = sysdir / "amail.json"
+        if root_aj.is_file():
             profiles_found += 1
             try:
-                pf = json.loads(aj.read_text())
+                pf = json.loads(root_aj.read_text())
                 email = pf.get("email", "")
-                sid_ok = pf.get("system_id", "") == system_id
-                if email and sid_ok:
+                if email:
                     profiles_ok += 1
-                    details.append(f"{name}: {email}")
-                elif email:
-                    details.append(f"{name}: {email} (different sys)")
+                    details.append(f"default: {email}")
             except Exception:
-                details.append(f"{name}: unparseable")
+                details.append("default: unparseable")
+        # Named profiles: profiles/*/amail.json
+        prof_dir = sysdir / "profiles"
+        if prof_dir.is_dir():
+            for name in sorted(os.listdir(str(prof_dir))):
+                aj = prof_dir / name / "amail.json"
+                if not aj.is_file():
+                    continue
+                profiles_found += 1
+                try:
+                    pf = json.loads(aj.read_text())
+                    email = pf.get("email", "")
+                    if email:
+                        profiles_ok += 1
+                        details.append(f"{name}: {email}")
+                except Exception:
+                    details.append(f"{name}: unparseable")
 
     detail = f"{profiles_ok}/{profiles_found} registered" if profiles_found > 0 else "none found"
     if details:
@@ -689,9 +722,8 @@ def check_profiles(c: Check):
 def _check_recent_email_activity(c: Check):
     """P1: Extract recent email activity from amail.log."""
     if not _agentmail_log().exists():
-        c.add("profile", "recent_activity", False,
-              "agentmail.log not found (no email processed yet)",
-              "No activity is normal if no emails have arrived")
+        c.add("profile", "recent_activity", True,
+              "no email activity yet (new system)")
         return
 
     try:
@@ -749,7 +781,13 @@ def _run_ping_test() -> int:
 
     global _AGENT_DIR
 
-    config_path = Path.home() / ".hermes" / "amail_gateway.json"
+    # Resolve system_id from gateway config then find paths
+    cfg0 = _read_gw_cfg()
+    if not cfg0:
+        print("✗ amail_gateway.json not found")
+        return 1
+    sid = cfg0.get("system_id", "")
+    config_path = _gw_path(sid) if sid else AGENTMAIL_HOME / "amail_gateway.json"
     if not config_path.exists():
         print("✗ amail_gateway.json not found")
         return 1
@@ -757,7 +795,8 @@ def _run_ping_test() -> int:
     cfg = json.loads(config_path.read_text())
     gw_url = cfg.get("gateway_url", "")
     ak = cfg.get("admin_key", "")
-    amail_path = Path.home() / ".hermes" / "amail.json"
+    amail_path = config_path.parent / "amail.json"
+    agent_email = ""
     if amail_path.exists():
         acfg = json.loads(amail_path.read_text())
         agent_email = acfg.get("email", "")
@@ -896,7 +935,7 @@ def _run_ping_test() -> int:
             snap_check_msg = f"⚠ Snapshots: {snap_total} total file(s) in raw_email/, none from last 5min"
     else:
         try:
-            cfg = json.loads(Path.home().joinpath(".hermes","amail.json").read_text())
+            cfg = json.loads((config_path.parent / "amail.json").read_text())
             enabled = cfg.get("save_raw_snapshots", False)
         except Exception:
             enabled = False

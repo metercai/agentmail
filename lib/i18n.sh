@@ -4,7 +4,7 @@ BOLD='\033[1m'
 
 # ── Strings by language ─────────────────────────────────────────
 if [ "$LANG_CHOICE" = "zh" ]; then
-    T_TITLE="amail Hermes 集成向导"
+    T_TITLE="Agentmail Hermes 集成向导"
     T_GATEWAY="配置 agentmail 网关"
     T_DETECT="检测到 gateway 运行在"
     T_CHECKING="检测 gateway 连通性..."
@@ -119,7 +119,7 @@ T_CHOOSE_ENV="根据您的 Agent 网络环境选择:"
     T_PROFILES_REG_SKIP_MSG="所有 profile 已注册，跳过"
 else
     # ── English (default) ──────────────────────────────────────────
-    T_TITLE="amail Hermes Integration Wizard"
+    T_TITLE="Agentmail and Hermes Integration Wizard"
     T_GATEWAY="Configure agentmail gateway"
     T_DETECT="Detected gateway running at"
     T_CHECKING="Checking gateway connectivity..."

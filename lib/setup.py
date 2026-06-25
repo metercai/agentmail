@@ -171,7 +171,7 @@ def _save_gateway_config(
 ) -> None:
     """Save amail gateway connection config to standalone JSON file.
 
-    Writes to ~/.hermes/amail_gateway.json — does NOT pollute config.yaml.
+    Writes to ~/.agentmail/{system_id}/amail_gateway.json — clean separation.
     """
     cfg = {
         "gateway_url": gateway_url,
@@ -187,7 +187,7 @@ def _save_gateway_config(
     if webhook_host:
         cfg["webhook_host"] = webhook_host
 
-    gateway_path = _gateway_config_path()
+    gateway_path = _gateway_config_path(system_id)
     gateway_path.parent.mkdir(parents=True, exist_ok=True)
     with open(gateway_path, "w") as f:
         json.dump(cfg, f, indent=2)

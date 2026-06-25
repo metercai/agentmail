@@ -80,7 +80,7 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
         f'amail_url = "{gw}"',
         f'admin_key = "{ak}"',
         f'system_id = "{sid}"',
-        'poll_interval_sec = 10',
+        'poll_interval_sec = 2',
     ]
     if webhook_secret:
         lines.insert(-1, f'webhook_secret = "{webhook_secret}"')
@@ -169,15 +169,18 @@ def main():
 
     # Save domain key
     if domain_key:
-        home = os.path.expanduser("~/.hermes")
-        cfg_path = os.path.join(home, "amail_gateway.json")
-        with open(cfg_path) as f:
-            cfg = json.load(f)
-        if cfg.get("admin_key") != domain_key:
-            cfg["admin_key"] = domain_key
-            with open(cfg_path, 'w') as f:
-                json.dump(cfg, f, indent=2)
-            ak = domain_key
+        # Find amail_gateway.json directly by system_id
+        cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+        if not os.path.isfile(cfg_path):
+            log_warn("amail_gateway.json not found — cannot update admin_key")
+        else:
+            with open(cfg_path) as f:
+                cfg = json.load(f)
+            if cfg.get("admin_key") != domain_key:
+                cfg["admin_key"] = domain_key
+                with open(cfg_path, 'w') as f:
+                    json.dump(cfg, f, indent=2)
+                ak = domain_key
 
     # ── Bridge deployment ────────────────────────────────────
     bridge_dir = os.path.expanduser("~/.agentmail/bin")
@@ -255,13 +258,22 @@ def main():
                         gw, ak, sid, api_key=bridge_key,
                         webhook_secret=webhook_secret)
 
-    # Update gateway config
-    gw_cfg_path = os.path.expanduser("~/.hermes/amail_gateway.json")
-    with open(gw_cfg_path) as f:
-        gw_cfg = json.load(f)
-    gw_cfg["webhook_host"] = wh_host
-    with open(gw_cfg_path, 'w') as f:
-        json.dump(gw_cfg, f, indent=2)
+    # Read gateway config to update webhook_host
+    gw_cfg = None
+    gw_cfg_path = None
+    if sid:
+        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+        if os.path.isfile(sub):
+            try:
+                with open(sub) as f:
+                    gw_cfg = json.load(f)
+                gw_cfg_path = sub
+            except Exception:
+                pass
+    if gw_cfg_path and gw_cfg is not None:
+        gw_cfg["webhook_host"] = wh_host
+        with open(gw_cfg_path, 'w') as f:
+            json.dump(gw_cfg, f, indent=2)
 
     # Start bridge
     pid_path = os.path.join(cfg_dir, "bridge.pid")

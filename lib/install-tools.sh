@@ -51,11 +51,11 @@ for name in tool_names:
 
 # Add amail toolset to TOOLSETS if not present
 if '"amail"' not in content:
-    amail_block = '''    "amail": {
-        "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",
-        "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],
-        "includes": [],
-    },'"'
+    amail_block = '    "amail": {\n'
+    amail_block += '        "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",\n'
+    amail_block += '        "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],\n'
+    amail_block += '        "includes": [],\n'
+    amail_block += '    },\n'
     content = re.sub(r'(TOOLSETS\\s*=\\s*\\{)', r'\\1\\n' + amail_block, content, count=1)
     needs_write = True
 

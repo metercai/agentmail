@@ -408,20 +408,28 @@ class _GatewayClient:
 # Config helpers
 # ═══════════════════════════════════════════════════════════════
 
-def _gateway_config_path() -> Path:
-    """Return the path to the standalone amail gateway config file.
+def _agentmail_system_dir(system_id: str = "") -> Path:
+    """Return ~/.agentmail/{system_id}/ for config storage.
     
-    Always uses ~/.hermes/amail_gateway.json — gateway config is global,
-    not per-profile."""
-    return Path.home() / ".hermes" / "amail_gateway.json"
+    When system_id is empty, returns ~/.agentmail/ itself."""
+    base = Path.home() / ".agentmail"
+    return base / system_id if system_id else base
 
 
-def _load_gateway_config() -> Optional[dict]:
+def _gateway_config_path(system_id: str = "") -> Path:
+    """Return the path to the amail gateway config file.
+    
+    When system_id is provided, returns system-specific path.
+    When empty, returns the base ~/.agentmail/ level (caller should resolve system_id)."""
+    return _agentmail_system_dir(system_id) / "amail_gateway.json"
+
+
+def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     """load amail gateway connection config
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
-    2. ~/.hermes/amail_gateway.json (standalone, no config.yaml pollution [gateway config])
+    2. ~/.agentmail/{system_id}/amail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
     3. ~/.hermes/config.yaml platforms.amail (legacy fallback)
     """
     # Try environment variables first
@@ -450,12 +458,29 @@ def _load_gateway_config() -> Optional[dict]:
             "mx_domain": mx_domain,
         }
 
-    # Try standalone amail_gateway.json
-    gateway_path = _gateway_config_path()
-    if gateway_path.exists():
+    # Try ~/.agentmail/{system_id}/amail_gateway.json
+    resolved_sid = system_id
+    if not resolved_sid:
+        # Resolve from HERMES_PROFILE_DIR/.agentmail pointer
+        profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
+        if profile_dir:
+            pointer = Path(profile_dir) / ".agentmail"
+            if pointer.is_file():
+                try:
+                    pointer_data = json.loads(pointer.read_text())
+                    resolved_sid = pointer_data.get("system_id", "")
+                except Exception:
+                    pass
+        if not resolved_sid:
+            raise RuntimeError(
+                "system_id not provided and HERMES_PROFILE_DIR/.agentmail not found "
+                "-- cannot locate gateway config"
+            )
+
+    gw_path = _gateway_config_path(resolved_sid)
+    if gw_path.is_file():
         try:
-            with open(gateway_path) as f:
-                cfg = json.load(f)
+            cfg = json.loads(gw_path.read_text())
             if cfg.get("gateway_url") and (cfg.get("admin_key") or cfg.get("product_code")):
                 return cfg
         except Exception:
@@ -481,24 +506,38 @@ def _load_profile_config() -> Optional[dict]:
     """Load per-profile gateway config from profile directory.
     
     Tries in order:
-    1. HERMES_PROFILE_DIR/amail.json (set by agent process)
-    2. ~/.hermes/amail.json (root profile fallback)
-    3. ~/.hermes/amail_gateway.json (legacy)
+    1. {profile_dir}/.agentmail → {system_id}/profiles/{name}/amail.json
+    2. {profile_dir}/amail.json (direct, from old integration)
     """
     profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
     
     search_paths = []
+
     if profile_dir:
-        search_paths.extend([
-            Path(profile_dir) / "amail.json",
-            Path(profile_dir) / "amail_gateway.json",
-        ])
-    # Always try root profile as fallback
-    search_paths.extend([
-        Path.home() / ".hermes" / "amail.json",
-        Path.home() / ".hermes" / "amail_gateway.json",
-    ])
-    
+        # Priority 1: .agentmail pointer → structured path
+        pointer = Path(profile_dir) / ".agentmail"
+        if pointer.is_file():
+            try:
+                pointer_data = json.loads(pointer.read_text())
+                sid = pointer_data.get("system_id", "")
+                if sid:
+                    pname = Path(profile_dir).name
+                    hermes_home = Path.home() / ".hermes"
+                    is_root = Path(profile_dir).resolve() == hermes_home.resolve()
+                    if is_root:
+                        search_paths.append(
+                            _agentmail_system_dir(sid) / "amail.json"
+                        )
+                    else:
+                        search_paths.append(
+                            _agentmail_system_dir(sid) / "profiles" / pname / "amail.json"
+                        )
+            except Exception:
+                pass
+
+        # Priority 2: direct amail.json in profile dir (backward compat)
+        search_paths.append(Path(profile_dir) / "amail.json")
+
     for config_path in search_paths:
         if config_path.is_file():
             try:
@@ -510,10 +549,57 @@ def _load_profile_config() -> Optional[dict]:
 
 
 def _inject_profile_config(profile_dir: str, config: dict) -> None:
-    """Write per-profile gateway config to profile directory."""
-    config_path = Path(profile_dir) / "amail.json"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config, indent=2))
+    """Write per-profile amail config.
+
+    Root profile:  ~/.agentmail/{system_id}/amail.json
+    Named profile: ~/.agentmail/{system_id}/profiles/{name}/amail.json
+    Pointer file:  {profile_dir}/.agentmail  (contains system_id for discovery)
+
+    Merges with existing config — preserves fields not in the new config
+    (e.g. api_key from previous activation).
+    """
+    system_id = config.get("system_id", "")
+    pname = Path(profile_dir).name
+
+    # Detect root profile: profile_dir is HERMES_HOME
+    hermes_home = Path.home() / ".hermes"
+    is_root = Path(profile_dir).resolve() == hermes_home.resolve()
+
+    # Write primary config to centralized agentmail directory
+    if system_id:
+        if is_root:
+            primary = _agentmail_system_dir(system_id) / "amail.json"
+        else:
+            primary = _agentmail_system_dir(system_id) / "profiles" / pname / "amail.json"
+        primary.parent.mkdir(parents=True, exist_ok=True)
+        # Merge with existing — preserve fields like api_key
+        existing = {}
+        if primary.exists():
+            try:
+                existing = json.loads(primary.read_text())
+            except Exception:
+                pass
+        merged = {**existing, **config}
+        primary.write_text(json.dumps(merged, indent=2))
+
+    # Always write a copy to profile dir for backward compat (also merge)
+    profile_path = Path(profile_dir) / "amail.json"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    existing2 = {}
+    if profile_path.exists():
+        try:
+            existing2 = json.loads(profile_path.read_text())
+        except Exception:
+            pass
+    merged2 = {**existing2, **config}
+    profile_path.write_text(json.dumps(merged2, indent=2))
+
+    # Write .agentmail pointer for discovery
+    pointer_path = Path(profile_dir) / ".agentmail"
+    pointer_path.write_text(json.dumps({
+        "system_id": system_id,
+        "email": config.get("email", ""),
+    }, indent=2))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1057,6 +1143,9 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     result = dict(payload)
     body = result.get("body", "")
 
+    if not body:
+        logger.warning("[amail_gateway] body is empty in raw payload — keys=%s", list(payload.keys())[:12])
+
     # Agent identity (for direct_message / mentioned)
     config = _load_profile_config()
     agent_email = config.get("email", "") if config else ""
@@ -1251,8 +1340,9 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     if mid and my_addr:
         store_inbound_message(mid, refs, my_addr, preprocessed_payload=result)
         # Lightweight log entry
-        _from = headers.get("from", raw_headers.get("from", ""))
-        _subj = headers.get("subject", raw_headers.get("subject", ""))
+        _from = raw_headers.get("from", payload.get("from", ""))
+        _subj = (raw_headers.get("subject") or raw_headers.get("Subject")
+                 or payload.get("subject") or payload.get("Subject") or "")
         _log_amail("inbound", str(_from), my_addr, str(_subj))
 
     return result
@@ -1297,7 +1387,11 @@ def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> No
     Gracefully handles missing config -- if no gateway is configured, hooks are
     simply skipped.
     """
-    config = _load_gateway_config()
+    try:
+        config = _load_gateway_config()
+    except RuntimeError:
+        logger.debug("[amail_gateway] No gateway config -- skipping hooks for %s", event)
+        return
     if not config:
         logger.debug("[amail_gateway] No gateway config -- skipping hooks for %s", event)
         return
@@ -1454,8 +1548,12 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             try:
                 domains = client._request("GET", f"/api/v1/admin/systems/{system_id}/domains")
                 addr_id = None
-                if isinstance(domains, list):
-                    for d in domains:
+                items = []
+                if isinstance(domains, dict):
+                    items = domains.get("data", [])
+                elif isinstance(domains, list):
+                    items = domains
+                for d in items:
                         if d.get("domain") == email:
                             addr_id = d.get("id")
                             break
@@ -1491,8 +1589,10 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             activation_code = raw
 
     if not activation_code:
-        logger.warning("[amail_gateway] No activation code in register response for %s", email)
-        return
+        # Already registered: profile should have existing api_key or activation_code
+        logger.info("[amail_gateway] Email %s already registered — using existing credentials", email)
+        # Still update webhook config by calling _inject_profile_config below
+        activation_code = ""  # keep empty, _inject_profile_config preserves existing values
 
     _inject_profile_config(profile_dir, {
         "email": email,
@@ -2147,15 +2247,19 @@ def _agentmail_dir() -> Path:
     env = os.environ.get("AGENTMAIL_HOME", "")
     if env:
         return Path(env)
-    amail_cfg = Path.home() / ".hermes" / "amail.json"
-    if amail_cfg.exists():
-        try:
-            import json as _json
-            email = _json.loads(amail_cfg.read_text()).get("email", "")
-            if email:
-                return Path.home() / ".agentmail" / email.replace("@", "_")
-        except Exception:
-            pass
+    # Try pointer file first
+    pdir = os.environ.get("HERMES_PROFILE_DIR", "")
+    if pdir:
+        pointer = Path(pdir) / ".agentmail"
+        if pointer.is_file():
+            try:
+                pd = json.loads(pointer.read_text())
+                email = pd.get("email", "")
+                if email:
+                    return Path.home() / ".agentmail" / email.replace("@", "_")
+            except Exception:
+                pass
+    # Fallback: use default directory
     return Path.home() / ".agentmail" / "default"
 
 

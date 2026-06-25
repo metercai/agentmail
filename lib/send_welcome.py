@@ -15,11 +15,17 @@ def log_ok(msg):
     print(f"  ✓ {msg}")
 
 def load_config():
-    path = os.path.expanduser("~/.hermes/amail_gateway.json")
-    if not os.path.exists(path):
+    sid = os.environ.get("SYSTEM_ID", "")
+    if not sid:
         return None
-    with open(path) as f:
-        return json.load(f)
+    sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+    if os.path.isfile(sub):
+        try:
+            with open(sub) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
 
 def get_agent_email(config):
     """Find agent email from gateway API, profiles, or env."""
@@ -135,8 +141,10 @@ def do_smtp_send(gateway_url: str, admin_key: str, agent_email: str, manager: st
             return False
 
         # Email body
+        msg_id = f"<welcome-{int(time.time())}@amail>"
         body = f"""From: {manager}
 To: {agent_email}
+Message-ID: {msg_id}
 Subject: Welcome! Your amail integration is live
 
 Hello! This is your first email delivered through your new amail system.
@@ -182,6 +190,8 @@ def poll_stats(gateway_url: str, admin_key: str, agent_email: str, timeout_secs:
     log_info(f"Stats baseline: sent={before_sent}, received={before_recv}")
 
     start = time.time()
+    last_recv = before_recv
+    last_sent = before_sent
     while time.time() - start < timeout_secs:
         time.sleep(5)
         try:
@@ -190,14 +200,17 @@ def poll_stats(gateway_url: str, admin_key: str, agent_email: str, timeout_secs:
                 now = json.loads(r.read())
             now_recv = now.get("received", 0)
             now_sent = now.get("sent", 0)
-            if now_recv > before_recv:
-                log_ok(f"Agent processed the email (received={now_recv}, sent={now_sent})")
+            last_recv = now_recv
+            last_sent = now_sent
+            if now_sent > before_sent:
+                log_ok(f"Agent replied (sent={now_sent}, received={now_recv})")
                 return True
         except:
             pass
 
-    log_warn(f"Timeout — email sent but no reply within {timeout_secs}s")
-    return False
+    log_warn(f"Timeout — email sent but no reply within {timeout_secs}s "
+             f"(last: sent={last_sent}, received={last_recv})")
+    return False, last_sent, last_recv
 
 def main():
     config = load_config()
@@ -230,21 +243,30 @@ def main():
         sys.exit(1)
 
     # Wait for reply
-    verified = poll_stats(gw, ak, agent_email, timeout_secs=120)
+    result = poll_stats(gw, ak, agent_email, timeout_secs=120)
+    if isinstance(result, tuple):
+        verified = result[0]
+        last_sent = result[1]
+        last_recv = result[2]
+    else:
+        verified = result
+        last_sent = last_recv = 0
 
     # Check amail processing log for diagnostic info
     ag_home = os.environ.get("AGENTMAIL_HOME", "")
     if not ag_home:
-        acfg_home = os.path.expanduser("~/.hermes/amail.json")
-        if os.path.exists(acfg_home):
-            try:
-                with open(acfg_home) as f:
-                    acfg = json.load(f)
-                email = acfg.get("email", "")
-                if email:
-                    ag_home = f"~/.agentmail/{email.replace('@', '_')}"
-            except Exception:
-                pass
+        sid = os.environ.get("SYSTEM_ID", "")
+        if sid:
+            sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
+            if os.path.isfile(sub):
+                try:
+                    with open(sub) as f:
+                        acfg = json.load(f)
+                    email = acfg.get("email", "")
+                    if email:
+                        ag_home = f"~/.agentmail/{email.replace('@', '_')}"
+                except Exception:
+                    pass
     if not ag_home:
         ag_home = "~/.agentmail/default"
     ag_home = os.path.expanduser(ag_home)
@@ -262,12 +284,11 @@ def main():
     else:
         log_info("amail.log: not found (preprocessor never ran)")
 
-    log_info(f"Stats sent: ..., received: ...")
     if verified:
-        log_ok("Bidirectional send/receive verified")
+        log_ok(f"Bidirectional send/receive verified (sent={last_sent}, received={last_recv})")
         sys.exit(0)
     else:
-        log_warn("Timeout — email sent but no reply within 30s")
+        log_warn(f"Timeout — no reply within 120s (sent={last_sent}, received={last_recv})")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -89,11 +89,22 @@ step_ok "$T_GATEWAY_OK ${UPTIME}s)"
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
 
+# Helper: find amail_gateway.json under ~/.agentmail/{system_id}/
+_find_gw_cfg() {
+    echo "$HOME/.agentmail/$SYSTEM_ID/amail_gateway.json"
+}
+
+# Helper: find amail.json under ~/.agentmail/{system_id}/
+_find_agent_cfg() {
+    echo "$HOME/.agentmail/$SYSTEM_ID/amail.json"
+}
+
 # Reuse existing config (skip if product code is explicitly requested)
 REUSED_KEY=false
-if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -f "$HOME/.hermes/amail_gateway.json" ]; then
-    STORED_KEY=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('admin_key',''))" 2>/dev/null || echo "")
-    STORED_URL=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('gateway_url',''))" 2>/dev/null || echo "")
+_GW_CFG=$(_find_gw_cfg)
+if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -n "$_GW_CFG" ]; then
+    STORED_KEY=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('admin_key',''))" 2>/dev/null || echo "")
+    STORED_URL=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('gateway_url',''))" 2>/dev/null || echo "")
     if [ -n "$STORED_KEY" ] && [ "$STORED_URL" = "$GATEWAY_URL" ]; then
         echo -n "  $T_VERIFY "
         WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $STORED_KEY" 2>/dev/null || echo '{}')
@@ -183,13 +194,13 @@ if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
     # Read domain from stored config if env var not set
-    if [ -z "$AMAIL_DOMAIN" ] && [ -f "$HOME/.hermes/amail_gateway.json" ]; then
-        AMAIL_DOMAIN=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('domain',''))" 2>/dev/null || echo "")
+    if [ -z "$AMAIL_DOMAIN" ] && [ -n "$_GW_CFG" ]; then
+        AMAIL_DOMAIN=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
     fi
     if [ -n "$AMAIL_DOMAIN" ]; then
         SELECTED_DOMAINS="$AMAIL_DOMAIN"
         DOMAIN_OK_COUNT=1
-        SYSTEM_NAME=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail_gateway.json')).get('system_name',''))" 2>/dev/null || echo "")
+        SYSTEM_NAME=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('system_name',''))" 2>/dev/null || echo "")
         step_ok "domain = $AMAIL_DOMAIN (identifier: ${SYSTEM_NAME:-?})"
     else
         info "$T_DOMAIN_QUERY"
@@ -347,8 +358,8 @@ if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
     WEBHOOK_HOST=""
     python3 -c "
 import json, os
-p = os.path.expanduser('~/.hermes/amail_gateway.json')
-cfg = json.load(open(p)) if os.path.exists(p) else {}
+p = '$_GW_CFG' if os.path.exists('$_GW_CFG') else ''
+cfg = json.load(open(p)) if p else {}
 cfg['webhook_host'] = ''
 json.dump(cfg, open(p, 'w'), indent=2)
 "
@@ -430,9 +441,13 @@ if $USE_PRODUCT_CODE; then
 fi
 
 export GATEWAY_URL ADMIN_KEY SYSTEM_ID AMAIL_DOMAIN WEBHOOK_MODE WEBHOOK_HOST USE_PRODUCT_CODE
+
+# Recompute _GW_CFG now that SYSTEM_ID is definitely set
+_GW_CFG=$(_find_gw_cfg)
+
 python3 "$LIB_DIR/deploy_bridge.py"
 
-CONFIG_FILE="$HOME/.hermes/amail_gateway.json"
+CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/amail_gateway.json}"
 if [ -f "$CONFIG_FILE" ]; then
     step_ok "$T_CONFIG_OK $CONFIG_FILE"
 else
@@ -453,8 +468,9 @@ unset PATCH_STEP_PARENT
 # Step 7: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 set +e  # non-zero from partial failures must not abort
-AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$HOME/.hermes/amail.json')).get('email',''))" 2>/dev/null || echo "")
-[ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; c=json.load(open('$HOME/.hermes/amail_gateway.json')); print(c.get('domain',''))" 2>/dev/null || echo "")
+AMAIL_AGENT_JSON="${_GW_CFG%/amail_gateway.json}/amail.json"
+AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
+[ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
 if [ -n "$AMAIL_AGENT" ]; then
     AGENT_FLAG="--agent $AMAIL_AGENT"
 else

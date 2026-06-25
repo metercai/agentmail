@@ -154,66 +154,64 @@ hook_created = '''
         pass  # AmailGateway tools not installed
 '''
 
-hook_deleted = '''
-    # ── Fire integration hooks (AmailGateway) ──
-    try:
-        from tools.amail_tools import trigger_profile_hooks
-        trigger_profile_hooks("profile_deleted", canon, str(profile_dir))
-    except ImportError:
-        pass  # AmailGateway tools not installed
+hook_deleted = '''            # ── Fire integration hooks (AmailGateway) ──
+            try:
+                from tools.amail_tools import trigger_profile_hooks
+                trigger_profile_hooks("profile_deleted", canon, str(profile_dir))
+            except ImportError:
+                pass  # AmailGateway tools not installed
 '''
 
-# ── Patch 1: profile creation hook ────────────────────────────
-if "trigger_profile_hooks" not in content:
-    register_idx = anchors["register"] - 1  # 0-indexed
-    if register_idx < len(lines) and "_maybe_register_gateway_service(canon)" in lines[register_idx]:
-        # Find the actual return line (it may have shifted slightly)
-        actual_return = _find_return_after_register(content, lines, anchors["register"])
-        return_idx = actual_return - 1
-        if return_idx < len(lines) and lines[return_idx].strip() == "return profile_dir":
-            content = content[:content.index('\n', sum(len(l)+1 for l in lines[:return_idx-1])) + 1
-                     if return_idx > 1 else 0] + hook_created + '\n' + lines[return_idx] + '\n' + content[content.index('\n', sum(len(l)+1 for l in lines[:return_idx])) + 1:]
-            patched = True
-            print("Patch 1: profile_created hook inserted", file=sys.stderr)
-        else:
-            # Fallback: search for return profile_dir after marker
-            marker = "_maybe_register_gateway_service(canon)"
-            if marker in content:
-                search_from = content.index(marker)
-                rest = content[search_from:]
-                m = re.search(r'\n(    return profile_dir)\n', rest)
-                if m:
-                    insertion = rest[:m.start(1)] + hook_created + '\n' + rest[m.start(1):]
-                    content = content[:search_from] + insertion
-                    patched = True
-                    print("Patch 1: profile_created hook inserted (fallback)", file=sys.stderr)
+# ── Patch 1: profile creation hook (always replace) ───────────
+# Remove old instance if present
+content = re.sub(
+    r'    # ── Fire integration hooks \(AmailGateway\) ──\n'
+    r'    try:\n'
+    r'        from tools\.amail_tools import trigger_profile_hooks\n'
+    r'        trigger_profile_hooks\("profile_created".*?'
+    r'    except ImportError:\n'
+    r'        pass  # AmailGateway tools not installed\n',
+    '',
+    content, count=1, flags=re.DOTALL
+)
+# Insert before "return profile_dir"
+if "return profile_dir" in content and "_maybe_register_gateway_service" in content:
+    marker = "_maybe_register_gateway_service(canon)"
+    rest = content[content.index(marker):]
+    m = re.search(r'\n(    return profile_dir)\n', rest)
+    if m:
+        insertion = rest[:m.start(1)] + hook_created + '\n' + rest[m.start(1):]
+        content = content[:content.index(marker)] + insertion
+        patched = True
+        print("Patch 1: profile_created hook added/updated", file=sys.stderr)
     else:
-        print("WARNING: could not find _maybe_register_gateway_service insertion point for profile_created hook", file=sys.stderr)
+        print("WARNING: could not find 'return profile_dir' after marker — patch 1 skipped", file=sys.stderr)
+else:
+    print("WARNING: could not find insertion point — patch 1 skipped", file=sys.stderr)
 
-# ── Patch 2: profile deletion hook ────────────────────────────
-if 'trigger_profile_hooks("profile_deleted"' not in content:
-    delete_line = _find_delete_print_line(content)
-    if delete_line > 0:
-        # Insert after the print line
-        line_end = content.index('\n', sum(len(l)+1 for l in lines[:delete_line-1]))
-        if lines[delete_line - 1].strip():
-            content = content[:line_end+1] + hook_deleted + content[line_end+1:]
-            patched = True
-            print("Patch 2: profile_deleted hook inserted", file=sys.stderr)
-    
-    if 'trigger_profile_hooks("profile_deleted"' not in content:
-        # Fallback: match shutil.rmtree with profile_dir
-        for m in re.finditer(r'^.*shutil\.rmtree\(.*profile_dir.*\).*$', content, re.MULTILINE):
-            line_end = content.find('\n', m.end())
-            if line_end == -1:
-                line_end = len(content)
-            content = content[:line_end+1] + hook_deleted + content[line_end+1:]
-            patched = True
-            print("Patch 2: profile_deleted hook inserted (rmtree fallback)", file=sys.stderr)
-            break
-
-    if not patched:
-        print("WARNING: could not find insertion point for profile_deleted hook", file=sys.stderr)
+# ── Patch 2: profile deletion hook (always replace) ───────────
+# Remove old instance if present
+content = re.sub(
+    r'    # ── Fire integration hooks \(AmailGateway\) ──\n'
+    r'    try:\n'
+    r'        from tools\.amail_tools import trigger_profile_hooks\n'
+    r'        trigger_profile_hooks\("profile_deleted".*?'
+    r'    except ImportError:\n'
+    r'        pass  # AmailGateway tools not installed\n',
+    '',
+    content, count=1, flags=re.DOTALL
+)
+# Insert after shutil.rmtree line with profile_dir
+for m in re.finditer(r'^.*shutil\.rmtree\(.*profile_dir.*\).*$', content, re.MULTILINE):
+    line_end = content.find('\n', m.end())
+    if line_end == -1:
+        line_end = len(content)
+    content = content[:line_end+1] + hook_deleted + content[line_end+1:]
+    patched = True
+    print("Patch 2: profile_deleted hook added/updated", file=sys.stderr)
+    break
+else:
+    print("WARNING: could not find shutil.rmtree with profile_dir — patch 2 skipped", file=sys.stderr)
 
 if patched:
     with open(target, "w") as f:

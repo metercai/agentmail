@@ -134,9 +134,15 @@ if m and "Callable" not in m.group(1):
     patched = True
     print("Patch 1: Callable added to import", file=sys.stderr)
 
-# ── Patch 2: add PREPROCESS_REGISTRY after logger ─────────────
-if "PREPROCESS_REGISTRY" not in content:
-    registry = """
+# ── Patch 2: add PREPROCESS_REGISTRY after logger (always replace) ──
+# Remove old instance if present
+content = re.sub(
+    r'# Preprocess Registry \u2014 allows tools modules to register payload\n'
+    r'.*?PREPROCESS_REGISTRY\[name\] = fn\n+',
+    '',
+    content, count=1, flags=re.DOTALL
+)
+registry = """
 
 # ═══════════════════════════════════════════════════════════════
 # Preprocess Registry — allows tools modules to register payload
@@ -156,22 +162,25 @@ def register_preprocessor(name: str, fn: Callable) -> None:
     PREPROCESS_REGISTRY[name] = fn
 
 """
-    logger_line = lines[anchors["logger"] - 1] if anchors["logger"] <= len(lines) else ""
-    if "logger = logging.getLogger(__name__)" in logger_line:
-        content = content.replace(logger_line, logger_line + registry, 1)
-        patched = True
-        print("Patch 2: PREPROCESS_REGISTRY added", file=sys.stderr)
-    else:
-        # Fallback: search for the pattern
-        m = re.search(r'^logger = logging\.getLogger\(__name__\)', content, re.MULTILINE)
-        if m:
-            content = content[:m.end()] + registry + content[m.end():]
-            patched = True
-            print("Patch 2: PREPROCESS_REGISTRY added (fallback)", file=sys.stderr)
 
-# ── Patch 3: add preprocessor call in webhook handler ─────────
-if "PREPROCESS_REGISTRY.get" not in content:
-    call_block = '''
+# Insert after logger = logging.getLogger(__name__)
+logger_marker = "logger = logging.getLogger(__name__)"
+if logger_marker in content:
+    content = content.replace(logger_marker, logger_marker + registry, 1)
+    patched = True
+    print("Patch 2: PREPROCESS_REGISTRY added/updated", file=sys.stderr)
+else:
+    print("WARNING: could not find logger marker — patch 2 skipped", file=sys.stderr)
+
+# ── Patch 3: add preprocessor call in webhook handler (always replace) ──
+# Remove old instance if present: from the comment marker to blank line before # Format prompt
+old_start = '        # ── Preprocess payload (AmailGateway integration) ──────────'
+old_end   = '                # Format prompt from template'
+if old_start in content:
+    before = content[:content.index(old_start)]
+    after  = content[content.index(old_end):]
+    content = before + after
+call_block = '''
         # ── Preprocess payload (AmailGateway integration) ──────────
         preprocess_name = route_config.get("preprocess")
         if preprocess_name:
@@ -186,23 +195,14 @@ if "PREPROCESS_REGISTRY.get" not in content:
                     )
 
 '''
-    prompt_line_idx = anchors["prompt"] - 1
-    if prompt_line_idx < len(lines) and "# Format prompt from template" in lines[prompt_line_idx]:
-        orig = lines[prompt_line_idx]
-        content = content.replace(orig, call_block + "        " + orig, 1)
-        patched = True
-        print("Patch 3: preprocessor call inserted", file=sys.stderr)
-    else:
-        # Fallback: search
-        if "# Format prompt from template" in content:
-            content = content.replace(
-                "# Format prompt from template",
-                call_block + "        # Format prompt from template", 1
-            )
-            patched = True
-            print("Patch 3: preprocessor call inserted (fallback)", file=sys.stderr)
-        else:
-            print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
+# Insert before "# Format prompt from template"
+target = "# Format prompt from template"
+if target in content:
+    content = content.replace(target, call_block + "        " + target, 1)
+    patched = True
+    print("Patch 3: preprocessor call added/updated", file=sys.stderr)
+else:
+    print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
 # ── Patch 4: ensure _log_ping_event helper (always replace) ────
 # Remove old instance if present, then append latest
@@ -211,7 +211,7 @@ content, _nr = _re4.subn(
     r'\n+def _log_ping_event\(.*?(?=\n(?:def |\Z))',
     '',
     content,
-    count=1,
+    count=0,
     flags=_re4.DOTALL
 )
 def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
@@ -228,15 +228,19 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
         entry["pong_status"] = pong_status
     _log_dir = _os.environ.get("AGENTMAIL_HOME", "")
     if not _log_dir:
-        _amail = _os.path.expanduser("~/.hermes/amail.json")
-        if _os.path.exists(_amail):
-            try:
-                import json as _json
-                _acfg = _json.load(open(_amail))
-                _email = _acfg.get("email", "")
-                if _email:
-                    _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
-            except: pass
+        # Resolve email from HERMES_PROFILE_DIR/.agentmail pointer
+        _pdir = _os.environ.get("HERMES_PROFILE_DIR", "")
+        if _pdir:
+            _pointer = _os.path.join(_pdir, ".agentmail")
+            if _os.path.isfile(_pointer):
+                try:
+                    import json as _json
+                    _pd = _json.load(open(_pointer))
+                    _email = _pd.get("email", "")
+                    if _email:
+                        _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
+                except:
+                    pass
     if not _log_dir:
         _log_dir = _os.path.expanduser("~/.agentmail/default")
     log_path = _os.path.join(_log_dir, "agentmail.log")
@@ -250,9 +254,14 @@ import inspect as _ins
 content += "\n" + _ins.getsource(_log_ping_event)
 patched = True
 print("Patch 4: _log_ping_event added", file=sys.stderr)
-# ── Patch 5: add ping-pong interception (end-to-end test) ────
-if "__amail_ping__" not in content and "__amail_pong__" not in content:
-    ping_block = '''
+# ── Patch 5: add ping-pong interception (end-to-end test, always replace) ──
+# Remove old instance if present
+content = re.sub(
+    r'        # ── Ping-pong interception.*?pong_returned"\)\}\n+',
+    '',
+    content, count=1, flags=re.DOTALL
+)
+ping_block = '''
         # ── Ping-pong interception (end-to-end test) ────────────────
         ping_subject = (payload.get("subject") or "").strip()
         if ping_subject.startswith("__amail_ping__:"):
@@ -289,14 +298,14 @@ if "__amail_ping__" not in content and "__amail_pong__" not in content:
             return web.json_response({"pong": ping_id, "status": "pong_returned"})
 
 '''
-    # Insert before "# Non-blocking" comment
-    target_line = "# Non-blocking"
-    if target_line in content:
-        content = content.replace(target_line, ping_block + "        " + target_line, 1)
-        patched = True
-        print("Patch 5: ping-pong interception inserted", file=sys.stderr)
-    else:
-        print("WARNING: could not find '# Non-blocking' — patch 5 skipped", file=sys.stderr)
+# Insert before "# Non-blocking" comment
+target_line = "# Non-blocking"
+if target_line in content:
+    content = content.replace(target_line, ping_block + "        " + target_line, 1)
+    patched = True
+    print("Patch 5: ping-pong interception added/updated", file=sys.stderr)
+else:
+    print("WARNING: could not find '# Non-blocking' — patch 5 skipped", file=sys.stderr)
 
 if patched:
     with open(target, "w") as f:
