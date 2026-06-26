@@ -28,10 +28,10 @@ LIB_DIR="$SCRIPT_DIR/lib"
 LANG_CHOICE="${AMAIL_LANG:-}"
 if [ -z "$LANG_CHOICE" ]; then
     echo ""
-    echo -e "${BOLD}Select language / 选择语言:${NC}"
-    echo "  [1] English (default)"
+    echo -e "${BOLD}${YELLOW}Select language / 选择语言:${NC}"
+    echo "  [1] English"
     echo "  [2] 中文"
-    echo -n "  Choice [1/2]: "
+    echo -n "  Choice (1/2) [1]: "
     read -r LANG_ANS
     LANG_ANS="${LANG_ANS:-1}"
     [ "$LANG_ANS" = "2" ] && LANG_CHOICE="zh" || LANG_CHOICE="en"
