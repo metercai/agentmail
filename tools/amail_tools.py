@@ -218,6 +218,25 @@ class _GatewayClient:
         """DELETE /api/v1/admin/whitelists/:id"""
         return self._request("DELETE", f"/api/v1/admin/whitelists/{entry_id}")
 
+    def list_whitelist_entries(self, domain_addr: str) -> list:
+        """GET /api/v1/admin/whitelists?domain_addr= — list all entries for a domain.
+
+        Returns list of dicts with keys: id, value, direction, description.
+        """
+        result = self._request("GET", f"/api/v1/admin/whitelists?domain_addr={domain_addr}")
+        entries = result.get("data", []) if isinstance(result, dict) else []
+        return entries if isinstance(entries, list) else []
+
+    def delete_whitelist_by_value(self, domain_addr: str, value: str) -> dict:
+        """DELETE /api/v1/admin/whitelists?domain_addr=&value= — delete by composite key."""
+        return self._request("DELETE",
+            f"/api/v1/admin/whitelists?domain_addr={domain_addr}&value={value}")
+
+    def update_whitelist_entry(self, entry_id: int, direction: str) -> dict:
+        """PUT /api/v1/admin/whitelists/:id — update direction."""
+        return self._request("PUT", f"/api/v1/admin/whitelists/{entry_id}",
+                             body={"direction": direction})
+
     # ── Agent State API (per-agent KV store) ─────────────────────
 
     def agent_state_get(self, key: str) -> Optional[str]:
@@ -269,6 +288,32 @@ class _GatewayClient:
         return None
 
     # ── Domain / API Key management ─────────────────────────────
+
+    def list_system_domains(self, system_id: str) -> list:
+        """GET /api/v1/admin/systems/:sid/domains — list domains for a system."""
+        result = self._request("GET", f"/api/v1/admin/systems/{system_id}/domains")
+        data = result.get("data", result) if isinstance(result, dict) else result
+        return data if isinstance(data, list) else []
+
+    def update_system_domain(self, domain_id: str, webhook_url: str = "",
+                             webhook_secret: str = "") -> dict:
+        """PUT /api/v1/admin/system-domains/:id — update webhook config."""
+        body = {}
+        if webhook_url:
+            body["webhook_url"] = webhook_url
+        if webhook_secret:
+            body["webhook_secret"] = webhook_secret
+        return self._request("PUT", f"/api/v1/admin/system-domains/{domain_id}", body=body)
+
+    def list_api_keys(self) -> list:
+        """GET /api/v1/api-keys — list all API keys."""
+        result = self._request("GET", "/api/v1/api-keys")
+        entries = result.get("entries", result.get("data", []))
+        return entries if isinstance(entries, list) else []
+
+    def delete_api_key(self, key_id: int) -> dict:
+        """DELETE /api/v1/api-keys/:id — delete an API key."""
+        return self._request("DELETE", f"/api/v1/api-keys/{key_id}")
 
     def register_email(
         self,
@@ -988,8 +1033,9 @@ def manage_contacts(
         if not address:
             return {"success": False, "error": "address is required for check"}
         # Query whitelist entries to extract direction from the record
-        list_result = client._request("GET", f"/api/v1/admin/whitelists?domain_addr={amail}")
-        entries = list_result.get("data", []) if isinstance(list_result, dict) else []
+        entries = client.list_whitelist_entries(amail)
+        if not isinstance(entries, list):
+            entries = []
         for entry in entries:
             if entry.get("value") == address:
                 return {
@@ -1028,8 +1074,7 @@ def manage_contacts(
     elif action == "remove":
         if not address:
             return {"success": False, "error": "address is required for remove"}
-        result = client._request("DELETE",
-            f"/api/v1/admin/whitelists?domain_addr={amail}&value={address}")
+        result = client.delete_whitelist_by_value(amail, address)
         status = result.pop("status", 0)
         if status == 204:
             return {"success": True}
@@ -1045,8 +1090,9 @@ def manage_contacts(
         if not new_direction:
             return {"success": False, "error": "direction is required for update"}
         # Find the entry ID for this address
-        list_result = client._request("GET", f"/api/v1/admin/whitelists?domain_addr={amail}")
-        entries = list_result.get("data", []) if isinstance(list_result, dict) else []
+        entries = client.list_whitelist_entries(amail)
+        if not isinstance(entries, list):
+            entries = []
         entry_id = None
         for entry in entries:
             if entry.get("value") == address:
@@ -1054,8 +1100,7 @@ def manage_contacts(
                 break
         if not entry_id:
             return {"success": False, "error": f"{address} not found in whitelist"}
-        result = client._request("PUT", f"/api/v1/admin/whitelists/{entry_id}",
-                                 body={"direction": new_direction})
+        result = client.update_whitelist_entry(entry_id, new_direction)
         status = result.pop("status", 0)
         if 200 <= status < 300:
             return {"success": True, "note": f"direction updated to {new_direction}"}
@@ -1539,20 +1584,14 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
             logger.info("[amail_gateway] Email %s already registered — updating webhook config", email)
             # Update webhook_url/webhook_secret on existing domain record
             try:
-                domains = client._request("GET", f"/api/v1/admin/systems/{system_id}/domains")
-                addr_id = None
-                items = []
-                if isinstance(domains, dict):
-                    items = domains.get("data", [])
-                elif isinstance(domains, list):
-                    items = domains
+                domains = client.list_system_domains(system_id)
+                items = domains if isinstance(domains, list) else []
                 for d in items:
                         if d.get("domain") == email:
                             addr_id = d.get("id")
                             break
                 if addr_id:
-                    client._request("PUT", f"/api/v1/admin/system-domains/{addr_id}",
-                                    body={"webhook_url": webhook_url, "webhook_secret": webhook_secret})
+                    client.update_system_domain(addr_id, webhook_url, webhook_secret)
                     logger.info("[amail_gateway] Updated webhook for %s (id=%s)", email, addr_id)
                 else:
                     logger.warning("[amail_gateway] Cannot find domain ID for %s to update webhook", email)
@@ -1860,14 +1899,13 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
 
     # Find and delete the API key by email address
     client = _GatewayClient(gateway_url, admin_key)
-    list_result = client._request("GET", "/api/v1/api-keys")
-    entries = list_result.get("entries", list_result.get("data", []))
+    entries = client.list_api_keys()
     if isinstance(entries, list):
         for entry in entries:
             if entry.get("email_address") == profile_email:
                 api_key_id = entry.get("id")
                 if api_key_id:
-                    client._request("DELETE", f"/api/v1/api-keys/{api_key_id}")
+                    client.delete_api_key(api_key_id)
                     logger.info("[amail_gateway] Deleted API key for %s (id=%s)", profile_email, api_key_id)
                 break
 
