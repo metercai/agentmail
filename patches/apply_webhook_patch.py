@@ -228,26 +228,28 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
         entry["pong_status"] = pong_status
     _log_dir = _os.environ.get("AGENTMAIL_HOME", "")
     if not _log_dir:
-        # Resolve email from HERMES_PROFILE_DIR/.agentmail pointer
+        # Resolve email from profile dir .agentmail pointer
         _pdir = _os.environ.get("HERMES_PROFILE_DIR", "")
-        if _pdir:
-            _pointer = _os.path.join(_pdir, ".agentmail")
-            if _os.path.isfile(_pointer):
-                try:
-                    import json as _json
-                    _pd = _json.load(open(_pointer))
-                    _email = _pd.get("email", "")
-                    if _email:
-                        _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
-                except:
-                    pass
+        if not _pdir:
+            # Fallback: try default Hermes home
+            _pdir = _os.path.expanduser("~/.hermes")
+        _pointer = _os.path.join(_pdir, ".agentmail")
+        if _os.path.isfile(_pointer):
+            try:
+                import json as _json
+                _pd = _json.load(open(_pointer))
+                _email = _pd.get("email", "")
+                if _email:
+                    _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
+            except:
+                pass
     if not _log_dir:
         _log_dir = _os.path.expanduser("~/.agentmail/default")
     log_path = _os.path.join(_log_dir, "agentmail.log")
     try:
         _os.makedirs(_log_dir, exist_ok=True)
         with open(log_path, "a") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\\n")
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
 import inspect as _ins

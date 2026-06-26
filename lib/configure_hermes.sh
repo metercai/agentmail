@@ -11,6 +11,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$(dirname "$0")")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 
+# ── 0. Stop any running gateways BEFORE patching ─────────────────
+echo "  Stopping any running Hermes gateways..."
+pkill -f "hermes.*gateway.*run.*accept-hooks" 2>/dev/null || true
+sleep 2
+
 # ── 1. Patch webhook ────────────────────────────────────────────
 source "$LIB_DIR/patch-webhook.sh"
 
