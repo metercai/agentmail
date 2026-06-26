@@ -129,7 +129,7 @@ if ! $REUSED_KEY; then
         USE_PRODUCT_CODE=true
         echo "  $T_AUTH_READ_PC"
     else
-        info "$T_SELECT_AUTH"
+        echo "  $T_SELECT_AUTH"
         echo "    [1] $T_AUTH_OPT1"
         echo "    [2] $T_AUTH_OPT2"
         echo -n "  $T_CHOOSE (1/2) [1]: "; read -r AUTH_MODE
