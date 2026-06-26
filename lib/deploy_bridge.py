@@ -4,7 +4,7 @@ import sys, os, json, subprocess, socket, time
 import urllib.request, urllib.error, re
 
 def log_step(msg: str):
-    print(f"{msg}")
+    print(f"  {msg}")
 
 def log_ok(msg: str):
     print(f"  ✓ {msg}")

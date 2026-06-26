@@ -19,6 +19,7 @@ import urllib.request, urllib.error
 GREEN  = '\033[0;32m'
 RED    = '\033[0;31m'
 YELLOW = '\033[1;33m'
+BROWN  = '\033[0;33m'
 BOLD   = '\033[1m'
 NC     = '\033[0m'
 CHECK  = '\u2713'
@@ -29,7 +30,7 @@ HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 AGENTMAIL_HOME = Path.home() / ".agentmail"
 
 def _resolve_system_id(args: list[str] | None = None) -> str:
-    """Determine system_id: --system-id arg > HERMES_PROFILE_DIR/.agentmail > env var."""
+    """Determine system_id: --system-id arg > HERMES_PROFILE_DIR/.agentmail > ~/.hermes/.agentmail > env var."""
     if args:
         for i, a in enumerate(args):
             if a == "--system-id" and i + 1 < len(args):
@@ -42,6 +43,13 @@ def _resolve_system_id(args: list[str] | None = None) -> str:
                 return json.loads(pointer.read_text()).get("system_id", "")
             except Exception:
                 pass
+    # Fallback: check ~/.hermes/.agentmail directly
+    default_pointer = Path.home() / ".hermes" / ".agentmail"
+    if default_pointer.is_file():
+        try:
+            return json.loads(default_pointer.read_text()).get("system_id", "")
+        except Exception:
+            pass
     return os.environ.get("SYSTEM_ID", "")
 
 def _gw_path(sid: str) -> Path:
@@ -130,7 +138,7 @@ class Check:
             if not items:
                 continue
             icon = GREEN if all(i["pass"] for i in items) else (YELLOW if any(i["pass"] for i in items) else RED)
-            print(f"\n  {BOLD}{icon}╓─ {title}{NC}")
+            print(f"\n  {BROWN}╓─ {title}{NC}")
             for chk in items:
                 ik = GREEN + CHECK + NC if chk["pass"] else RED + CROSS + NC
                 print(f"  {ik} {chk['check']}: {chk['detail']}")
