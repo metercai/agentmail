@@ -28,7 +28,7 @@ def load_config():
     return None
 
 def get_agent_email(config):
-    """Find agent email from gateway API, profiles, or env."""
+    """Find agent email from centralized configs, API, or env."""
     gw = config.get("gateway_url", "")
     ak = config.get("admin_key", "")
     sid = config.get("system_id", "")
@@ -39,7 +39,36 @@ def get_agent_email(config):
     if email:
         return email
 
-    # 2. Query API — prefer default agent (short form: sys-name@domain)
+    # 2. Root profile centralized config (fast, no API call)
+    if sid:
+        root_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
+        if os.path.isfile(root_path):
+            try:
+                with open(root_path) as f:
+                    pf = json.load(f)
+                e = pf.get("email", "")
+                if e:
+                    return e
+            except:
+                pass
+
+        # 3. Named profiles centralized configs
+        profiles_dir = os.path.join(os.path.expanduser("~/.agentmail"), sid, "profiles")
+        if os.path.isdir(profiles_dir):
+            for name in sorted(os.listdir(profiles_dir)):
+                aj = os.path.join(profiles_dir, name, "amail.json")
+                if os.path.isfile(aj):
+                    try:
+                        with open(aj) as f:
+                            pf = json.load(f)
+                        if pf.get("system_id") == sid:
+                            e = pf.get("email", "")
+                            if e:
+                                return e
+                    except:
+                        pass
+
+    # 4. Query API — prefer default agent (short form: sys-name@domain)
     try:
         req = urllib.request.Request(f"{gw}/api/v1/admin/systems/{sid}/domains",
             headers={"X-Api-Key": ak})
@@ -67,31 +96,6 @@ def get_agent_email(config):
                 return dom
     except Exception as e:
         log_warn(f"API query failed: {e}")
-
-    # 3. Profiles directory
-    home = os.path.expanduser("~/.hermes")
-    profiles_dir = os.path.join(home, "profiles")
-    if os.path.isdir(profiles_dir):
-        for name in sorted(os.listdir(profiles_dir)):
-            aj = os.path.join(profiles_dir, name, "amail.json")
-            if os.path.exists(aj):
-                try:
-                    with open(aj) as f:
-                        pf = json.load(f)
-                    if pf.get("system_id") == sid:
-                        return pf.get("email", "")
-                except:
-                    pass
-    # Root profile
-    aj = os.path.join(home, "amail.json")
-    if os.path.exists(aj):
-        try:
-            with open(aj) as f:
-                pf = json.load(f)
-            if pf.get("system_id") == sid:
-                return pf.get("email", "")
-        except:
-            pass
 
     return ""
 

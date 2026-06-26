@@ -46,8 +46,13 @@ if [ -d "$PROFILES_DIR" ]; then
         [ -d "$profile_dir" ] || continue
         profile_name=$(basename "$profile_dir")
 
-        # Skip profiles without amail config
-        [ -f "$profile_dir/amail.json" ] || continue
+        # Skip profiles without amail config (check centralized path)
+        if [ -n "$SYSTEM_ID" ]; then
+            [ -f "$HOME/.agentmail/$SYSTEM_ID/profiles/$profile_name/amail.json" ] || continue
+        else
+            # No system_id — try legacy profile_dir check during transition
+            [ -f "$profile_dir/amail.json" ] || continue
+        fi
 
         # Read profile's webhook port from its config.yaml
         PROF_PORT=$(python3 -c "
@@ -87,8 +92,12 @@ python3 << 'PYEOF' 2>/dev/null || true
 import json, os, urllib.request
 from pathlib import Path
 
-home = os.path.expanduser("~/.hermes")
-gw_cfg_path = os.path.join(home, "amail_gateway.json")
+# Prefer centralized gateway config via SYSTEM_ID env var
+sid = os.environ.get("SYSTEM_ID", "")
+if sid:
+    gw_cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+else:
+    gw_cfg_path = os.path.join(os.path.expanduser("~/.hermes"), "amail_gateway.json")
 if not os.path.exists(gw_cfg_path):
     exit(0)
 
@@ -112,7 +121,10 @@ bridge_base = f"http://{bridge_addr}"
 profiles = {}
 
 # Root profile
-root_amail = os.path.join(home, "amail.json")
+if sid:
+    root_amail = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
+else:
+    root_amail = os.path.join(os.path.expanduser("~/.hermes"), "amail.json")
 if os.path.exists(root_amail):
     with open(root_amail) as f:
         pf = json.load(f)
@@ -122,7 +134,10 @@ if os.path.exists(root_amail):
         profiles[email] = ("127.0.0.1", port)
 
 # Named profiles — each has its own port from its config.yaml
-profiles_dir = os.path.join(home, "profiles")
+if sid:
+    profiles_dir = os.path.join(os.path.expanduser("~/.agentmail"), sid, "profiles")
+else:
+    profiles_dir = os.path.join(os.path.expanduser("~/.hermes"), "profiles")
 if os.path.isdir(profiles_dir):
     for name in sorted(os.listdir(profiles_dir)):
         aj = os.path.join(profiles_dir, name, "amail.json")
