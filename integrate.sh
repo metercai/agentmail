@@ -136,7 +136,6 @@ if ! $REUSED_KEY; then
         AUTH_MODE="${AUTH_MODE:-1}"
         if [ "$AUTH_MODE" = "2" ]; then
             USE_PRODUCT_CODE=true
-            echo "  $T_PC_HELP"
             read -r -p "  $T_PC_PROMPT" PRODUCT_CODE
             [ -z "$PRODUCT_CODE" ] && step_fail "$T_PC_EMPTY"
             info "$T_PC_USING: ${PRODUCT_CODE:0:8}..."
