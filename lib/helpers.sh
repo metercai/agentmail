@@ -49,7 +49,7 @@ step_begin() {
 step_ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 step_warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 step_fail() { echo -e "  ${RED}✗${NC} $1"; echo ""; exit 1; }
-info()      { echo -e "     $1"; }
+info()      { echo -e "  $1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export SCRIPT_DIR

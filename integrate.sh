@@ -150,7 +150,7 @@ if ! $REUSED_KEY; then
             done
             if [ -n "$AUTO_KEY" ]; then
                 info "$T_DETECT_KEY: $AUTO_PATH (${AUTO_KEY:0:8}...)"
-                echo -n "  $T_USE_KEY [Y/n]: "; read -r USE_AUTO
+                echo -n "  $T_USE_KEY (Y/n) [Y]: "; read -r USE_AUTO
                 if [ "${USE_AUTO:-Y}" = "Y" ] || [ "${USE_AUTO:-y}" = "y" ]; then
                     ADMIN_KEY="$AUTO_KEY"
                 fi
@@ -356,7 +356,7 @@ WEBHOOK_HOST="${AMAIL_WEBHOOK_HOST:-}"
 
 _gw_host="$(echo "$GATEWAY_URL" | sed 's|^https\?://||;s|:.*||;s|/.*||')"
 if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
-    info "Gateway is local — no bridge needed"
+    info "$T_LOCAL_GATEWAY"
     WEBHOOK_HOST=""
     python3 -c "
 import json, os
@@ -488,6 +488,6 @@ else
 fi
 python3 "$SCRIPT_DIR/lib/check_status.py" --ping $AGENT_FLAG
 
-# Step 10: Send welcome email
-step_begin "Welcome email"
+# Step 8: Send welcome email
+step_begin "$T_TEST"
 python3 "$SCRIPT_DIR/lib/send_welcome.py"
