@@ -367,21 +367,14 @@ json.dump(cfg, open(p, 'w'), indent=2)
 "
 elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
     echo "  $T_WEBHOOK_MODE"
-    echo "    $T_CHOOSE_ENV"
-    echo "    [1] $T_WEBHOOK_OPT1"
+    echo "  $T_CHOOSE_ENV"
+    echo "    [1] $T_WEBHOOK_OPT3"
     echo "    [2] $T_WEBHOOK_OPT2"
-    echo "    [3] $T_WEBHOOK_OPT3"
-    echo -n "  $T_CHOOSE [1/2/3] (${T_DEFAULT} 3): "; read -r WH_MODE
-    WH_MODE="${WH_MODE:-3}"
+    echo "    [3] $T_WEBHOOK_OPT1"
+    echo -n "  $T_CHOOSE (1/2/3) [1]: "; read -r WH_MODE
+    WH_MODE="${WH_MODE:-1}"
     if [ "$WH_MODE" = "1" ]; then
-        WEBHOOK_MODE="direct"
-        read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
-        while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
-              echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.'; do
-            info "  Must be public IP:port (not 127.x/10.x/172.16-31.x/192.168.x)"
-            read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
-        done
-        step_ok "public address = $WEBHOOK_HOST"
+        WEBHOOK_MODE="bridge"
     elif [ "$WH_MODE" = "2" ]; then
         WEBHOOK_MODE="internal"
         read -r -p "  Internal bridge addr [ip:port]: " WEBHOOK_HOST
@@ -392,7 +385,14 @@ elif [ -z "$AMAIL_WEBHOOK_HOST" ]; then
         done
         step_ok "internal bridge address = $WEBHOOK_HOST"
     else
-        WEBHOOK_MODE="bridge"
+        WEBHOOK_MODE="direct"
+        read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
+        while ! echo "$WEBHOOK_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' || \
+              echo "$WEBHOOK_HOST" | grep -qE '^10\.|^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.|^192\.168\.|^127\.'; do
+            info "  Must be public IP:port (not 127.x/10.x/172.16-31.x/192.168.x)"
+            read -r -p "  Public addr [ip:port]: " WEBHOOK_HOST
+        done
+        step_ok "public address = $WEBHOOK_HOST"
     fi
 else
     WEBHOOK_HOST="$AMAIL_WEBHOOK_HOST"
