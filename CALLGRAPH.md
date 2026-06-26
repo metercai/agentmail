@@ -18,8 +18,7 @@ integrate.sh  (入口 / entry point)
 │   └── (纯交互，无子模块调用)
 │
 ├── Step 4: 保存配置 + 部署 bridge
-│   ├── python3 lib/setup_system.py
-│   │   └── from lib.setup import setup  ── 配置写入
+│   └── python3 lib/setup_system.py      ── 配置写入 + CLI 入口
 │   └── python3 lib/deploy_bridge.py   ── bridge 下载/启动
 │
 ├── Step 5: 安装工具 (source)
