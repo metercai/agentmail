@@ -100,13 +100,6 @@
 |--------|------|
 | `lib/helpers.sh` | `domain_exists_globally()` |
 
-### 🟢 `GET /api/v1/admin/whitelists?domain_addr=...`
-列出白名单条目。
-
-| 调用方 | 用途 |
-|--------|------|
-| `tools/amail_tools.py` | `manage_contacts("update")` — 查找 entry_id |
-
 ### 🟢 `GET /api/v1/admin/whitelists/check?domain_addr=...&value=...&direction=...`
 精确查询单条白名单（无信息泄漏）。
 
@@ -121,12 +114,12 @@
 |--------|------|
 | `tools/amail_tools.py` | `add_whitelist()` — 注册 agent 时自动白名单 manager |
 
-### 🔵 `PUT /api/v1/admin/whitelists/{id}`
-更新白名单条目。
+### 🔵 `PUT /api/v1/admin/whitelists?domain_addr=...&value=...`
+按组合键更新白名单 direction。
 
 | 调用方 | 用途 |
 |--------|------|
-| `tools/amail_tools.py` | `update_whitelist_entry()` — 更新 direction |
+| `tools/amail_tools.py` | `update_whitelist_by_value()` — `manage_contacts("update")` |
 
 ### 🔵 `DELETE /api/v1/admin/whitelists?domain_addr=...&value=...`
 按组合键删除白名单。

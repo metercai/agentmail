@@ -196,15 +196,6 @@ class _GatewayClient:
             },
         )
 
-    def list_whitelist_entries(self, domain_addr: str) -> list:
-        """GET /api/v1/admin/whitelists?domain_addr= — list all entries for a domain.
-
-        Returns list of dicts with keys: id, value, direction, description.
-        """
-        result = self._request("GET", f"/api/v1/admin/whitelists?domain_addr={domain_addr}")
-        entries = result.get("data", []) if isinstance(result, dict) else []
-        return entries if isinstance(entries, list) else []
-
     def check_whitelist_value(self, domain_addr: str, value: str, direction: str = "to") -> dict:
         """GET /api/v1/admin/whitelists/check — check if a value is whitelisted.
 
@@ -219,15 +210,21 @@ class _GatewayClient:
         entry_direction = result.get("direction", direction) if whitelisted else direction
         return {"in_contacts": whitelisted, "direction": entry_direction}
 
+    def update_whitelist_by_value(self, domain_addr: str, value: str, direction: str) -> dict:
+        """PUT /api/v1/admin/whitelists?domain_addr=&value= — update direction by composite key.
+
+        Unlike update_whitelist_entry which requires a DB entry_id, this uses
+        the same composite-key lookup as delete_whitelist_by_value — no
+        information leakage from listing all entries.
+        """
+        return self._request("PUT",
+            f"/api/v1/admin/whitelists?domain_addr={domain_addr}&value={value}",
+            body={"direction": direction})
+
     def delete_whitelist_by_value(self, domain_addr: str, value: str) -> dict:
         """DELETE /api/v1/admin/whitelists?domain_addr=&value= — delete by composite key."""
         return self._request("DELETE",
             f"/api/v1/admin/whitelists?domain_addr={domain_addr}&value={value}")
-
-    def update_whitelist_entry(self, entry_id: int, direction: str) -> dict:
-        """PUT /api/v1/admin/whitelists/:id — update direction."""
-        return self._request("PUT", f"/api/v1/admin/whitelists/{entry_id}",
-                             body={"direction": direction})
 
     # ── Agent State API (per-agent KV store) ─────────────────────
 
@@ -1033,18 +1030,7 @@ def manage_contacts(
         new_direction = kwargs.get("direction", direction)
         if not new_direction:
             return {"success": False, "error": "direction is required for update"}
-        # Find the entry ID for this address
-        entries = client.list_whitelist_entries(amail)
-        if not isinstance(entries, list):
-            entries = []
-        entry_id = None
-        for entry in entries:
-            if entry.get("value") == address:
-                entry_id = entry.get("id")
-                break
-        if not entry_id:
-            return {"success": False, "error": f"{address} not found in whitelist"}
-        result = client.update_whitelist_entry(entry_id, new_direction)
+        result = client.update_whitelist_by_value(amail, address, new_direction)
         status = result.pop("status", 0)
         if 200 <= status < 300:
             return {"success": True, "note": f"direction updated to {new_direction}"}
