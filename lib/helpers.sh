@@ -31,8 +31,11 @@ ask_param() {
         value="$default"
     fi
 
-
-    read -r -p "  $label [$value]: " user_input
+    if [ -n "$value" ]; then
+        read -r -p "  $label [$value]: " user_input
+    else
+        read -r -p "  $label " user_input
+    fi
     echo "${user_input:-$value}"
 }
 

@@ -129,11 +129,10 @@ if ! $REUSED_KEY; then
         USE_PRODUCT_CODE=true
         echo "  $T_AUTH_READ_PC"
     else
-        echo ""
         info "$T_SELECT_AUTH"
-        info "  [1] $T_AUTH_OPT1"
-        info "  [2] $T_AUTH_OPT2"
-        echo -n "  $T_CHOOSE [1/2] (default 1): "; read -r AUTH_MODE
+        echo "    [1] $T_AUTH_OPT1"
+        echo "    [2] $T_AUTH_OPT2"
+        echo -n "  $T_CHOOSE (1/2) [1]: "; read -r AUTH_MODE
         AUTH_MODE="${AUTH_MODE:-1}"
         if [ "$AUTH_MODE" = "2" ]; then
             USE_PRODUCT_CODE=true
@@ -157,7 +156,6 @@ if ! $REUSED_KEY; then
                 fi
             fi
             if [ -z "$ADMIN_KEY" ]; then
-                echo "  $T_KEY_HINT"
                 ADMIN_KEY=$(ask_param "$T_KEY_PROMPT" "AMAIL_ADMIN_KEY" "admin_key" "")
             fi
         fi
@@ -169,7 +167,7 @@ if $USE_PRODUCT_CODE; then
 elif $REUSED_KEY; then
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
-    step_ok "$T_ADMIN_KEY_OK (prefix: ${ADMIN_KEY:0:8}..., system_id: $SYSTEM_ID)"
+    step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
 else
     [ -z "$ADMIN_KEY" ] && step_fail "admin_key cannot be empty"
     echo -n "  $T_VERIFY "
@@ -180,7 +178,7 @@ else
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
     if echo "$SCOPE" | grep -qE "platform|system"; then
         echo -e "${GREEN}$T_OK${NC}"
-        step_ok "$T_ADMIN_KEY_OK (prefix: ${ADMIN_KEY:0:8}..., scope: $SCOPE, category: $CATEGORY, system_id: $SYSTEM_ID)"
+        step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
     else
         echo -e "${RED}$T_FAILED${NC}"
         step_fail "$T_SCOPE_FAIL"
