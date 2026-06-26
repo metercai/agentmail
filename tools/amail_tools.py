@@ -298,26 +298,6 @@ class _GatewayClient:
 
     # ── Address Activation Code API ─────────────────────────────
 
-    def list_address_codes(
-        self,
-        system_id: str,
-        claimed: bool = False,
-        limit: int = 10,
-    ) -> dict:
-        """GET /api/v1/admin/activation-codes?code_type=address -- List address codes.
-
-        Requires system_admin scope.
-
-        Returns ``{"status": 200, "codes": [...], "count": N}``
-        """
-        params = (
-            f"code_type=address"
-            f"&system_id={system_id}"
-            f"&claimed={str(claimed).lower()}"
-            f"&limit={limit}"
-        )
-        return self._request("GET", f"/api/v1/admin/activation-codes?{params}")
-
     def generate_address_codes(
         self,
         system_id: str,

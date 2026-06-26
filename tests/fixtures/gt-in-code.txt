@@ -1,4 +1,0 @@
-let x = 5;
-let y = iterate(x).map(|n| n + 1).filter(|n| n > 3).collect();
-println!("result: {:?}", y);
-// The > operator here is part of the code, not a quote

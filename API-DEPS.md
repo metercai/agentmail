@@ -138,11 +138,7 @@
 | `tools/amail_tools.py:1051` | `manage_contacts("remove")` |
 
 ### 🟢 `GET /api/v1/admin/activation-codes?...`
-列出激活码。
-
-| 调用方 | 用途 |
-|--------|------|
-| `tools/amail_tools.py:319` | `list_address_codes()` |
+（仅测试使用，已删除）
 
 ### 🔵 `POST /api/v1/admin/activation-codes/batch`
 批量生成激活码。
