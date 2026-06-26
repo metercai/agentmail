@@ -1749,57 +1749,6 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
                            config_path, result.get("error", result))
 
 
-# ── Public: agent startup activation ───────────────────────────
-
-def agent_startup_activate() -> dict:
-    """Check and activate a pending amail profile on agent startup.
-
-    Call this at the beginning of an agent session to ensure the profile
-    has a valid API key. If the profile has an activation_code but no
-    api_key yet, it will be activated now.
-
-    Returns:
-        {"success": True, "activated": True/False} or {"success": False, "error": "..."}
-    """
-    profile_dir = _resolve_profile_dir() or ""
-    if not profile_dir:
-        return {"success": False, "error": "Could not resolve profile directory"}
-
-    # Check if profile config exists
-    config_path = None
-    for fname in ("amail.json", "amail_gateway.json"):
-        p = Path(profile_dir) / fname
-        if p.is_file():
-            config_path = p
-            break
-    if not config_path:
-        return {"success": False, "error": f"No amail config found in {profile_dir}"}
-
-    try:
-        prof = json.loads(config_path.read_text())
-    except Exception as e:
-        return {"success": False, "error": f"Failed to read config: {e}"}
-
-    if prof.get("api_key"):
-        return {"success": True, "activated": False, "note": "Already activated"}
-
-    if not prof.get("activation_code"):
-        return {"success": False, "error": "No activation_code found in profile config"}
-
-    # Activate using gateway_url from the profile's own amail.json
-    _auto_activate_profile(profile_dir, prof)
-
-    # Reload to verify
-    try:
-        prof = json.loads(config_path.read_text())
-        if prof.get("api_key"):
-            return {"success": True, "activated": True, "email": prof.get("email", "")}
-        else:
-            return {"success": False, "error": "Activation did not produce an api_key"}
-    except Exception as e:
-        return {"success": False, "error": f"Failed to verify activation: {e}"}
-
-
 # ── Hook: auto-deregister email on profile deletion ────────────
 
 def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
