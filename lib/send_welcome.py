@@ -229,7 +229,6 @@ def main():
     manager = os.environ.get("MANAGER", config.get("manager_address", "925457@qq.com"))
     agent_email = os.environ.get("AGENT_EMAIL") or get_agent_email(config)
 
-    print("  Send/receive test")
     print(f"  Gateway:     {gw}")
     print(f"  Agent email: {agent_email}")
     print(f"  Manager:     {manager}")
@@ -255,38 +254,6 @@ def main():
     else:
         verified = result
         last_sent = last_recv = 0
-
-    # Check amail processing log for diagnostic info
-    ag_home = os.environ.get("AGENTMAIL_HOME", "")
-    if not ag_home:
-        sid = os.environ.get("SYSTEM_ID", "")
-        if sid:
-            sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
-            if os.path.isfile(sub):
-                try:
-                    with open(sub) as f:
-                        acfg = json.load(f)
-                    email = acfg.get("email", "")
-                    if email:
-                        ag_home = f"~/.agentmail/{email.replace('@', '_')}"
-                except Exception:
-                    pass
-    if not ag_home:
-        ag_home = "~/.agentmail/default"
-    ag_home = os.path.expanduser(ag_home)
-    log_path = os.path.join(ag_home, "agentmail.log")
-    if os.path.exists(log_path):
-        with open(log_path) as f:
-            amail_lines = [l.strip() for l in f.readlines() if l.strip()]
-        recent = amail_lines[-5:] if len(amail_lines) > 5 else amail_lines
-        if recent:
-            log_info(f"amail.log (last {len(recent)}):")
-            for line in recent:
-                log_info(f"  {line}")
-        else:
-            log_info("amail.log: empty (preprocessor did not log)")
-    else:
-        log_info("amail.log: not found (preprocessor never ran)")
 
     if verified:
         log_ok(f"Bidirectional send/receive verified (sent={last_sent}, received={last_recv})")
