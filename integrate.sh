@@ -193,6 +193,10 @@ fi
 if ! $USE_PRODUCT_CODE; then
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
+    # Recompute _GW_CFG now that SYSTEM_ID is confirmed
+    _GW_CFG=$(_find_gw_cfg)
+    # Export env vars for child scripts (list_domains.py, etc.)
+    export GATEWAY_URL ADMIN_KEY SYSTEM_ID
     # Read domain from stored config if env var not set
     if [ -z "$AMAIL_DOMAIN" ] && [ -n "$_GW_CFG" ]; then
         AMAIL_DOMAIN=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
