@@ -13,15 +13,11 @@ Hermes 运行时加载的模块，提供：
   - register_profile_hook()   : Profile lifecycle hook registry
   - trigger_profile_hooks()   : Hook dispatcher (called by profiles.py)
 
-集成安装阶段函数已移到 lib/setup.py。
-
 Toolset: amail
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -232,10 +228,6 @@ class _GatewayClient:
         """PUT /api/v1/admin/agent-state/:key - upsert a value."""
         return self._request("PUT", f"/api/v1/admin/agent-state/{key}", body={"value": value})
 
-    def agent_state_delete(self, key: str) -> dict:
-        """DELETE /api/v1/admin/agent-state/:key."""
-        return self._request("DELETE", f"/api/v1/admin/agent-state/{key}")
-
     # ── Semantic endpoints ──────────────────────────────
 
     def put_contact(self, address: str, profile: str) -> dict:
@@ -323,35 +315,6 @@ class _GatewayClient:
         )
         return result
 
-    # ── Address Activation Code API ─────────────────────────────
-
-    def generate_address_codes(
-        self,
-        system_id: str,
-        domain: str,
-        count: int = 1,
-        email_address: Optional[str] = None,
-        expires_in_mins: int = 10080,
-    ) -> dict:
-        """POST /api/v1/admin/activation-codes/batch -- Generate address activation codes.
-
-        Requires system_admin scope.
-
-        Returns ``{"status": 200, "raw_codes": ["addr-xxxx-..."]}``
-        """
-        body: Dict[str, Any] = {
-            "code_type": "address",
-            "system_id": system_id,
-            "domain": domain,
-            "count": count,
-            "expires_in_mins": expires_in_mins,
-        }
-        if email_address:
-            body["email_address"] = email_address
-        return self._request(
-            "POST", "/api/v1/admin/activation-codes/batch", body=body
-        )
-
     # ── System Activation ─────────────────────────────────────────
 
     def activate_system(self, code: str, **kwargs) -> dict:
@@ -394,7 +357,7 @@ class _GatewayClient:
         Args:
             code: The address activation code (e.g. "addr-xxxx-xxxx-...")
             email_address: The email address to bind to the API key (required)
-            scopes: Optional scope list (defaults to ["send"])
+            scopes: Optional scope list (defaults to ["agent"])
 
         Returns ``{"status": 200, "raw_key": "sk-...", "api_key_id": N, ...}``
         """
@@ -435,7 +398,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     """load amail gateway connection config
 
     Reads from (in priority order):
-    1. Environment variables (AMAIL_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
+    1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
     2. ~/.agentmail/{system_id}/amail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
     3. ~/.hermes/config.yaml platforms.amail (legacy fallback)
     """
@@ -447,7 +410,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     system_id = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
     mx_domain = os.environ.get("AMAIL_MX_DOMAIN", "amail.token.tm")
     domain = mx_domain or os.environ.get("AMAIL_DOMAIN", "")
-    # Legacy: map AMAIL_BRIDGE_URL → webhook_host at the config level
+    # Fallback: map AMAIL_BRIDGE_URL → webhook_host
     raw_webhook = os.environ.get("AMAIL_WEBHOOK_HOST", "") or os.environ.get("AMAIL_BRIDGE_URL", "")
     if raw_webhook:
         # Strip protocol and /path to get host:port
@@ -565,8 +528,6 @@ def _load_profile_config() -> Optional[dict]:
             except Exception:
                 pass
 
-        # Priority 2: (no legacy fallback — all configs centralized)
-
     for config_path in search_paths:
         if config_path.is_file():
             try:
@@ -622,12 +583,7 @@ def _inject_profile_config(profile_dir: str, config: dict) -> None:
     }, indent=2))
 
 
-# ═══════════════════════════════════════════════════════════════
-# Agent Tools
-# ═══════════════════════════════════════════════════════════════
-
-
-# ── Webhook config (gateway-managed, per-profile) ──────────────
+# ── Webhook config helpers (gateway-managed, per-profile) ─────────
 
 def _port_is_available(port: int, host: str = "0.0.0.0") -> bool:
     """Check if a TCP port is available for binding."""
@@ -936,8 +892,6 @@ def send_mail(
 
     if upload_errors and not attachment_ids:
         return {"success": False, "error": "All attachments failed", "details": upload_errors}
-
-    import uuid as _uuid
 
     result = client.send_mail(
         to=",".join(to_list),
