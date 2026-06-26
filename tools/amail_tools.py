@@ -184,20 +184,6 @@ class _GatewayClient:
 
     # ── Whitelist API ───────────────────────────────────────────
 
-    def check_whitelist(self, domain_addr: str, value: str, direction: str = "to") -> bool:
-        """Check if a value is whitelisted for the given direction.
-
-        Args:
-            domain_addr: Domain to check against
-            value: Email address or pattern to check
-            direction: "to" (outbound send, default), "from" (inbound receive)
-        """
-        result = self._request(
-            "GET",
-            f"/api/v1/admin/whitelists/check?domain_addr={domain_addr}&value={value}&direction={direction}",
-        )
-        return result.get("status") == 200 and result.get("whitelisted", False)
-
     def add_whitelist(
         self, system_id: str, domain_addr: str, direction: str,
         value: str, description: Optional[str] = None
@@ -213,10 +199,6 @@ class _GatewayClient:
                 "description": description,
             },
         )
-
-    def delete_whitelist(self, entry_id: int) -> dict:
-        """DELETE /api/v1/admin/whitelists/:id"""
-        return self._request("DELETE", f"/api/v1/admin/whitelists/{entry_id}")
 
     def list_whitelist_entries(self, domain_addr: str) -> list:
         """GET /api/v1/admin/whitelists?domain_addr= — list all entries for a domain.
