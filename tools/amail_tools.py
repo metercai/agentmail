@@ -205,6 +205,20 @@ class _GatewayClient:
         entries = result.get("data", []) if isinstance(result, dict) else []
         return entries if isinstance(entries, list) else []
 
+    def check_whitelist_value(self, domain_addr: str, value: str, direction: str = "to") -> dict:
+        """GET /api/v1/admin/whitelists/check — check if a value is whitelisted.
+
+        Returns {"in_contacts": True/False, "direction": "..."} — no info leakage
+        beyond the single queried address.
+        """
+        result = self._request(
+            "GET",
+            f"/api/v1/admin/whitelists/check?domain_addr={domain_addr}&value={value}&direction={direction}",
+        )
+        whitelisted = result.get("status") == 200 and result.get("whitelisted", False)
+        entry_direction = result.get("direction", direction) if whitelisted else direction
+        return {"in_contacts": whitelisted, "direction": entry_direction}
+
     def delete_whitelist_by_value(self, domain_addr: str, value: str) -> dict:
         """DELETE /api/v1/admin/whitelists?domain_addr=&value= — delete by composite key."""
         return self._request("DELETE",
@@ -968,19 +982,13 @@ def manage_contacts(
     if action == "check":
         if not address:
             return {"success": False, "error": "address is required for check"}
-        # Query whitelist entries to extract direction from the record
-        entries = client.list_whitelist_entries(amail)
-        if not isinstance(entries, list):
-            entries = []
-        for entry in entries:
-            if entry.get("value") == address:
-                return {
-                    "success": True,
-                    "in_contacts": True,
-                    "direction": entry.get("direction", "all"),
-                    "address": address,
-                }
-        return {"success": True, "in_contacts": False, "address": address}
+        result = client.check_whitelist_value(amail, address, direction)
+        return {
+            "success": True,
+            "in_contacts": result.get("in_contacts", False),
+            "direction": result.get("direction", direction),
+            "address": address,
+        }
 
     elif action == "add":
         if not address:

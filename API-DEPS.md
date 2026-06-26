@@ -105,7 +105,14 @@
 
 | 调用方 | 用途 |
 |--------|------|
-| `tools/amail_tools.py` | `manage_contacts("check" / "update")` — 查找条目 |
+| `tools/amail_tools.py` | `manage_contacts("update")` — 查找 entry_id |
+
+### 🟢 `GET /api/v1/admin/whitelists/check?domain_addr=...&value=...&direction=...`
+精确查询单条白名单（无信息泄漏）。
+
+| 调用方 | 用途 |
+|--------|------|
+| `tools/amail_tools.py` | `check_whitelist_value()` — `manage_contacts("check")` |
 
 ### 🔵 `POST /api/v1/admin/whitelists`
 创建白名单条目。
