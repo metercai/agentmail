@@ -2,7 +2,7 @@
 agentmail_tools.py -- agentmail Hermes Agent 运行时模块
 
 Hermes 运行时加载的模块，提供：
-  - _GatewayClient         : HTTP client for amail API
+  - _GatewayClient         : HTTP client for agentmail API
   - send_mail()            : Agent tool -- send email via gateway
   - manage_contacts()      : Agent tool -- manage address whitelist
   - contact_profile()      : Agent tool -- look up contact
@@ -13,7 +13,7 @@ Hermes 运行时加载的模块，提供：
   - register_profile_hook()   : Profile lifecycle hook registry
   - trigger_profile_hooks()   : Hook dispatcher (called by profiles.py)
 
-Toolset: amail
+Toolset: agentmail
 """
 
 from __future__ import annotations
@@ -42,11 +42,11 @@ _GATEWAY_CONFIG_KEY = "amail"
 
 
 # ═══════════════════════════════════════════════════════════════
-# _GatewayClient -- HTTP client for amail API
+# _GatewayClient -- HTTP client for agentmail API
 # ═══════════════════════════════════════════════════════════════
 
 class _GatewayClient:
-    """Thin HTTP wrapper around amail gateway REST API.
+    """Thin HTTP wrapper around agentmail REST API.
     No process-level side effects. Safe to instantiate anywhere."""
 
     def __init__(self, gateway_url: str, api_key: str, timeout: int = 30):
@@ -398,7 +398,7 @@ def _agentmail_system_dir(system_id: str = "") -> Path:
 
 
 def _gateway_config_path(system_id: str = "") -> Path:
-    """Return the path to the amail gateway config file.
+    """Return path to the gateway config file.
     
     When system_id is provided, returns system-specific path.
     When empty, returns the base ~/.agentmail/ level (caller should resolve system_id)."""
@@ -406,7 +406,7 @@ def _gateway_config_path(system_id: str = "") -> Path:
 
 
 def _load_gateway_config(system_id: str = "") -> Optional[dict]:
-    """load amail gateway connection config
+    """load gateway connection config
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
@@ -550,7 +550,7 @@ def _load_profile_config() -> Optional[dict]:
 
 
 def _inject_profile_config(profile_dir: str, config: dict) -> None:
-    """Write per-profile amail config.
+    """Write per-profile agentmail config.
 
     Root profile:  ~/.agentmail/{system_id}/amail.json
     Named profile: ~/.agentmail/{system_id}/profiles/{name}/amail.json
@@ -763,7 +763,7 @@ def _ensure_webhook_route(
     existed = route_name in subs
 
     route_entry = {
-        "description": f"amail inbound email route ({route_name})",
+        "description": f"agentmail inbound email route ({route_name})",
         "events": [],
         "secret": secret,
         "preprocess": "agentmail_gateway",    # triggers preprocess_mail_payload
@@ -801,7 +801,7 @@ def send_mail(
     attachments: Optional[List[str]] = None,
     message_id: Optional[str] = None,
 ) -> dict:
-    """Send an email via your amail address.
+    """Send an email via your agentmail address.
 
     Attachments (file paths) are automatically uploaded before sending.
     For replies, pass the original email's message_id -- the tool will
@@ -816,7 +816,7 @@ def send_mail(
 
     config = _load_profile_config()
     if not config:
-        return {"success": False, "error": "amail not configured for this profile"}
+        return {"success": False, "error": "agentmail not configured for this profile"}
 
     # Auto-activate if profile has activation_code but no api_key yet
     if config.get("activation_code") and not config.get("api_key"):
@@ -825,15 +825,15 @@ def send_mail(
             _auto_activate_profile(profile_dir, config)
             config = _load_profile_config()
             if not config:
-                return {"success": False, "error": "amail config lost after activation"}
+                return {"success": False, "error": "agentmail config lost after activation"}
 
     if not config.get("api_key"):
-        return {"success": False, "error": "amail api_key not available (activation may have failed)"}
+        return {"success": False, "error": "agentmail api_key not available (activation may have failed)"}
 
     # ── Guard: email must be configured ──────────────────────
     base_email = config.get("email", "")
     if not base_email:
-        return {"success": False, "error": "amail email not configured for this profile — cannot send"}
+        return {"success": False, "error": "agentmail email not configured for this profile — cannot send"}
 
     client = _GatewayClient(config["gateway_url"], config["api_key"])
 
@@ -846,14 +846,14 @@ def send_mail(
         stored_persona = msg_meta.get("my_amail_addr", "")
         if stored_persona and "@" in stored_persona:
             sender = stored_persona
-            logger.info("[amail] Reply detected — using persona sender: %s", sender)
+            logger.info("[agentmail] Reply detected — using persona sender: %s", sender)
     elif not message_id:
         # New email: auto-detect current persona from profile directory
         persona = _current_persona_name()
         if persona:
             local, domain = base_email.split("@", 1)
             sender = f"{local}.{persona}@{domain}"
-            logger.info("[amail] New email from persona '%s' — sender: %s", persona, sender)
+            logger.info("[agentmail] New email from persona '%s' — sender: %s", persona, sender)
 
     # Parse recipients
     to_list = [a.strip() for a in to.split(",") if a.strip()]
@@ -934,9 +934,9 @@ def send_mail(
             initial_summary = f"Subject: {subject}\nStatus: awaiting response"
             set_email_summary(out_msg_id, initial_summary)
             thread_bootstrapped = True
-            logger.info("[amail] Thread summary bootstrapped for new email: %s", out_msg_id)
+            logger.info("[agentmail] Thread summary bootstrapped for new email: %s", out_msg_id)
         except Exception as e:
-            logger.warning("[amail] Failed to bootstrap thread summary: %s", e)
+            logger.warning("[agentmail] Failed to bootstrap thread summary: %s", e)
 
     # Flatten status into success/error
     status = result.pop("status", 0)
@@ -959,7 +959,7 @@ def manage_contacts(
     direction: str = "all",
     **kwargs,
 ) -> dict:
-    """Manage your amail address book (whitelist).
+    """Manage your address book (whitelist).
 
     Args:
         action: "check", "add", or "remove"
@@ -968,11 +968,11 @@ def manage_contacts(
     """
     config = _load_profile_config()
     if not config:
-        return {"success": False, "error": "amail not configured for this profile"}
+        return {"success": False, "error": "agentmail not configured for this profile"}
 
     client = _GatewayClient(config["gateway_url"], config["api_key"])
     # Agent whitelist is per-amail, not per-domain.
-    # domain_addr = amail address (agent-1@mail.project.com)
+    # domain_addr = agentmail address (agent-1@mail.project.com)
     amail = config.get("email", "")
     system_id = config.get("system_id", "")
 
@@ -1083,7 +1083,7 @@ def set_contact_profile(address: str, profile: str) -> dict:
     """
     config = _load_profile_config()
     if not config:
-        return {"success": False, "error": "amail not configured for this profile"}
+        return {"success": False, "error": "agentmail not configured for this profile"}
     client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     result = client.put_contact(address, profile)
@@ -1100,7 +1100,7 @@ def set_contact_profile(address: str, profile: str) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
-    """Preprocess amail webhook payload before prompt rendering.
+    """Preprocess agentmail webhook payload before prompt rendering.
 
     Rust backend already handles text cleaning. Python side handles:
     - Persona extraction from 'to' address (persona.profile@domain format)
@@ -1122,7 +1122,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     if not agent_email:
         logger.warning("[agentmail_gateway] No email configured for this profile — inbound preprocessing skipped")
         # Still return a recognizable payload so the gateway continues
-        result["_preprocess_error"] = "amail email not configured"
+        result["_preprocess_error"] = "agentmail email not configured"
         return result
 
     # ── Extract display names from headers before stripping ──
@@ -1324,12 +1324,12 @@ try:
     from gateway.platforms.webhook import register_preprocessor
 
     register_preprocessor("agentmail_gateway", preprocess_mail_payload)
-    logger.info("amail preprocessor registered with webhook gateway")
+    logger.info("agentmail preprocessor registered with webhook gateway")
 except ImportError:
     # Agent process / CLI process — webhook module unavailable, expected
     pass
 except Exception as e:
-    logger.warning("amail preprocessor registration failed: %s — inbound mail will NOT be preprocessed", e)
+    logger.warning("agentmail preprocessor registration failed: %s — inbound mail will NOT be preprocessed", e)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1374,7 +1374,7 @@ def trigger_profile_hooks(event: str, profile_name: str, profile_dir: str) -> No
 # ── Hook: auto-register email on profile creation ──────────────
 
 def parse_amail_persona(email: str, system_name: str = "") -> tuple:
-    """Parse persona, profile, and system_name from an amail address.
+    """Parse persona, profile, and system_name from an agentmail address.
     
     Returns (persona, profile_name, sys_name).
     
@@ -1409,14 +1409,14 @@ def parse_amail_persona(email: str, system_name: str = "") -> tuple:
 
 
 def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
-    """When a new Profile is created, register its email with amail:
+    """When a new Profile is created, register its email with agentmail:
     1. Create domain entry for {name}@{domain}
     2. Create activation code for the agent
     3. Ensure agentmail-inbound webhook route on the gateway
     4. Inject config into profile directory
     
     The registered address is the agent's identity. Persona switching is
-    handled at inbound time by parse_amail_persona() -- the amail skill
+    handled at inbound time by parse_amail_persona() — the agentmail skill
     extracts persona from the 'to' address (persona.profile@domain format).
     """
     gateway_url = config.get("gateway_url", "")
@@ -1746,7 +1746,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
 # ── Hook: auto-deregister email on profile deletion ────────────
 
 def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
-    """When a Profile is deleted, clean up its API key in amail."""
+    """When a Profile is deleted, clean up its API key in agentmail."""
     gateway_url = config.get("gateway_url", "")
     admin_key = config.get("admin_key", "")
     domain = config.get("domain", "")
@@ -1848,7 +1848,7 @@ registry.register(
     schema={
         "name": "send_mail",
         "description": (
-            "Send an email via your amail address. "
+            "Send an email via your agentmail address. "
             "Attachments are automatically uploaded from local file paths. "
             "For replies: pass the original inbound message_id -- the tool "
             "automatically resolves In-Reply-To, References headers, and sender persona."
@@ -1915,7 +1915,7 @@ registry.register(
     schema={
         "name": "manage_contacts",
         "description": (
-            "Manage your amail address book (contacts). "
+            "Manage your address book (contacts). "
             "Use 'check' to verify a contact, 'add' to allow a new sender, "
             "'remove' to revoke access."
         ),
@@ -2295,7 +2295,7 @@ def _log_amail(direction: str, from_addr: str, to_addr: str, subject: str) -> No
         with open(log_path, "a") as f:
             f.write(entry + "\n")
     except Exception:
-        logger.debug("Failed to write amail log: %s", log_path)
+        logger.debug("Failed to write agentmail log: %s", log_path)
 
 def store_inbound_message(
     message_id: str,
@@ -2434,7 +2434,7 @@ def set_email_summary(message_id: str, summary: str) -> dict:
 
     config = _load_profile_config()
     if not config:
-        return {"success": False, "error": "amail not configured for this profile"}
+        return {"success": False, "error": "agentmail not configured for this profile"}
     client = _GatewayClient(config["gateway_url"], config["api_key"])
 
     result = client.put_thread_summary(message_id, summary)
