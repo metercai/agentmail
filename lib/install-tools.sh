@@ -3,7 +3,7 @@
 step_begin "$T_TOOLS"
 
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
-TOOLS_DST="$HERMES_DIR/tools/amail_tools.py"
+TOOLS_DST="$HERMES_DIR/tools/agentmail_tools.py"
 
 # Check if reinstall is needed: compare checksums
 NEED_COPY=false
@@ -50,8 +50,8 @@ for name in tool_names:
         needs_write = True
 
 # Add amail toolset to TOOLSETS if not present
-if '"amail"' not in content:
-    amail_block = '    "amail": {\n'
+if '"agentmail"' not in content:
+    amail_block = '    "agentmail": {\n'
     amail_block += '        "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",\n'
     amail_block += '        "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],\n'
     amail_block += '        "includes": [],\n'

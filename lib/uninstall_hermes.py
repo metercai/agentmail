@@ -84,7 +84,7 @@ WEBHOOK_BLOCK2 = """        # ── Preprocess payload (AmailGateway integratio
 # Inserted BEFORE "# Non-blocking"
 WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) ────────────────
         ping_subject = (payload.get("subject") or "").strip()
-        if ping_subject.startswith("__amail_ping__:"):
+        if ping_subject.startswith("__agentmail_ping__:"):
             ping_id = ping_subject.split(":", 1)[1].strip()
             if ping_id:
                 try:
@@ -92,7 +92,7 @@ WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) �
                     from datetime import datetime, timezone
                     _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "tools")
                     _sys.path.insert(0, _os.path.abspath(_tools_dir))
-                    from amail_tools import send_mail as _send_mail
+                    from agentmail_tools import send_mail as _send_mail
                     pong_body = _json.dumps({
                         "ping_id": ping_id,
                         "event": {"prompt": prompt, "route": route_name,
@@ -101,7 +101,7 @@ WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) �
                     _log_ping_event("ping_intercepted", ping_id, payload, "")
                     pong_result = _send_mail(
                         to=payload.get("from", ""),
-                        subject="__amail_pong__:" + ping_id, body=pong_body,
+                        subject="__agentmail_pong__:" + ping_id, body=pong_body,
                         message_id=payload.get("message_id") or "",
                     )
                     pong_status = "ok" if pong_result.get("success") else pong_result.get("error", "?")
@@ -111,7 +111,7 @@ WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) �
                 _log_ping_event("pong_sent", ping_id, payload, pong_status)
             return web.json_response({"pong": ping_id, "status": "pong_sent"})
 
-        elif ping_subject.startswith("__amail_pong__:"):
+        elif ping_subject.startswith("__agentmail_pong__:"):
             ping_id = ping_subject.split(":", 1)[1].strip()
             if ping_id:
                 _log_ping_event("pong_returned", ping_id, payload, "")
@@ -207,7 +207,7 @@ def unpatch_webhook(fp: Path):
 
 PROFILES_HOOK = """    # ── Fire integration hooks (AmailGateway) ──
     try:
-        from tools.amail_tools import trigger_profile_hooks
+        from tools.agentmail_tools import trigger_profile_hooks
         trigger_profile_hooks(\"profile_created\", canon, str(profile_dir))
     except ImportError:
         pass  # AmailGateway tools not installed
@@ -216,7 +216,7 @@ PROFILES_HOOK = """    # ── Fire integration hooks (AmailGateway) ──
 
 PROFILES_HOOK_DEL = """    # ── Fire integration hooks (AmailGateway) ──
     try:
-        from tools.amail_tools import trigger_profile_hooks
+        from tools.agentmail_tools import trigger_profile_hooks
         trigger_profile_hooks(\"profile_deleted\", canon, str(profile_dir))
     except ImportError:
         pass  # AmailGateway tools not installed
@@ -250,7 +250,7 @@ def unpatch_profiles(fp: Path):
 #  Remove amail from toolsets.py
 # ═══════════════════════════════════════════════════════════════
 
-TOOLSET_AMAIL = """    "amail": {
+TOOLSET_AMAIL = """    "agentmail": {
         "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",
         "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],
         "includes": [],
@@ -297,10 +297,10 @@ def clean_webhook_subs(path: Path):
         return
     try:
         subs = json.loads(path.read_text())
-        if "amail-inbound" in subs:
-            del subs["amail-inbound"]
+        if "agentmail-inbound" in subs:
+            del subs["agentmail-inbound"]
             path.write_text(json.dumps(subs, indent=2, ensure_ascii=False) + "\n")
-            print(f"  ✓ removed amail-inbound route from {path}")
+            print(f"  ✓ removed agentmail-inbound route from {path}")
     except Exception as e:
         print(f"  ⚠ failed to read {path}: {e}")
 
@@ -310,9 +310,9 @@ def clean_config_yaml(path: Path):
         return
     content = path.read_text()
     original = content
-    content, _ = re.subn(r'  webhook:\n  - amail\n', '  webhook:\n', content, count=1)
+    content, _ = re.subn(r'  webhook:\n  - agentmail\n', '  webhook:\n', content, count=1)
     if content == original:
-        content, _ = re.subn(r'  - amail\n', '', content, count=1)
+        content, _ = re.subn(r'  - agentmail\n', '', content, count=1)
     if content != original:
         path.write_text(content)
         print(f"  ✓ removed amail from platform_toolsets in {path}")
@@ -348,7 +348,7 @@ def main():
     print(f"    All other changes preserved (Hermes updates, user edits).")
     print(f"")
     print(f"  [config cleanup]")
-    print(f"    - webhook_subscriptions.json  → remove amail-inbound route")
+    print(f"    - webhook_subscriptions.json  → remove agentmail-inbound route")
     print(f"    - config.yaml                 → remove amail from platform_toolsets")
     print(f"")
     print(f"  [no file deletion]")
@@ -433,7 +433,7 @@ def main():
     print(f"""
   ✓ Processes stopped (bridge killed, gateway stopped)
   ✓ Patches: {patched_count}/3 files cleaned
-  ✓ webhook_subscriptions.json: amail-inbound removed
+  ✓ webhook_subscriptions.json: agentmail-inbound removed
   ✓ config.yaml: platform_toolsets cleaned
   ✓ Gateway restarted (port {gw_port})
 

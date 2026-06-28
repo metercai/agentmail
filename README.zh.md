@@ -74,7 +74,7 @@ bash integrate.sh
               │ amail-bridge│     (出站)
               │ (拉取/推送) │
               └──────┬──────┘
-                     │ POST /webhooks/amail-inbound
+                     │ POST /webhooks/agentmail-inbound
               ┌──────┴──────┐
               │ Hermes Agent│
               │  (webhook)  │
@@ -139,7 +139,7 @@ pong 响应。在不调用 LLM 的情况下验证所有链路。
 │   ├── activate_system.py    # 产品激活码激活
 │   └── hermes_gateway.sh     # 多 profile 网关管理
 ├── tools/
-│   └── amail_tools.py        # Hermes Agent 运行时工具
+│   └── agentmail_tools.py        # Hermes Agent 运行时工具
 ├── patches/
 │   ├── apply_webhook_patch.py
 │   └── apply_profiles_patch.py

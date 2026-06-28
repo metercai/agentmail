@@ -77,7 +77,7 @@ bash integrate.sh
               │ amail-bridge│     (outbound)
               │ (pull/push) │
               └──────┬──────┘
-                     │ POST /webhooks/amail-inbound
+                     │ POST /webhooks/agentmail-inbound
               ┌──────┴──────┐
               │ Hermes Agent│
               │  (webhook)  │
@@ -143,7 +143,7 @@ and expects a pong response. Verifies all links without invoking the LLM.
 │   ├── activate_system.py    # Product code activation
 │   └── hermes_gateway.sh     # Multi-profile gateway management
 ├── tools/
-│   └── amail_tools.py        # Hermes Agent runtime tools
+│   └── agentmail_tools.py        # Hermes Agent runtime tools
 ├── patches/
 │   ├── apply_webhook_patch.py
 │   └── apply_profiles_patch.py

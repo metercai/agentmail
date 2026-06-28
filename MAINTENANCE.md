@@ -20,7 +20,7 @@
 ```
 ~/.agentmail/
 ├── {system_id}/
-│   ├── amail_gateway.json     # 网关连接配置（gateway_url, admin_key, system_id, domain）
+│   ├── agentmail_gateway.json     # 网关连接配置（gateway_url, admin_key, system_id, domain）
 │   ├── amail.json              # 根 profile 的 agent 配置（email, api_key）
 │   └── profiles/
 │       └── {name}/
@@ -42,14 +42,14 @@
 
 | 文件 | 内容 | 写入时机 |
 |------|------|----------|
-| `amail_gateway.json` | gateway_url, admin_key, system_id, domain, system_name, save_raw_snapshots, manager_address, webhook_host | Step 4 `setup_system.py` |
+| `agentmail_gateway.json` | gateway_url, admin_key, system_id, domain, system_name, save_raw_snapshots, manager_address, webhook_host | Step 4 `setup_system.py` |
 | `amail.json`（根） | email, api_key, gateway_url, domain, system_id, manager_address | `_auto_register_email()` + `_auto_activate_profile()` |
 | `profiles/{name}/amail.json` | 同上 + persona 前缀的 email | 同上 |
 | `amail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
 
 ### 路径迁移
 
-所有配置统一在 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/` 下的 `amail.json`、`amail_gateway.json` 不再使用。如有旧文件，手动清理。
+所有配置统一在 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/` 下的 `amail.json`、`agentmail_gateway.json` 不再使用。如有旧文件，手动清理。
 
 ---
 
@@ -136,7 +136,7 @@ python3 lib/check_status.py --ping
 
 预期输出：
 ```
-  Ping sent: __amail_ping__:a1b2c3d4e5f6
+  Ping sent: __agentmail_ping__:a1b2c3d4e5f6
   +  1.2s    Webhook Receive (ping)         ✓
   +  2.9s    Pong Sent (send_mail)          ✓
   +  5.1s    Webhook Return (pong)          ✓

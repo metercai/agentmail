@@ -6,7 +6,7 @@ Both library module and CLI entry point for integrate.sh Step 4.
 Called directly as `python3 lib/setup_system.py` or imported as `from setup_system import setup`.
 
 Depends on:
-  - tools/amail_tools.py for _GatewayClient, _gateway_config_path, _load_gateway_config
+  - tools/agentmail_tools.py for _GatewayClient, _gateway_config_path, _load_gateway_config
 """
 import json
 import logging
@@ -19,7 +19,7 @@ _tools_dir = str(Path(__file__).resolve().parent.parent / "tools")
 if _tools_dir not in sys.path:
     sys.path.insert(0, _tools_dir)
 
-from amail_tools import _GatewayClient, _gateway_config_path, _load_gateway_config
+from agentmail_tools import _GatewayClient, _gateway_config_path, _load_gateway_config
 
 logger = logging.getLogger("amail_setup")
 
@@ -162,7 +162,7 @@ def _save_gateway_config(
 ) -> None:
     """Save amail gateway connection config to standalone JSON file.
 
-    Writes to ~/.agentmail/{system_id}/amail_gateway.json.
+    Writes to ~/.agentmail/{system_id}/agentmail_gateway.json.
     """
     cfg = {
         "gateway_url": gateway_url,

@@ -22,14 +22,14 @@ integrate.sh  (入口 / entry point)
 │   └── python3 lib/deploy_bridge.py   ── bridge 下载/启动
 │
 ├── Step 5: 安装工具 (source)
-│   └── source lib/install-tools.sh    ── 复制 amail_tools.py + 注册技能
+│   └── source lib/install-tools.sh    ── 复制 agentmail_tools.py + 注册技能
 │
 ├── Step 6: 配置 Hermes (source)
 │   └── source lib/configure_hermes.sh
 │       ├── source lib/patch-webhook.sh    ── webhook.py 打补丁
 │       ├── source lib/patch-profiles.sh   ── profiles.py 打补丁
 │       ├── python3 lib/register_profiles.py  ── 注册已有 profile 的邮件地址
-│       │   └── from amail_tools import _auto_register_email
+│       │   └── from agentmail_tools import _auto_register_email
 │       └── source lib/hermes_gateway.sh   ── 启动多 profile 网关
 │
 ├── Step 7: 诊断

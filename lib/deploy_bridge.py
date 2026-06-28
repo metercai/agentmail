@@ -169,10 +169,10 @@ def main():
 
     # Save domain key
     if domain_key:
-        # Find amail_gateway.json directly by system_id
-        cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+        # Find agentmail_gateway.json directly by system_id
+        cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
         if not os.path.isfile(cfg_path):
-            log_warn("amail_gateway.json not found — cannot update admin_key")
+            log_warn("agentmail_gateway.json not found — cannot update admin_key")
         else:
             with open(cfg_path) as f:
                 cfg = json.load(f)
@@ -262,7 +262,7 @@ def main():
     gw_cfg = None
     gw_cfg_path = None
     if sid:
-        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
         if os.path.isfile(sub):
             try:
                 with open(sub) as f:

@@ -53,7 +53,7 @@ def _resolve_system_id(args: list[str] | None = None) -> str:
     return os.environ.get("SYSTEM_ID", "")
 
 def _gw_path(sid: str) -> Path:
-    return AGENTMAIL_HOME / sid / "amail_gateway.json"
+    return AGENTMAIL_HOME / sid / "agentmail_gateway.json"
 
 def _agent_path(sid: str) -> Path:
     return AGENTMAIL_HOME / sid / "amail.json"
@@ -175,10 +175,10 @@ def _json_req(url: str, headers: dict | None = None,
 
 
 def _read_gw_cfg(sid: str = "") -> dict | None:
-    """Load ~/.agentmail/system-{sid}/amail_gateway.json, return None on failure."""
+    """Load ~/.agentmail/system-{sid}/agentmail_gateway.json, return None on failure."""
     if not sid:
         sid = _resolve_system_id(sys.argv)
-    p = _gw_path(sid) if sid else AGENTMAIL_HOME / "amail_gateway.json"
+    p = _gw_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
     if not p.exists() or not p.is_file():
         return None
     try:
@@ -209,7 +209,7 @@ def check_gateway(c: Check):
     cfg = _read_gw_cfg()
     if not cfg:
         c.add("gateway", "config", False,
-              "amail_gateway.json not found",
+              "agentmail_gateway.json not found",
               "Run integrate.sh to configure amail-gateway")
         return
 
@@ -328,7 +328,7 @@ def check_bridge(c: Check):
 
 
 def _check_bridge_gateway_consistency(c: Check, td: dict):
-    """Cross-check bridge config fields against amail_gateway.json.
+    """Cross-check bridge config fields against agentmail_gateway.json.
     All config files are local (copied by deploy_bridge.py even when
     bridge runs remotely), so these checks always run when bridge is deployed.
     """
@@ -489,7 +489,7 @@ def check_agent_gateway(c: Check):
     if webhook_py.exists():
         try:
             content = webhook_py.read_text()
-            ok = "PREPROCESS_REGISTRY" in content and "amail" in content.lower()
+            ok = "PREPROCESS_REGISTRY" in content and "agentmail" in content.lower()
             c.add("agent-gw", "preprocess", ok,
                   "PREPROCESS found with amail handler" if ok else
                   "PREPROCESS not registered for amail",
@@ -518,7 +518,7 @@ def _check_webhook_routes(c: Check):
             subs = json.loads(subs_path.read_text())
             subs_data = subs if isinstance(subs, dict) else {}
             for key, val in subs_data.items():
-                if "amail" not in key.lower():
+                if "agentmail" not in key.lower():
                     continue
                 if not isinstance(val, dict):
                     continue
@@ -530,7 +530,7 @@ def _check_webhook_routes(c: Check):
                 if not val.get("secret"):
                     missing.append("secret")
                 skills = val.get("skills", [])
-                if "amail" not in skills:
+                if "agentmail" not in skills:
                     missing.append("skills=[...amail...]")
                 ok = len(missing) == 0
                 detail = f"route='{key}'"
@@ -548,7 +548,7 @@ def _check_webhook_routes(c: Check):
 
     if not found:
         c.add("agent-gw", "webhook_routes", False,
-              "No amail-inbound route found",
+              "No agentmail-inbound route found",
               "Run integrate.sh Step 8 to register webhook routes")
 
 
@@ -619,12 +619,12 @@ def _check_webhook_callback(c: Check, port: int):
     """
     P1: POST minimal payload to Hermes webhook endpoint.
     Tests the final hop of the delivery chain:
-      amail-gateway → (bridge) → Hermes webhook /webhooks/amail-inbound
+      amail-gateway → (bridge) → Hermes webhook /webhooks/agentmail-inbound
     The bridge doesn't expose a receive endpoint — it PULLS from
     amail-gateway and PUSHES to Hermes webhook. So probing the Hermes
     webhook directly verifies the route is registered and responsive.
     """
-    route_name = "amail-inbound"
+    route_name = "agentmail-inbound"
     url = f"http://127.0.0.1:{port}/webhooks/{route_name}"
 
     payload = json.dumps({
@@ -674,7 +674,7 @@ def check_profiles(c: Check):
     cfg = _read_gw_cfg()
     if not cfg:
         c.add("profile", "config_ref", False,
-              "amail_gateway.json missing",
+              "agentmail_gateway.json missing",
               "Run integrate.sh first")
         return
 
@@ -792,12 +792,12 @@ def _run_ping_test() -> int:
     # Resolve system_id from gateway config then find paths
     cfg0 = _read_gw_cfg()
     if not cfg0:
-        print("✗ amail_gateway.json not found")
+        print("✗ agentmail_gateway.json not found")
         return 1
     sid = cfg0.get("system_id", "")
-    config_path = _gw_path(sid) if sid else AGENTMAIL_HOME / "amail_gateway.json"
+    config_path = _gw_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
     if not config_path.exists():
-        print("✗ amail_gateway.json not found")
+        print("✗ agentmail_gateway.json not found")
         return 1
 
     cfg = json.loads(config_path.read_text())
@@ -846,7 +846,7 @@ def _run_ping_test() -> int:
         assert resp.startswith("354"), f"DATA failed: {resp}"
 
         body = (f"From: {manager}\nTo: {agent_email}\n"
-                f"Subject: __amail_ping__:{ping_id}\n"
+                f"Subject: __agentmail_ping__:{ping_id}\n"
                 f"Message-ID: <ping-{ping_id}@amail.token.tm>\n"
                 f"\nPing test message\n.")
         s.sendall(body.replace("\n", "\r\n").encode() + b"\r\n.\r\n")
@@ -855,7 +855,7 @@ def _run_ping_test() -> int:
         s.close()
         assert resp.startswith("250"), f"DATA end failed: {resp}"
         t_sent = time.time()
-        print(f"  Ping sent: __amail_ping__:{ping_id}")
+        print(f"  Ping sent: __agentmail_ping__:{ping_id}")
     except Exception as e:
         print(f"✗ SMTP send failed: {e}")
         return 1

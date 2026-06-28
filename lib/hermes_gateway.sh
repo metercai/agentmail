@@ -95,9 +95,9 @@ from pathlib import Path
 # Prefer centralized gateway config via SYSTEM_ID env var
 sid = os.environ.get("SYSTEM_ID", "")
 if sid:
-    gw_cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail_gateway.json")
+    gw_cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
 else:
-    gw_cfg_path = os.path.join(os.path.expanduser("~/.hermes"), "amail_gateway.json")
+    gw_cfg_path = os.path.join(os.path.expanduser("~/.hermes"), "agentmail_gateway.json")
 if not os.path.exists(gw_cfg_path):
     exit(0)
 

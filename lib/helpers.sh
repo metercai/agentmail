@@ -1,5 +1,5 @@
 # ── Idempotent config helpers ──────────────────────────────────
-# Read existing value from ~/.agentmail/{system_id}/amail_gateway.json
+# Read existing value from ~/.agentmail/{system_id}/agentmail_gateway.json
 read_config() {
     local key="$1"
     python3 -c "
@@ -7,7 +7,7 @@ import sys,json,os
 sid=os.environ.get('SYSTEM_ID','')
 p=os.path.expanduser('~/.agentmail')
 if sid:
-    sub=os.path.join(p,f'system-{sid}','amail_gateway.json')
+    sub=os.path.join(p,f'system-{sid}','agentmail_gateway.json')
     if os.path.isfile(sub):
         d2=json.load(open(sub))
         v=d2.get('$key','')

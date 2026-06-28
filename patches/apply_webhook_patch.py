@@ -266,7 +266,7 @@ content = re.sub(
 ping_block = '''
         # ── Ping-pong interception (end-to-end test) ────────────────
         ping_subject = (payload.get("subject") or "").strip()
-        if ping_subject.startswith("__amail_ping__:"):
+        if ping_subject.startswith("__agentmail_ping__:"):
             ping_id = ping_subject.split(":", 1)[1].strip()
             if ping_id:
                 try:
@@ -274,7 +274,7 @@ ping_block = '''
                     from datetime import datetime, timezone
                     _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "tools")
                     _sys.path.insert(0, _os.path.abspath(_tools_dir))
-                    from amail_tools import send_mail as _send_mail
+                    from agentmail_tools import send_mail as _send_mail
                     pong_body = _json.dumps({
                         "ping_id": ping_id,
                         "event": {"prompt": prompt, "route": route_name,
@@ -283,7 +283,7 @@ ping_block = '''
                     _log_ping_event("ping_intercepted", ping_id, payload, "")
                     pong_result = _send_mail(
                         to=payload.get("from", ""),
-                        subject="__amail_pong__:" + ping_id, body=pong_body,
+                        subject="__agentmail_pong__:" + ping_id, body=pong_body,
                         message_id=payload.get("message_id") or "",
                     )
                     pong_status = "ok" if pong_result.get("success") else pong_result.get("error", "?")
@@ -293,7 +293,7 @@ ping_block = '''
                 _log_ping_event("pong_sent", ping_id, payload, pong_status)
             return web.json_response({"pong": ping_id, "status": "pong_sent"})
 
-        elif ping_subject.startswith("__amail_pong__:"):
+        elif ping_subject.startswith("__agentmail_pong__:"):
             ping_id = ping_subject.split(":", 1)[1].strip()
             if ping_id:
                 _log_ping_event("pong_returned", ping_id, payload, "")

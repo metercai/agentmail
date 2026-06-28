@@ -41,7 +41,7 @@ fi
 source "$LIB_DIR/i18n.sh"
 source "$LIB_DIR/helpers.sh"
 
-TOOLS_PY="$SCRIPT_DIR/tools/amail_tools.py"
+TOOLS_PY="$SCRIPT_DIR/tools/agentmail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 
 # ── Load .env file ──────────────────────────────────────────────
@@ -89,9 +89,9 @@ step_ok "$T_GATEWAY_OK ${UPTIME}s)"
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
 
-# Helper: find amail_gateway.json under ~/.agentmail/{system_id}/
+# Helper: find agentmail_gateway.json under ~/.agentmail/{system_id}/
 _find_gw_cfg() {
-    echo "$HOME/.agentmail/$SYSTEM_ID/amail_gateway.json"
+    echo "$HOME/.agentmail/$SYSTEM_ID/agentmail_gateway.json"
 }
 
 # Helper: find amail.json under ~/.agentmail/{system_id}/
@@ -448,7 +448,7 @@ _GW_CFG=$(_find_gw_cfg)
 
 python3 "$LIB_DIR/deploy_bridge.py"
 
-CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/amail_gateway.json}"
+CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/agentmail_gateway.json}"
 if [ -f "$CONFIG_FILE" ]; then
     step_ok "$T_CONFIG_OK $CONFIG_FILE"
 else
@@ -469,7 +469,7 @@ unset PATCH_STEP_PARENT
 # Step 7: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 set +e  # non-zero from partial failures must not abort
-AMAIL_AGENT_JSON="${_GW_CFG%/amail_gateway.json}/amail.json"
+AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/amail.json"
 AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
 [ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
 if [ -n "$AMAIL_AGENT" ]; then
