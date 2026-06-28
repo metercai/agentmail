@@ -48,10 +48,10 @@ if [ -d "$PROFILES_DIR" ]; then
 
         # Skip profiles without amail config (check centralized path)
         if [ -n "$SYSTEM_ID" ]; then
-            [ -f "$HOME/.agentmail/$SYSTEM_ID/profiles/$profile_name/amail.json" ] || continue
+            [ -f "$HOME/.agentmail/$SYSTEM_ID/profiles/$profile_name/agentmail.json" ] || continue
         else
             # No system_id — try legacy profile_dir check during transition
-            [ -f "$profile_dir/amail.json" ] || continue
+            [ -f "$profile_dir/agentmail.json" ] || continue
         fi
 
         # Read profile's webhook port from its config.yaml
@@ -122,9 +122,9 @@ profiles = {}
 
 # Root profile
 if sid:
-    root_amail = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
+    root_amail = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail.json")
 else:
-    root_amail = os.path.join(os.path.expanduser("~/.hermes"), "amail.json")
+    root_amail = os.path.join(os.path.expanduser("~/.hermes"), "agentmail.json")
 if os.path.exists(root_amail):
     with open(root_amail) as f:
         pf = json.load(f)
@@ -140,7 +140,7 @@ else:
     profiles_dir = os.path.join(os.path.expanduser("~/.hermes"), "profiles")
 if os.path.isdir(profiles_dir):
     for name in sorted(os.listdir(profiles_dir)):
-        aj = os.path.join(profiles_dir, name, "amail.json")
+        aj = os.path.join(profiles_dir, name, "agentmail.json")
         if not os.path.exists(aj):
             continue
         with open(aj) as f:

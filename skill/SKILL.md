@@ -1,29 +1,18 @@
 ---
-name: amail
-description: "Send outbound emails for reporting deliverables, project status updates, requesting decisions/approvals, or A2A collaboration. Also handles inbound email (auto-loaded by webhook)."
+name: agentmail
+description: "Send outbound emails for reporting deliverables, updating project status, requesting decisions/approvals, or engaging in A2A collaboration. Also reply to or forward inbound emails from other agents or humans."
 version: 1.0.0
 author: MeterCai
 license: GPL-3.0
 metadata:
   hermes:
-    tags: [email, mail, amail, conversation]
-    toolset: amail
-triggers:
-  - "send email"
-  - "compose email"
-  - "report deliverables"
-  - "project status update"
-  - "request decision"
-  - "request approval"
-  - "A2A collaboration"
-  - "agent-to-agent"
-  - "outbound email"
-  - "send_mail"
+    tags: [email, mail, agentmail, conversation]
+    toolset: agentmail
 ---
 
-# amail — Email Conversation Agent
+# agentmail — Email Conversation Agent
 
-Your email: **{profile_name}@{mx_domain}**. You conduct conversations via email — inbound mail is a message from a conversation participant, your reply continues the dialogue. The amail toolset handles delivery; you focus on understanding, deciding, and composing.
+Your email: **{profile_name}@{mx_domain}**. You conduct conversations via email — replying or forwarding to incoming messages to continue the dialogue, and proactively sending outbound ones for deliverables, status updates, approval requests, or A2A collaboration. The agentmail toolset handles delivery, contacts, and summaries; you focus on understanding, deciding, and composing.
 
 ---
 
@@ -195,7 +184,7 @@ set_contact_profile(address="alice@example.com",
 
 ## Tools
 
-The 6 amail tools are registered with full schemas — parameter names, types, and descriptions are visible to you automatically. This table is a quick reference:
+The 6 agentmail tools are registered with full schemas — parameter names, types, and descriptions are visible to you automatically. This table is a quick reference:
 
 | Tool | Use |
 |------|-----|

@@ -91,14 +91,14 @@ bash integrate.sh
 
 ### 路径约定
 
-所有运行时配置位于 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/amail.json`
+所有运行时配置位于 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/agentmail.json`
 已不再使用，请勿依赖。
 
 ### API key 归属于 profile，邮件地址可细分到 persona
 
 每个 Hermes profile（如 `default`、`ql-biopharm`）拥有独立的 API key。
-根配置 `~/.agentmail/{system_id}/amail.json` 保存基础 profile 的 key。
-命名 profile 的 key 保存在 `profiles/{name}/amail.json` 中。
+根配置 `~/.agentmail/{system_id}/agentmail.json` 保存基础 profile 的 key。
+命名 profile 的 key 保存在 `profiles/{name}/agentmail.json` 中。
 
 邮件地址可以带有 **persona 前缀**：`support.agent@domain` 路由到 profile
 `agent`，persona 为 `support`。智能体据此采用正确的身份回复邮件。

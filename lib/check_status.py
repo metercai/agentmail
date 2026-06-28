@@ -56,7 +56,7 @@ def _gw_path(sid: str) -> Path:
     return AGENTMAIL_HOME / sid / "agentmail_gateway.json"
 
 def _agent_path(sid: str) -> Path:
-    return AGENTMAIL_HOME / sid / "amail.json"
+    return AGENTMAIL_HOME / sid / "agentmail.json"
 BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
 BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
 BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
@@ -72,10 +72,10 @@ def _agentmail_log() -> Path:
     global _AGENT_DIR
     if _AGENT_DIR:
         return _AGENT_DIR / "agentmail.log"
-    # Fallback: scan system dir for amail.json to find email
+    # Fallback: scan system dir for agentmail.json to find email
     sid = _resolve_system_id(sys.argv)
     if sid:
-        aj = AGENTMAIL_HOME / sid / "amail.json"
+        aj = AGENTMAIL_HOME / sid / "agentmail.json"
         if aj.is_file():
             try:
                 email = json.loads(aj.read_text()).get("email", "")
@@ -670,7 +670,7 @@ def _check_webhook_callback(c: Check, port: int):
 #  Level 4: agent-profile (agent entity)
 # ═══════════════════════════════════════════════════════════════
 def check_profiles(c: Check):
-    """agent-profile: amail.json + email + system_id + recent activity"""
+    """agent-profile: agentmail.json + email + system_id + recent activity"""
     cfg = _read_gw_cfg()
     if not cfg:
         c.add("profile", "config_ref", False,
@@ -686,8 +686,8 @@ def check_profiles(c: Check):
     # Scan ~/.agentmail/{system_id}/ for root + named profiles
     sysdir = AGENTMAIL_HOME / system_id
     if sysdir.is_dir():
-        # Root profile: amail.json
-        root_aj = sysdir / "amail.json"
+        # Root profile: agentmail.json
+        root_aj = sysdir / "agentmail.json"
         if root_aj.is_file():
             profiles_found += 1
             try:
@@ -698,11 +698,11 @@ def check_profiles(c: Check):
                     details.append(f"default: {email}")
             except Exception:
                 details.append("default: unparseable")
-        # Named profiles: profiles/*/amail.json
+        # Named profiles: profiles/*/agentmail.json
         prof_dir = sysdir / "profiles"
         if prof_dir.is_dir():
             for name in sorted(os.listdir(str(prof_dir))):
-                aj = prof_dir / name / "amail.json"
+                aj = prof_dir / name / "agentmail.json"
                 if not aj.is_file():
                     continue
                 profiles_found += 1
@@ -803,7 +803,7 @@ def _run_ping_test() -> int:
     cfg = json.loads(config_path.read_text())
     gw_url = cfg.get("gateway_url", "")
     ak = cfg.get("admin_key", "")
-    amail_path = config_path.parent / "amail.json"
+    amail_path = config_path.parent / "agentmail.json"
     agent_email = ""
     if amail_path.exists():
         acfg = json.loads(amail_path.read_text())
@@ -943,7 +943,7 @@ def _run_ping_test() -> int:
             snap_check_msg = f"⚠ Snapshots: {snap_total} total file(s) in raw_email/, none from last 5min"
     else:
         try:
-            cfg = json.loads((config_path.parent / "amail.json").read_text())
+            cfg = json.loads((config_path.parent / "agentmail.json").read_text())
             enabled = cfg.get("save_raw_snapshots", False)
         except Exception:
             enabled = False

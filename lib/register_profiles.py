@@ -32,8 +32,8 @@ def register_emails():
     count = 0
 
     # Default profile (root ~/.hermes/)
-    # Use centralized ~/.agentmail/{system_id}/amail.json as registration marker
-    default_central = str(_agentmail_system_dir(system_id) / "amail.json") if system_id else ""
+    # Use centralized ~/.agentmail/{system_id}/agentmail.json as registration marker
+    default_central = str(_agentmail_system_dir(system_id) / "agentmail.json") if system_id else ""
     if default_central and os.path.exists(default_central):
         try:
             with open(default_central) as f:
@@ -57,7 +57,7 @@ def register_emails():
             if not os.path.isdir(profile_dir):
                 continue
             # Use centralized path as registration marker
-            named_central = str(_agentmail_system_dir(system_id) / "profiles" / name / "amail.json") if system_id else ""
+            named_central = str(_agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json") if system_id else ""
             if named_central and os.path.exists(named_central):
                 try:
                     with open(named_central) as f:

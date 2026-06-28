@@ -41,7 +41,7 @@ def get_agent_email(config):
 
     # 2. Root profile centralized config (fast, no API call)
     if sid:
-        root_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "amail.json")
+        root_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail.json")
         if os.path.isfile(root_path):
             try:
                 with open(root_path) as f:
@@ -56,7 +56,7 @@ def get_agent_email(config):
         profiles_dir = os.path.join(os.path.expanduser("~/.agentmail"), sid, "profiles")
         if os.path.isdir(profiles_dir):
             for name in sorted(os.listdir(profiles_dir)):
-                aj = os.path.join(profiles_dir, name, "amail.json")
+                aj = os.path.join(profiles_dir, name, "agentmail.json")
                 if os.path.isfile(aj):
                     try:
                         with open(aj) as f:

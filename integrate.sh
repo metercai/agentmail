@@ -94,9 +94,9 @@ _find_gw_cfg() {
     echo "$HOME/.agentmail/$SYSTEM_ID/agentmail_gateway.json"
 }
 
-# Helper: find amail.json under ~/.agentmail/{system_id}/
+# Helper: find agentmail.json under ~/.agentmail/{system_id}/
 _find_agent_cfg() {
-    echo "$HOME/.agentmail/$SYSTEM_ID/amail.json"
+    echo "$HOME/.agentmail/$SYSTEM_ID/agentmail.json"
 }
 
 # Reuse existing config (skip if product code is explicitly requested)
@@ -469,7 +469,7 @@ unset PATCH_STEP_PARENT
 # Step 7: Full pipeline diagnostics + ping-pong test
 step_begin "$T_DIAG"
 set +e  # non-zero from partial failures must not abort
-AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/amail.json"
+AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/agentmail.json"
 AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
 [ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
 if [ -n "$AMAIL_AGENT" ]; then

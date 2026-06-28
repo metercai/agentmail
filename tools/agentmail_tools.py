@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════
 
 _TOOLSET = "agentmail"
-_GATEWAY_CONFIG_KEY = "amail"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -411,7 +410,6 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     Reads from (in priority order):
     1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
     2. ~/.agentmail/{system_id}/amail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
-    3. ~/.hermes/config.yaml platforms.amail (legacy fallback)
     """
     # Try environment variables first
     gateway_url = os.environ.get("AMAIL_GATEWAY_URL", "")
@@ -467,19 +465,6 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
         except Exception:
             pass
 
-    # Legacy fallback: config.yaml platforms.amail
-    try:
-        from gateway.config import load_config
-        cfg = load_config()
-        gateway_cfg = cfg.get("platforms", {}).get(_GATEWAY_CONFIG_KEY, {})
-        if gateway_cfg.get("gateway_url") and (gateway_cfg.get("admin_key") or gateway_cfg.get("product_code")):
-            result = dict(gateway_cfg)
-            result.setdefault("system_id", gateway_cfg.get("sys_id", ""))
-            result.setdefault("domain", gateway_cfg.get("mx_domain", ""))
-            return result
-    except Exception:
-        pass
-
     return None
 
 
@@ -510,8 +495,8 @@ def _load_profile_config() -> Optional[dict]:
     """Load per-profile gateway config from centralized agentmail directory.
     
     Uses {profile_dir}/.agentmail pointer → {system_id}/ path:
-      Root profile:  ~/.agentmail/{system_id}/amail.json
-      Named profile: ~/.agentmail/{system_id}/profiles/{name}/amail.json
+      Root profile:  ~/.agentmail/{system_id}/agentmail.json
+      Named profile: ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
     """
     profile_dir = _resolve_profile_dir() or ""
     
@@ -530,11 +515,11 @@ def _load_profile_config() -> Optional[dict]:
                     is_root = Path(profile_dir).resolve() == hermes_home.resolve()
                     if is_root:
                         search_paths.append(
-                            _agentmail_system_dir(sid) / "amail.json"
+                            _agentmail_system_dir(sid) / "agentmail.json"
                         )
                     else:
                         search_paths.append(
-                            _agentmail_system_dir(sid) / "profiles" / pname / "amail.json"
+                            _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
                         )
             except Exception:
                 pass
@@ -552,8 +537,8 @@ def _load_profile_config() -> Optional[dict]:
 def _inject_profile_config(profile_dir: str, config: dict) -> None:
     """Write per-profile agentmail config.
 
-    Root profile:  ~/.agentmail/{system_id}/amail.json
-    Named profile: ~/.agentmail/{system_id}/profiles/{name}/amail.json
+    Root profile:  ~/.agentmail/{system_id}/agentmail.json
+    Named profile: ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
     Pointer file:  {profile_dir}/.agentmail  (contains system_id for discovery)
 
     Merges with existing config — preserves fields not in the new config
@@ -569,9 +554,9 @@ def _inject_profile_config(profile_dir: str, config: dict) -> None:
     # Write primary config to centralized agentmail directory
     if system_id:
         if is_root:
-            primary = _agentmail_system_dir(system_id) / "amail.json"
+            primary = _agentmail_system_dir(system_id) / "agentmail.json"
         else:
-            primary = _agentmail_system_dir(system_id) / "profiles" / pname / "amail.json"
+            primary = _agentmail_system_dir(system_id) / "profiles" / pname / "agentmail.json"
         primary.parent.mkdir(parents=True, exist_ok=True)
         # Merge with existing — preserve fields like api_key
         existing = {}
@@ -971,15 +956,15 @@ def manage_contacts(
         return {"success": False, "error": "agentmail not configured for this profile"}
 
     client = _GatewayClient(config["gateway_url"], config["api_key"])
-    # Agent whitelist is per-amail, not per-domain.
+    # Agent whitelist is per-profile, not per-domain.
     # domain_addr = agentmail address (agent-1@mail.project.com)
-    amail = config.get("email", "")
+    email_addr = config.get("email", "")
     system_id = config.get("system_id", "")
 
     if action == "check":
         if not address:
             return {"success": False, "error": "address is required for check"}
-        result = client.check_whitelist_value(amail, address, direction)
+        result = client.check_whitelist_value(email_addr, address, direction)
         return {
             "success": True,
             "in_contacts": result.get("in_contacts", False),
@@ -1003,7 +988,7 @@ def manage_contacts(
         result = client_mgr.send_mail(
             to=manager_addr,
             subject=f"[Amail] Contact request: {address}",
-            body=f"Please add {address} to {amail}'s contacts with direction={direction}.{desc_line}\n\n"
+            body=f"Please add {address} to {email_addr}'s contacts with direction={direction}.{desc_line}\n\n"
                  f"To approve, reply to this email with:\nadd {address} to my contacts with direction={direction}",
         )
         status = result.get("status", 0)
@@ -1015,7 +1000,7 @@ def manage_contacts(
     elif action == "remove":
         if not address:
             return {"success": False, "error": "address is required for remove"}
-        result = client.delete_whitelist_by_value(amail, address)
+        result = client.delete_whitelist_by_value(email_addr, address)
         status = result.pop("status", 0)
         if status == 204:
             return {"success": True}
@@ -1030,7 +1015,7 @@ def manage_contacts(
         new_direction = kwargs.get("direction", direction)
         if not new_direction:
             return {"success": False, "error": "direction is required for update"}
-        result = client.update_whitelist_by_value(amail, address, new_direction)
+        result = client.update_whitelist_by_value(email_addr, address, new_direction)
         status = result.pop("status", 0)
         if 200 <= status < 300:
             return {"success": True, "note": f"direction updated to {new_direction}"}
@@ -1558,9 +1543,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         try:
             if system_id:
                 if name == "default":
-                    existing_cfg_path = _agentmail_system_dir(system_id) / "amail.json"
+                    existing_cfg_path = _agentmail_system_dir(system_id) / "agentmail.json"
                 else:
-                    existing_cfg_path = _agentmail_system_dir(system_id) / "profiles" / name / "amail.json"
+                    existing_cfg_path = _agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json"
                 if existing_cfg_path.is_file():
                     existing_cfg = json.loads(existing_cfg_path.read_text())
                     if existing_cfg.get("activation_code") and not existing_cfg.get("api_key"):
@@ -1626,9 +1611,9 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         return
 
     if is_root:
-        config_path = _agentmail_system_dir(sid) / "amail.json"
+        config_path = _agentmail_system_dir(sid) / "agentmail.json"
     else:
-        config_path = _agentmail_system_dir(sid) / "profiles" / pname / "amail.json"
+        config_path = _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
 
     if not config_path or not config_path.is_file():
         return
@@ -1663,8 +1648,8 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
 
         # ── Sync api_key to centralized config ─────────────────────
         # Only write to the correct centralized path based on profile type:
-        #   root profile  → ~/.agentmail/{system_id}/amail.json
-        #   named profile → ~/.agentmail/{system_id}/profiles/{name}/amail.json
+        #   root profile  → ~/.agentmail/{system_id}/agentmail.json
+        #   named profile → ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
         # NEVER write a named profile's key to the root config.
         try:
             pointer_path = Path(profile_dir) / ".agentmail"
@@ -1676,7 +1661,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
                 sid = pd.get("system_id", "")
 
                 if is_root and sid:
-                    root_path = _agentmail_system_dir(sid) / "amail.json"
+                    root_path = _agentmail_system_dir(sid) / "agentmail.json"
                     if root_path.is_file():
                         root = json.loads(root_path.read_text())
                         root["api_key"] = result["raw_key"]
@@ -1684,7 +1669,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
                         root_path.write_text(json.dumps(root, indent=2))
                         logger.info("[agentmail_gateway] api_key synced to %s", root_path)
                 elif not is_root and sid:
-                    named_path = _agentmail_system_dir(sid) / "profiles" / pname / "amail.json"
+                    named_path = _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
                     if named_path.is_file():
                         named = json.loads(named_path.read_text())
                         named["api_key"] = result["raw_key"]
@@ -1758,9 +1743,9 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
     config_path = None
     if system_id:
         if name == "default":
-            cp = _agentmail_system_dir(system_id) / "amail.json"
+            cp = _agentmail_system_dir(system_id) / "agentmail.json"
         else:
-            cp = _agentmail_system_dir(system_id) / "profiles" / name / "amail.json"
+            cp = _agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json"
         if cp.is_file():
             config_path = cp
 
@@ -1792,7 +1777,7 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
     config_path.unlink(missing_ok=True)
     # Also clean up profiles sub-path if different from config_path
     if system_id and name != "default":
-        alt = _agentmail_system_dir(system_id) / "profiles" / name / "amail.json"
+        alt = _agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json"
         if alt.is_file() and str(alt) != str(config_path):
             alt.unlink(missing_ok=True)
     # Clean up .agentmail pointer
@@ -2250,7 +2235,7 @@ def _current_persona_name() -> Optional[str]:
 
 
 def _agentmail_dir() -> Path:
-    """Return the per-agent data directory (AGENTMAIL_HOME env, amail.json fallback, or default)."""
+    """Return the per-agent data directory (AGENTMAIL_HOME env or default)."""
     env = os.environ.get("AGENTMAIL_HOME", "")
     if env:
         return Path(env)

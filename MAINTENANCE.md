@@ -21,10 +21,10 @@
 ~/.agentmail/
 ├── {system_id}/
 │   ├── agentmail_gateway.json     # 网关连接配置（gateway_url, admin_key, system_id, domain）
-│   ├── amail.json              # 根 profile 的 agent 配置（email, api_key）
+│   ├── agentmail.json              # 根 profile 的 agent 配置（email, api_key）
 │   └── profiles/
 │       └── {name}/
-│           └── amail.json      # 命名 profile 的 agent 配置（含 persona 邮件地址）
+│           └── agentmail.json      # 命名 profile 的 agent 配置（含 persona 邮件地址）
 ├── .system_raw_key/
 │   └── {system_id}_admin.key  # 系统 admin_key 原始值（仅集成时写入）
 ├── amail-bridge.log            # bridge 日志
@@ -43,13 +43,13 @@
 | 文件 | 内容 | 写入时机 |
 |------|------|----------|
 | `agentmail_gateway.json` | gateway_url, admin_key, system_id, domain, system_name, save_raw_snapshots, manager_address, webhook_host | Step 4 `setup_system.py` |
-| `amail.json`（根） | email, api_key, gateway_url, domain, system_id, manager_address | `_auto_register_email()` + `_auto_activate_profile()` |
-| `profiles/{name}/amail.json` | 同上 + persona 前缀的 email | 同上 |
+| `agentmail.json`（根） | email, api_key, gateway_url, domain, system_id, manager_address | `_auto_register_email()` + `_auto_activate_profile()` |
+| `profiles/{name}/agentmail.json` | 同上 + persona 前缀的 email | 同上 |
 | `amail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
 
 ### 路径迁移
 
-所有配置统一在 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/` 下的 `amail.json`、`agentmail_gateway.json` 不再使用。如有旧文件，手动清理。
+所有配置统一在 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/` 下的 `agentmail.json`、`agentmail_gateway.json` 不再使用。如有旧文件，手动清理。
 
 ---
 
@@ -244,7 +244,7 @@ grep pong_status ~/.agentmail/*/agentmail.log
 # 如果看到 "Send failed: Sender mismatch" → key 所属 email 与 config 不一致
 ```
 
-**修复：** 检查 `~/.agentmail/{system_id}/amail.json` 的 email 和 api_key 是否匹配。根 profile 的 key 不能是 persona 的 key。
+**修复：** 检查 `~/.agentmail/{system_id}/agentmail.json` 的 email 和 api_key 是否匹配。根 profile 的 key 不能是 persona 的 key。
 
 ### bridge 无法拉取邮件
 
@@ -294,7 +294,7 @@ bash integrate.sh
 如果网关侧 key 轮转或失效：
 
 ```bash
-# 方法 1：清空 amail.json 的 activation_code 和 api_key，让 agent 下次启动时重新激活
-# 方法 2：直接用新 key 替换 amail.json 中的 api_key
+# 方法 1：清空 agentmail.json 的 activation_code 和 api_key，让 agent 下次启动时重新激活
+# 方法 2：直接用新 key 替换 agentmail.json 中的 api_key
 # 方法 3：重新运行 integrate.sh
 ```

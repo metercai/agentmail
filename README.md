@@ -95,13 +95,13 @@ bash integrate.sh
 ### Path convention
 
 All runtime config lives under `~/.agentmail/{system_id}/`. The legacy
-`~/.hermes/amail.json` is no longer used — do not rely on it.
+`~/.hermes/agentmail.json` is no longer used — do not rely on it.
 
 ### API keys belong to profiles, email addresses to personas
 
 Each Hermes profile (e.g. `default`, `ql-biopharm`) has its own API key.
-Root config `~/.agentmail/{system_id}/amail.json` holds the base profile's key.
-Named profiles store keys in `profiles/{name}/amail.json`.
+Root config `~/.agentmail/{system_id}/agentmail.json` holds the base profile's key.
+Named profiles store keys in `profiles/{name}/agentmail.json`.
 
 Email addresses can carry a **persona prefix**: `support.agent@domain` routes
 to profile `agent` with persona `support`. The agent uses this to adopt the
