@@ -1,0 +1,6 @@
+[submodule "bridge"]
+	path = bridge
+	url = https://github.com/metercai/amail-bridge.git
+[submodule "gateway"]
+	path = gateway
+	url = https://github.com/metercai/amail-gateway.git
