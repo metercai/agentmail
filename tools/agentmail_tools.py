@@ -34,6 +34,81 @@ from typing import Any, Callable, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
+# a2a_board helpers — template filling, role/context utilities
+# ═══════════════════════════════════════════════════════════════
+
+
+def fill_template(text: str, ctx: dict) -> str:
+    """Replace {{KEY}} placeholders with values from ctx (keys uppercase)."""
+    for key, val in ctx.items():
+        text = text.replace("{{" + key + "}}", str(val))
+    return text
+
+
+def _read_role_file(name: str) -> str:
+    """Read agentmail/skill/role/<name>.md from skill directory."""
+    search_dirs = [
+        Path.home() / ".hermes" / "skills" / "agentmail" / "role",
+        Path(__file__).resolve().parent.parent / "skill" / "role",
+    ]
+    for d in search_dirs:
+        p = d / f"{name}.md"
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    logger.warning("[a2a_board] role file not found: %s", name)
+    return ""
+
+
+def _read_soul_md() -> str:
+    """Read SOUL.md from current Hermes profile."""
+    profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
+    if not profile_dir:
+        profile_dir = str(Path.home() / ".hermes")
+    soul = Path(profile_dir) / "SOUL.md"
+    if soul.exists():
+        return soul.read_text(encoding="utf-8")
+    return ""
+
+
+def _read_skills() -> list[str]:
+    """Read loaded skills list from profile config."""
+    profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
+    if not profile_dir:
+        profile_dir = str(Path.home() / ".hermes")
+    cfg = Path(profile_dir) / "config.yaml"
+    if cfg.exists():
+        import yaml
+        try:
+            data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+            return data.get("skills", []) or []
+        except Exception:
+            pass
+    return []
+
+
+def _resolve_agent_email() -> str:
+    """Resolve current agent's email from profile config."""
+    from tools.agentmail_tools import _load_profile_config as _lpc
+    cfg = _lpc()
+    if cfg:
+        return cfg.get("email", "") or cfg.get("domain", "")
+    return ""
+
+
+def build_ctx(payload: dict, headers: dict) -> dict:
+    """Build template context dict from available data."""
+    return {
+        "AGENTMAIL_ADDRESS": payload.get("my_amail_addr", ""),
+        "BOARD_ID": payload.get("board_id", ""),
+        "BOARD_ROLE": payload.get("board_role", ""),
+        "INQUIRY_SENDER": payload.get("from", ""),
+        "INQUIRY_SUBJECT": payload.get("subject", ""),
+        "SOUL_MD_CONTENT": _read_soul_md(),
+        "SKILLS_LIST": ", ".join(_read_skills()),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # Constants
 # ═══════════════════════════════════════════════════════════════
 
@@ -753,7 +828,7 @@ def _ensure_webhook_route(
         "secret": secret,
         "preprocess": "agentmail_gateway",    # triggers preprocess_mail_payload
         "prompt": "",
-        "skills": skills or ["agentmail"],
+        "skills": skills or [],
         "deliver": deliver,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -844,11 +919,15 @@ def send_mail(
     to_list = [a.strip() for a in to.split(",") if a.strip()]
     cc_list = [a.strip() for a in cc.split(",") if a.strip()] if cc else None
 
+    # Detect forward vs reply from subject line (case-insensitive "fw:" prefix)
+    _is_forward = bool(message_id and subject and subject.lower().startswith("fw:"))
+
     # Resolve threading headers from message_id
     in_reply_to = None
     references = None
     if message_id:
-        in_reply_to = message_id
+        if not _is_forward:
+            in_reply_to = message_id
         if msg_meta:
             # Build References: original references + original message_id
             refs = msg_meta.get("references", [])
@@ -1297,6 +1376,26 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
         _subj = (raw_headers.get("subject") or raw_headers.get("Subject")
                  or payload.get("subject") or payload.get("Subject") or "")
         _log_amail("inbound", str(_from), my_addr, str(_subj))
+
+    # ── a2a_board: [WhoAmI]问询检测 ──
+    subject = (payload.get("subject") or "").strip()
+    if subject.upper().startswith("[WHOAMI]"):
+        ctx = build_ctx(result, dict(headers))
+        whoami_raw = _read_role_file("whoami")
+        if whoami_raw:
+            result["_whoami_prompt"] = fill_template(whoami_raw, ctx)
+        return result
+
+    # ── a2a_board: Board上下文检测（由Rust A2aInterceptor注入 board_id / board_role）──
+    board_id = result.get("board_id")
+    board_role = result.get("board_role")
+    if board_id and board_role:
+        ctx = build_ctx(result, dict(headers))
+        role_raw = _read_role_file(board_role)
+        if role_raw:
+            result["_role_prompt"] = fill_template(role_raw, ctx)
+        sender = result.get("from", "")
+        result["_a2a_session_key"] = f"a2a:{board_id}:{sender}"
 
     return result
 
@@ -2514,3 +2613,172 @@ registry.register(
     handler=_handle_set_email_summary,
     emoji="📝",
 )
+
+
+# ═══════════════════════════════════════════════════════════════
+# a2a_board toolset — board query tools for role prompts
+# ═══════════════════════════════════════════════════════════════
+
+def _resolve_board(task_id: str) -> str:
+    """Extract board_id from task_id or config."""
+    # task_id format: t_<board_id>_<short_id> or board:<board_id>:<task_id>
+    if task_id.startswith("t_"):
+        parts = task_id.split("_", 2)
+        if len(parts) >= 2:
+            return parts[1]
+    if task_id.startswith("board:"):
+        parts = task_id.split(":", 2)
+        if len(parts) >= 2:
+            return parts[1]
+    return ""
+
+
+def board_task_show(task_id: str) -> str:
+    """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
+    import json
+    cfg = _load_profile_config()
+    if not cfg:
+        return "{\"error\": \"no profile config\"}"
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    board_id = _resolve_board(task_id)
+    if not board_id:
+        return "{\"error\": \"cannot resolve board_id from task_id\"}"
+    try:
+        r = client._request("GET", f"/api/v1/board/{board_id}/task/{task_id}")
+        return json.dumps(r, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
+    """按条件过滤 task 列表。支持 status、assignee 过滤。常用于巡视。"""
+    import json
+    cfg = _load_profile_config()
+    if not cfg:
+        return "{\"error\": \"no profile config\"}"
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    params = {}
+    if status:
+        params["status"] = status
+    if assignee:
+        params["assignee"] = assignee
+    try:
+        r = client._request("GET", f"/api/v1/board/{board}/tasks", params=params)
+        return json.dumps(r, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def board_members(board: str) -> str:
+    """查询某 Board 的成员列表及角色（orchestrator / verifier / worker）。"""
+    import json
+    cfg = _load_profile_config()
+    if not cfg:
+        return "{\"error\": \"no profile config\"}"
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    try:
+        r = client._request("GET", f"/api/v1/board/{board}/members")
+        return json.dumps(r, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def board_heartbeat(task_id: str, note: str = "") -> str:
+    """发心跳更新任务时间戳。长任务期间定期调用，让Board/Orchestrator知道任务仍在进行。"""
+    import json
+    cfg = _load_profile_config()
+    if not cfg:
+        return "{\"error\": \"no profile config\"}"
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    board_id = _resolve_board(task_id)
+    if not board_id:
+        return "{\"error\": \"cannot resolve board_id from task_id\"}"
+    try:
+        r = client._request("POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat",
+                            body={"note": note})
+        return json.dumps(r, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+# ── a2a tool registration ──
+try:
+    registry.register(
+        name="board_task_show",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_show",
+            "description": "查询任务详情。返回 task 的所有字段。比发邮件快，零 SMTP 往返。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "任务 ID（如 t_a1b2c3d4）"
+                    }
+                },
+                "required": ["task_id"]
+            }
+        },
+        handler=board_task_show,
+        emoji="📋",
+    )
+
+    registry.register(
+        name="board_task_list",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_list",
+            "description": "按条件过滤 task 列表。Orchestrator 巡视用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "board": {"type": "string", "description": "看板 ID"},
+                    "status": {"type": "string", "description": "过滤状态（running/blocked/done）"},
+                    "assignee": {"type": "string", "description": "过滤负责人 email"}
+                },
+                "required": ["board"]
+            }
+        },
+        handler=board_task_list,
+        emoji="📋",
+    )
+
+    registry.register(
+        name="board_members",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_members",
+            "description": "查询某 Board 的成员列表及角色。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "board": {"type": "string", "description": "看板 ID"}
+                },
+                "required": ["board"]
+            }
+        },
+        handler=board_members,
+        emoji="👥",
+    )
+
+    registry.register(
+        name="board_heartbeat",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_heartbeat",
+            "description": "发心跳更新任务时间戳。长任务用此工具代替发邮件。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "任务 ID"},
+                    "note": {"type": "string", "description": "进度备注（可选）"}
+                },
+                "required": ["task_id"]
+            }
+        },
+        handler=board_heartbeat,
+        emoji="💓",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)

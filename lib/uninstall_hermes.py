@@ -80,9 +80,24 @@ WEBHOOK_BLOCK2 = """        # ── Preprocess payload (AmailGateway integratio
 
 """
 
+# Block 3: a2a_board prompt field consumer
+# Inserted AFTER session_chat_id, BEFORE "# Store delivery info"
+WEBHOOK_BLOCK3 = """        # ── a2a_board: consume preprocessor prompt fields ──
+        _wp = payload.get("_whoami_prompt")
+        if _wp:
+            prompt = prompt + "\n\n---\n" + _wp
+        _rp = payload.get("_role_prompt")
+        if _rp:
+            prompt = prompt + "\n\n---\n" + _rp
+        _sk = payload.get("_a2a_session_key")
+        if _sk:
+            session_chat_id = f"webhook:{route_name}:{_sk}"
+"""
+
+
 # Block 3: Ping-pong interception
 # Inserted BEFORE "# Non-blocking"
-WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) ────────────────
+WEBHOOK_BLOCK4 = """        # ── Ping-pong interception (end-to-end test) ────────────────
         ping_subject = (payload.get("subject") or "").strip()
         if ping_subject.startswith("__agentmail_ping__:"):
             ping_id = ping_subject.split(":", 1)[1].strip()
@@ -119,8 +134,9 @@ WEBHOOK_BLOCK3 = """        # ── Ping-pong interception (end-to-end test) �
 
 """
 
-# Block 4: _log_ping_event function (appended at end of file)
-WEBHOOK_BLOCK4 = """
+# Block 5: _log_ping_event (was Block 4)
+# Inserted AFTER session_chat_id, BEFORE "# Store delivery info" function (appended at end of file)
+WEBHOOK_BLOCK5 = """
 def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
     \"\"\"Append a JSON line to agentmail.log for ping-pong tracking.\"\"\"
     import json, os as _os
@@ -173,10 +189,11 @@ def unpatch_webhook(fp: Path):
     changes = 0
 
     for name, block in [
-        ("PREPROCESS_REGISTRY",     WEBHOOK_BLOCK1),
-        ("preprocessor invocation", WEBHOOK_BLOCK2),
-        ("ping-pong interception",  WEBHOOK_BLOCK3),
-        ("_log_ping_event",         WEBHOOK_BLOCK4),
+        ("PREPROCESS_REGISTRY",        WEBHOOK_BLOCK1),
+        ("preprocessor invocation",    WEBHOOK_BLOCK2),
+        ("a2a_board prompt fields",    WEBHOOK_BLOCK3),
+        ("ping-pong interception",     WEBHOOK_BLOCK4),
+        ("_log_ping_event",            WEBHOOK_BLOCK5),
     ]:
         text, ok = strip_block(text, block)
         if ok:

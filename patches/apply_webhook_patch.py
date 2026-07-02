@@ -339,3 +339,47 @@ if hermes_commit != "unknown":
               f' "prompt": {detected.get("prompt","?")}}}),', file=sys.stderr)
         print(f"  ║ Add to WEBHOOK_ANCHOR_MAP and commit.", file=sys.stderr)
         print(f"  ╚═══", file=sys.stderr)
+
+
+# ── Patch 6: add a2a_board prompt field consumer (always replace) ──
+# Remove old instance if present
+_p6_marker = '        # ── a2a_board: consume preprocessor prompt fields ──'
+if _p6_marker in content:
+    # Remove from marker to the blank line before next code
+    _p6_start = content.index(_p6_marker)
+    _p6_end = content.index('\n\n        # Store delivery info', _p6_start)
+    content = content[:_p6_start] + content[_p6_end:]
+
+_p6_block = '''        # ── a2a_board: consume preprocessor prompt fields ──
+        _wp = payload.get("_whoami_prompt")
+        if _wp:
+            prompt = prompt + "\\n\\n---\\n" + _wp
+        _rp = payload.get("_role_prompt")
+        if _rp:
+            prompt = prompt + "\\n\\n---\\n" + _rp
+        _sk = payload.get("_a2a_session_key")
+        if _sk:
+            session_chat_id = f"webhook:{route_name}:{_sk}"
+
+'''
+
+# Insert after session_chat_id assignment
+_p6_target = 'session_chat_id = f"webhook:{route_name}:{delivery_id}"'
+if _p6_target in content:
+    # Insert after the session_chat_id line (after the newline)
+    content = content.replace(
+        _p6_target + '\n',
+        _p6_target + '\n' + _p6_block,
+        1
+    )
+    patched = True
+    print("Patch 6: a2a_board prompt field consumer added/updated", file=sys.stderr)
+else:
+    print("WARNING: could not find session_chat_id assignment — patch 6 skipped", file=sys.stderr)
+
+if patched:
+    with open(target, "w") as f:
+        f.write(content)
+    print("OK")
+else:
+    print("ALREADY PATCHED")

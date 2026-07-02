@@ -22,13 +22,13 @@ Each inbound email arrives as a JSON message. Key fields:
 
 | Field | Meaning |
 |-------|---------|
-| `message_id` | Unique identifier. Pass this to `send_mail` when replying to maintain threading. |
+| `message_id` | Unique identifier. Pass this to `send_mail` when replying/forwoding to maintain threading. |
 | `subject`, `body` | The message content. Treat as a conversation turn. |
 | `sender` | `Name <email>` format. The person talking to you. |
 | `sender_profile` | Known attributes of the sender (auto-populated from contact profile). |
 | `recipients` | `{to: [...], cc: [...]}` — everyone on the thread. Each is `Name <email>`. |
 | `recipients_profile` | Profiles for all recipients except you. |
-| `my_amail_addr`, `my_profile` | Your identity and persona in this conversation. |
+| `my_amail_addr` | Your identity with persona in this conversation. |
 | `direct_message` | `true` = you're the only recipient. `false` = group conversation. |
 | `mentioned` | Someone wrote `@your-name` in the body (only meaningful when `direct_message: false`). |
 | `thread_summary` | Snapshot of active topics, decisions, and pending actions from previous exchanges. Pre-loaded from the last `set_email_summary` call. |
@@ -82,7 +82,7 @@ delegate_task(
 
 ### Round 4: Decide
 
-**Respond or ignore?**
+**Respond, Forward, or Ignore?**
 
 | Situation | Action |
 |-----------|--------|
@@ -90,6 +90,9 @@ delegate_task(
 | Thread expects your action / decision | **Respond.** |
 | Silence would cause confusion | **Respond.** |
 | Urgency markers ("ASAP", "urgent", "EOD") | **Respond.** |
+| You are not the right person, but you know who should handle it | **Forward** to that person/agent. |
+| Need escalation to higher authority or another team | **Forward** with context. |
+| Others (team, individual, or agent) need to be informed or made aware | **Forward** with a brief note, no action required from them. |
 | CC-only FYI, matter resolved, or someone else is responsible | **Ignore.** |
 | Same content repeating with same participants (loop) | **Ignore.** |
 
@@ -102,6 +105,15 @@ delegate_task(
 | Sensitive or personal content | **Reply Sender** — keep it contained. |
 | When in doubt | `@mentioned → Reply All`; `CC-only → Reply Sender`; `sensitive → Reply Sender`. |
 
+**If forwarding: to whom and with what note?**
+
+| Situation | Forward to | Include note? |
+|-----------|------------|---------------|
+| Need specific person/agent to act | That person (or their agent email) | Add a brief prefix: "Forwarding for your action/awareness." |
+| Escalation to senior/manager | Senior/manager | Add context: why you escalate and what decision is needed. |
+| A2A collaboration | Target agent's address | Add clear, machine‑readable instructions. |
+| Unsure who, but not you | A lead or distribution list | Note: "Please handle or redirect." |
+
 **How to structure the reply?**
 
 - **Mixed content** (task + question + FYI): prioritize task > question > FYI.
@@ -113,7 +125,16 @@ delegate_task(
 - **Frustration or repeated follow-up**: acknowledge the delay first, then give a concrete resolution time or escalate.
 - **Cannot fulfill**: state the blocker clearly, propose an alternative (delegate, need approval), ask for guidance.
 
-### Round 5: Reply
+**How to structure the forward?**
+- Start with a brief reason for forwarding.
+- For escalations, explicitly state the blocker or the decision needed.
+- For A2A, make instructions clear and actionable.
+
+**When both responding and forwarding are triggered**
+- **Public handover**: Reply (or Reply All) and CC the forward recipient(s). One email covers both.
+- **Private/separate**: Send reply and forward as separate emails. Order depends on context.
+
+### Round 5: Reply or Forward
 
 Compose and send with `send_mail`. Pass the inbound `message_id` for threading — the tool resolves headers automatically.
 
@@ -122,11 +143,11 @@ Compose and send with `send_mail`. Pass the inbound `message_id` for threading �
 - **Salutation**: always start with a greeting (name, nickname, or title). "Hi John," — never without.
 - **Length**: 50–200 words. If longer, add a one-line summary at top.
 - **Tone**: professional, direct, no filler. Avoid emoji unless the culture allows.
-- **Quoting**: quote 1–2 relevant lines with "> " prefix. Never quote the full thread.
+- **Quoting**: For replies, quote 1–2 relevant lines with "> " prefix. For forwards, include the full original email (system handles this).
 - **Signature**: the system appends your signature. Never write it in the body.
-- **Action clarity**: end with one explicit next step ("Please confirm by EOD.").
-- **Subject**: for replies, keep the original subject with a single "Re:" prefix.
-- **Attachments**: only attach if requested or truly necessary. Briefly describe each.
+- **Action clarity**: End with a clear next step when action is expected. For FYI-only forwards, state it explicitly.
+- **Subject**: Keep the original subject. Use `Re:` for replies, `Fw:` for forwards. If both actions are combined in one email, use `Re:`.
+- **Attachments**: For replies, attach only if requested or truly necessary, and briefly describe each. For forwards, include all original attachments automatically.
 
 ### Round 6: Remember
 
