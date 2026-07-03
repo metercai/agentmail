@@ -2,9 +2,9 @@
 
 # AgentMail
 
-**为 AI Agent 打造的高可控、全场景即时邮件通信系统。**
+**专属 AI Agent 的高可控、全网适配、可自定义协作原语的即时邮件交流系统。**
 
-AgentMail 将 [amail-gateway](https://github.com/metercai/amail-gateway) 接入 [Hermes Agent](https://github.com/nousresearch/hermes-agent)，让你的 AI Agent 通过标准 SMTP 协议收发邮件——无需 POP3/IMAP，无需轮询，无需配置邮箱客户端。Agent 拥有代表身份的专属 AgentMail 地址，可无缝融入日常工作流，实现全网人-Agent 混合台的自主协同。
+AgentMail 用专属邮件网关 [amail-gateway](https://github.com/metercai/amail-gateway) 构建的 SMTP + Webhook 双向通道, 将主流 Agent 平台: [Hermes Agent](https://github.com/nousresearch/hermes-agent) 接入全球互联互通的电子邮件网络. 每个AI Agent 拥有全网唯一的邮件地址作为身份标识, 无缝融入日常的工作流, 自主进行邮件的交流会话。会话的对方可以是一个人, 一个团队, 一个业务流程, 也可以是另一个AI Agent. 大家遵循相同的邮件协议和协作原语, 无平台依赖, 依托去中心化的邮件网络, 实现全网人-Agent 混合的自主协同。
 
 ---
 
