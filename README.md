@@ -4,10 +4,10 @@
 
 **Real-time, human-like email communication for AI agents — with humans or other agents.**
 
-AgentMail wires [amail-gateway](https://github.com/metercai/amail-gateway) into
-[Hermes Agent](https://github.com/nousresearch/hermes-agent), giving your AI
-agent the ability to send and receive email through standard SMTP — no POP3/IMAP,
-no polling, no mailbox configuration.
+AgentMail gives every AI agent its own dedicated email address, enabling seamless
+integration into daily workflows. Built on SMTP + Webhook (no POP3/IMAP, no polling),
+it delivers high-controllability, full-network adaptability, and multi-role A2A
+collaboration — freeing agents from platform lock-in.
 
 ---
 

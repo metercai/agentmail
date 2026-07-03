@@ -1,33 +1,81 @@
+> **[English](README.md)**
+
 # AgentMail
 
-**让 AI 智能体像人一样收发邮件——与人类或其他智能体实时通信。**
+**为 AI Agent 打造的高可控、全场景即时邮件通信系统。**
 
-AgentMail 将 [amail-gateway](https://github.com/metercai/amail-gateway) 集成到
-[Hermes Agent](https://github.com/nousresearch/hermes-agent) 中，让您的 AI 智能体
-能够通过标准 SMTP 收发邮件——无需 POP3/IMAP、无需轮询、无需配置邮箱。
+AgentMail 将 [amail-gateway](https://github.com/metercai/amail-gateway) 接入 [Hermes Agent](https://github.com/nousresearch/hermes-agent)，让你的 AI Agent 通过标准 SMTP 协议收发邮件——无需 POP3/IMAP，无需轮询，无需配置邮箱客户端。Agent 拥有代表身份的专属 AgentMail 地址，可无缝融入日常工作流，实现全网人-Agent 混合台的自主协同。
 
 ---
 
-## 适用场景
+## 为什么是 AgentMail？
 
-- 智能体通过邮件处理客户支持
-- 多个智能体通过邮件线程协作
-- 自动化报告和通知投递
-- 人工审批的工作流
-- 与现有邮件业务流程集成
-- 智能体间通过 SMTP 通信
+Email 是互联网最基础的服务之一，也是工作中最常用的交流工具。它承载着内容的多样性、记录的持久性、沟通的正式感——既能 1:1 私密交流，也能方便地开启多人协同。
 
-## 特色
+AgentMail 不是 IM，也不是传统邮箱。它与两者的关键差异：
 
-- **零配置入站** — 基于 webhook，无需轮询，无需 IMAP
-- **标准 SMTP 出站** — 非私有 API，适用于任何 SMTP 中继
-- **端到端心跳** — 内置 ping/pong 测试验证全链路
-- **多身份支持** — 一个 agent profile，通过 persona 前缀支持多个邮件身份
-- **钩子生命周期** — profile 创建/删除时自动注册/注销
-- **双语集成向导** — 交互式 `integrate.sh`，支持中英文
-- **管道诊断** — `check_status.py` 一键验证全部 4 层
+| | IM（即时通讯） | 传统邮箱 | AgentMail |
+|------|:--:|:--:|:--:|
+| 通信模式 | 同步、实时 | 异步、被动 | 异步、主动触发 |
+| 接入方式 | 私有 API/WebSocket | POP3/IMAP 轮询 | SMTP + Webhook 推送 |
+| 身份绑定 | 平台账号 | 邮箱地址 | Agent 专属地址 |
+| 多人协同 | 群聊 | 转发/抄送 | A2A 看板 + 多角色指令 |
+| 可控性 | 平台控制 | 低 | 高（白名单 + 权限表 + 反环） |
+| 网络适用性 | 需稳定连接 | 单向轮询 | 双向推拉可选 |
 
-## 快速安装
+**AgentMail 的核心定位：** 它不是让人和 Agent 用邮箱客户端，而是让 Agent 用邮件协议与人和其他 Agent 自然地协作。
+
+---
+
+## 使用场景
+
+* **合同审核：** 如何提交协议合同文本给 AI Agent 进行法律条款审核？——直接作为邮件附件发送给法务 Agent。
+* **进度报告：** Agent 汇总整理的项目进度报告，如何快速分发给相关同事？——生成报告邮件发送给项目组成员。
+* **问题澄清：** Agent 在撰写周报时发现一个矛盾点需要找人澄清——直接回复邮件线程提出疑问。
+* **调查问卷：** 面对一份 AI 培训的反馈问卷，Agent 如何完成发放、回收、汇总分析？——群发问卷邮件，跟踪回收进度。
+* **多方协同：** 公司的网站改版设计，如何在设计师 Agent、前端 Agent、产品经理之间沟通协调？——A2A 看板 + 多角色邮件指令。
+* **财务预审：** 在现有的报销流程中，如何无缝加入一个 AI Agent 的预审环节？——把报销邮件抄送给审计 Agent。
+* **客服支持：** AI agents handling customer support via email——Agent 直接接管 support@ 邮箱地址。
+
+---
+
+## AgentMail 的独特优势
+
+### 1. 零配置接入
+Webhook 推送方式接收邮件，不需要轮询，不需要 IMAP 配置。Agent 的收件体验是「即时到达」而不是「定时检查」。
+
+### 2. 标准 SMTP 出站
+发邮件走标准 SMTP 协议，不依赖任何私有 API。任何支持 SMTP Relay 的邮件服务商都可以对接。
+
+### 3. 高安全可控
+- **白名单机制：** 精确控制谁能给 Agent 发邮件
+- **反环检测：** 防止内部邮件循环
+- **API Key 权限分离：** send / agent / system 三级 scope
+- **审计追踪：** 全链路 relay log
+
+### 4. 全网络适用
+- **Push 模式：** 公网环境下的 Webhook 实时推送
+- **Pull 模式：** 内网/离线环境下的轮询拉取
+- 双模式可并存，同一域名下不同 Agent 可选不同模式
+
+### 5. 多人多角色 A2A 协同
+- **A2A Board 看板系统：** 19 个动词指令（init / create / assign / review / approve / reject / block / unblock / cancel / complete / edit / deadline / comment / output / list / show / members / heartbeat / arbitrate）
+- **B 流自然语言讨论：** 非指令邮件自动注入 board 上下文
+- **C 流通知：** 10 种事件自动通知（assigned / review-needed / approved / rejected / blocked / unblocked / cancelled / output / comment / notify_all）
+- **数据驱动权限：** role_permissions 表支持自定义角色和动词映射
+
+### 6. Persona 多身份
+一个 Agent Profile 可拥有多个 Persona 身份（如 `sales.bob@domain`、`support.bob@domain`），同一个人格、不同场景用不同身份。
+
+### 7. 心跳诊断
+内置 e2e 心跳 ping/pong 检测全链路 4 层是否正常，一键排查问题。
+
+### 8. 双语集成向导
+`integrate.sh` 支持中英文交互，引导完成域名配置、Bridge 部署、Skill 安装、Webhook 补丁、全链路检测。
+
+---
+
+## Quick Start
 
 ### 前置条件
 
@@ -44,14 +92,14 @@ cd agentmail
 bash integrate.sh
 ```
 
-向导将引导您完成：
-1. 网关连通性检查
-2. 域名配置（或通过激活码完成系统激活）
-3. 快照和管理员邮箱设置
-4. 桥接服务自动部署
-5. 工具和技能安装
-6. Webhook 补丁和 profile 注册
-7. 全链路诊断（含 ping/pong 测试）
+向导会引导你完成：
+1. Gateway 连通性检查
+2. 域名配置（或通过激活码激活）
+3. 快照 & Manager 地址设置
+4. Bridge 自动部署
+5. Tool & Skill 安装
+6. Webhook 补丁 & Profile 注册
+7. 全链路诊断（ping/pong 测试）
 8. 收发验证
 
 ### 自动化集成
@@ -62,17 +110,19 @@ export AMAIL_ADMIN_KEY=your_admin_key_here
 bash integrate.sh
 ```
 
+---
+
 ## 架构
 
 ```
                          amail-gateway
-                    (外部 SMTP 网关)
+                    (external SMTP gateway)
                             │
                      ┌──────┴──────┐
                      │             │
               ┌──────┴──────┐     SMTP
-              │ amail-bridge│     (出站)
-              │ (拉取/推送) │
+              │ amail-bridge│     (outbound)
+              │ (pull/push) │
               └──────┬──────┘
                      │ POST /webhooks/agentmail-inbound
               ┌──────┴──────┐
@@ -83,73 +133,19 @@ bash integrate.sh
                      │
               ┌──────┴──────┐
               │ amail-gateway│
-              │ (出站)      │
+              │ (outbound)  │
               └─────────────┘
 ```
 
-## 使用注意事项
+---
 
-### 路径约定
+## 路径规范
 
-所有运行时配置位于 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/agentmail.json`
-已不再使用，请勿依赖。
+所有运行时配置位于 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/agentmail.json` 已废弃，请勿使用。
 
-### API key 归属于 profile，邮件地址可细分到 persona
+### API Key 属于 Profile，邮件地址属于 Persona
 
-每个 Hermes profile（如 `default`、`ql-biopharm`）拥有独立的 API key。
-根配置 `~/.agentmail/{system_id}/agentmail.json` 保存基础 profile 的 key。
-命名 profile 的 key 保存在 `profiles/{name}/agentmail.json` 中。
-
-邮件地址可以带有 **persona 前缀**：`support.agent@domain` 路由到 profile
-`agent`，persona 为 `support`。智能体据此采用正确的身份回复邮件。
-但 API key 绑定的是 profile，不是 persona。
-
-激活命名 profile **不会**覆盖根 profile 的 key。
-
-### 无向后兼容回退
-
-所有工具和脚本仅从 `~/.agentmail/{system_id}/` 路径读取配置。如果您有
-旧版部署文件在 `~/.hermes/` 下，请迁移它们。
-
-### 重新集成
-
-`integrate.sh` 是幂等的——重复运行会检测已有配置并跳过已完成步骤。
-使用 `uninstall.sh` 完全清理后再重新集成。
-
-### 心跳测试
-
-```bash
-python3 lib/check_status.py --ping
-```
-
-通过完整管道发送 ping 邮件 (SMTP → gateway → bridge → webhook) 并预期
-pong 响应。在不调用 LLM 的情况下验证所有链路。
-
-## 项目结构
-
-```
-├── integrate.sh              # 集成向导主脚本（支持中英文）
-├── lib/
-│   ├── helpers.sh            # UI 辅助函数 (step_*, info, ask_param)
-│   ├── i18n.sh               # 中英文字符串
-│   ├── check_status.py       # 管道诊断 + ping/pong
-│   ├── deploy_bridge.py      # 桥接服务下载与部署
-│   ├── register_profiles.py  # Profile 邮件注册
-│   ├── send_welcome.py       # 发送/接收测试
-│   ├── activate_system.py    # 产品激活码激活
-│   └── hermes_gateway.sh     # 多 profile 网关管理
-├── tools/
-│   └── agentmail_tools.py        # Hermes Agent 运行时工具
-├── patches/
-│   ├── apply_webhook_patch.py
-│   └── apply_profiles_patch.py
-├── skill/                    # Hermes 技能定义
-├── tests/                    # 集成测试
-└── references/               # 设计文档与架构指南
-```
-
-## 相关项目
-
-- [amail-gateway](https://github.com/metercai/amail-gateway) — AI 智能体 SMTP 邮件网关
-- [amail-bridge](https://github.com/metercai/amail-bridge) — NAT 穿透 webhook 桥接
-- [Hermes Agent](https://github.com/nousresearch/hermes-agent) — 个人 AI 智能体框架
+- **Profile** = 一个 Agent 的完整身份配置（API Key + 邮件地址列表）
+- **Persona** = Profile 下的子身份（通过邮件地址前缀区分，如 `support.bob@domain`）
+- 一个 Profile 可以有多个 Persona
+- API Key 绑定 Profile，Persona 共享 Profile 的权限
