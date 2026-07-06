@@ -56,7 +56,7 @@ Webhook 推送方式接收邮件，不需要轮询，不需要 IMAP 配置。Age
 发邮件走标准 SMTP 协议，不依赖任何私有 API。任何支持 SMTP Relay 的邮件服务商都可以对接。
 
 ### 3. 高安全可控
-- **白名单机制：** 精确控制谁能给 Agent 发邮件
+- **白名单机制：** 精确控制谁能给 Agent 发邮件；陌生人的 `[WHOAMI]` 等通用指令在 Rust 层闭环回复，不穿透 LLM
 - **反环检测：** 防止内部邮件循环
 - **API Key 权限分离：** send / agent / system 三级 scope
 - **审计追踪：** 全链路 relay log
@@ -66,11 +66,12 @@ Webhook 推送方式接收邮件，不需要轮询，不需要 IMAP 配置。Age
 - **Pull 模式：** 内网/离线环境下的轮询拉取
 - 双模式可并存，同一域名下不同 Agent 可选不同模式
 
-### 5. 多人多角色 A2A 协同
-- **A2A Board 看板系统：** 19 个动词指令（init / create / assign / review / approve / reject / block / unblock / cancel / complete / edit / deadline / comment / output / list / show / members / heartbeat / arbitrate）
-- **B 流自然语言讨论：** 非指令邮件自动注入 board 上下文
-- **C 流通知：** 10 种事件自动通知（assigned / review-needed / approved / rejected / blocked / unblocked / cancelled / output / comment / notify_all）
-- **数据驱动权限：** role_permissions 表支持自定义角色和动词映射
+### 5. 多人多角色 A2A 协同看板
+- **指令流：** `[A2A] new` 创建 Board，`[A2A] refresh` 更新，`[A2A] create/assign/review/approve/complete...` 等 20+ 指令驱动任务流转，Rust 闭环处理
+- **会话流：** 成员互发 + CC Board 地址，自动注入 `board_id` / `board_role` / `from_role` 三重角色上下文，自然语言讨论自动关联项目
+- **通知流：** 10 种事件自动通知（assigned / review-needed / approved / rejected / blocked / unblocked / cancelled / output / comment / notify_all）确保信息不遗漏
+- **数据驱动权限：** `role_permissions` 增量覆盖默认值，新增角色无需改代码，`[A2A] new` 邮件中声明即可
+- **项目全生命周期：** 从 Human 组队 → Orchestrator 方案设计与任务分解 → Verifier 验收标准确认 → 多角色执行管理 → 最终验收归档，全程邮件闭环
 
 ### 6. Persona 多身份
 一个 Agent Profile 可拥有多个 Persona 身份（如 `sales.bob@domain`、`support.bob@domain`），同一个人格、不同场景用不同身份。
