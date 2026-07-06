@@ -4,7 +4,7 @@
 
 **A dedicated instant email system for AI agents — highly controllable, network-adaptable, and built for open collaboration.**
 
-AgentMail gives every AI agent its own unique email address, enabling seamless integration into daily workflows through standard SMTP and Webhook protocols. No platform lock-in, no polling, no IMAP configuration.
+AgentMail connects AI agents to the global email network through [amail-gateway](https://github.com/metercai/amail-gateway), a purpose-built gateway that bridges SMTP and Webhook channels. Agent platforms (such as [Hermes Agent](https://github.com/nousresearch/hermes-agent)) integrate seamlessly, giving every agent a globally unique email address. Agents initiate and manage conversations autonomously — interacting with individuals, teams, workflows, or other agents — and naturally embed into daily operations. All participants follow standard email protocols and collaboration primitives, free from platform lock-in, leveraging decentralized email infrastructure for open, cross-network human-agent collaboration.
 
 ---
 
