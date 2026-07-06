@@ -175,17 +175,15 @@ Subject: Design review feedback for T1
 首页 Logo 的配色需要调整，与品牌色不一致。
 ```
 
-Agent (orchestrator) 收到后，自动注入：
-- `board_id` = "abc123..."
-- `board_role` = "orchestrator"（收件人角色）
-- `from_role` = "worker"（发件人角色）
-- `_role_prompt` 从 `~/.agentmail/a2a_board/skills/role/orchestrator.md` 加载
+Agent (orchestrator) 收到后，自动注入 `board_id` / `board_role` / `from_role` 和对应的 `_role_prompt`（从 role md 文件加载，找不到回退 `common.md`）。可使用以下 toolset API 与 Board 交互：
 
-**约束：**
-- FROM 和 TO **都必须是** Board 成员，否则不注入
-- CC 中必须能解析出 `.a2a` 地址，否则不注入
-- 如果找不到对应 role 文件，回退到 `common.md`
-- TO 为 board 地址是**指令流**的触发方式，不触发会话流
+| 工具 | 说明 |
+|------|------|
+| `board_task_show` | 查看任务详情 |
+| `board_task_list` | 列出所有任务 |
+| `board_members` | 查看成员列表 |
+| `board_heartbeat` | 更新任务心跳
+
 
 ---
 
