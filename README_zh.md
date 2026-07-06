@@ -133,7 +133,7 @@ bash integrate.sh
 
 ## 配置规范
 
-所有运行时配置位于 `~/.agentmail/{system_id}/`。旧版 `~/.hermes/agentmail.json` 已废弃。
+所有运行时配置位于 `~/.agentmail/{system_id}/`。
 
 **API Key 属于 Profile，邮件地址属于 Persona：**
 
