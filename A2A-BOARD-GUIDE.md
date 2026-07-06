@@ -20,7 +20,7 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 
 ### 方式一：`[create]` 流（推荐）
 
-Human 直接发邮件给 Orchestrator（不需要 board 地址预先存在）：
+Human 直接发邮件给 Orchestrator，是新board创建的起点：
 
 ```
 To:      orchestrator@shared.domain
@@ -41,11 +41,11 @@ Subject: [create] myproject: 网站改版项目协同看板
 - `short_id` 从标题提取：`[create] {short_id}: {描述}`
 - `board_id` / `board_email` / `gateway_url` 由系统自动计算
 
-### 方式二：`[A2A] init`（已有 board 地址后使用）
+### 方式二：`[A2A] update`（更新已有 Board）
 
 ```
 To:      myproject.a2a@shared.domain
-Subject: [A2A] init
+Subject: [A2A] update
 
 {
   "members": [
@@ -60,7 +60,7 @@ Subject: [A2A] init
 }
 ```
 
-`role_permissions` 可选，缺省使用安全默认值。
+`[A2A] update` 用于更新已有 Board 的成员和权限（需已获得 board 地址）。`role_permissions` 可选，缺省保持现有配置。
 
 ---
 
@@ -73,9 +73,9 @@ Subject: [A2A] init
 | **worker** | complete, commit, heartbeat, comment, list, show |
 | **human** | create, unblock, reassign, comment, list, show, heartbeat |
 
-**权限模型（增量覆盖）：**
+**权限模型：**
 - 系统始终以**安全默认值**为基线（以上表为准）
-- `role_permissions` 字段为**增量覆盖**：指定了 role-verb 对则覆盖该 role 的默认值，未指定的 role 保持默认
+- `role_permissions` 字段为**增量覆盖**：指定了 role-verb 对则覆盖该 role 的默认值，若role为新值则是新增，未指定的 role 保持默认
 - 默认值确保 `orchestrator`/`verifier`/`worker`/`human` 四角色都有适当的权限范围
 - 同一成员可拥有多个 role（在 `members` 中出现多次）
 
@@ -182,6 +182,7 @@ Agent (orchestrator) 收到后，自动注入 `board_id` / `board_role` / `from_
 | `board_task_show` | 查看任务详情 |
 | `board_task_list` | 列出所有任务 |
 | `board_members` | 查看成员列表 |
+| `board_roles` | 查看角色的成员和动作 |
 | `board_heartbeat` | 更新任务心跳
 
 
