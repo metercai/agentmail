@@ -1388,6 +1388,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
         whoami_raw = _read_role_file("whoami")
         if whoami_raw:
             result["_whoami_prompt"] = fill_template(whoami_raw, ctx)
+        result["_whoami_update_public"] = True
         return result
 
     # ── a2a_board: Board上下文检测（由Rust A2aInterceptor注入 board_id / board_role）──
@@ -2806,6 +2807,27 @@ except Exception as _e:
 
 try:
     registry.register(
+        name="set_public_whoami",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_set_public_whoami",
+            "description": "Set Agent public identity card for stranger [WHOAMI] queries",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Public identity text"}
+                },
+                "required": ["text"]
+            }
+        },
+        handler=set_public_whoami,
+        emoji="🪪",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)
+
+try:
+    registry.register(
         name="board_roles",
         toolset=_TOOLSET,
         schema={
@@ -2825,3 +2847,15 @@ try:
     )
 except Exception as _e:
     logger.warning("[a2a_board] tool registration failed: %s", _e)
+def set_public_whoami(text: str) -> str:
+    """Set Agent public WHOAMI card for stranger queries."""
+    import json
+    cfg = _load_profile_config()
+    if not cfg: return json.dumps({"error": "no profile config"})
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    try:
+        r = client.agent_state_put("public_whoami", text)
+        return json.dumps({"status": "ok"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
