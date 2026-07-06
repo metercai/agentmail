@@ -2673,19 +2673,36 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
         return json.dumps({"error": str(e)})
 
 
-def board_members(board: str) -> str:
-    """查询某 Board 的成员列表及角色（orchestrator / verifier / worker）。"""
-    import json
-    cfg = _load_profile_config()
-    if not cfg:
-        return "{\"error\": \"no profile config\"}"
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
-    try:
-        r = client._request("GET", f"/api/v1/board/{board}/members")
-        return json.dumps(r, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
 
+def board_members(board_id: str, email: str = "") -> dict:
+    """List board members, optionally filtered by email.
+
+    Args:
+        board_id: Board identifier
+        email: Optional email to filter. If empty, returns all members.
+
+    Returns:
+        dict with 'members' list.
+    """
+    params = {}
+    if email:
+        params["email"] = email
+    return _gateway_get(f"/api/v1/board/{board_id}/members", params=params)
+
+def board_roles(board_id: str, role: str = "") -> dict:
+    """Get board roles and their permissions, or find members by role.
+
+    Args:
+        board_id: Board identifier
+        role: Optional role name to filter. If empty, returns all roles with verbs.
+
+    Returns:
+        dict with 'roles' map or 'members' list + 'verbs' list.
+    """
+    params = {}
+    if role:
+        params["role"] = role
+    return _gateway_get(f"/api/v1/board/{board_id}/roles", params=params)
 
 def board_heartbeat(task_id: str, note: str = "") -> str:
     """发心跳更新任务时间戳。长任务期间定期调用，让Board/Orchestrator知道任务仍在进行。"""
