@@ -73,9 +73,10 @@ Subject: [A2A] init
 | **worker** | complete, commit, heartbeat, comment, list, show |
 | **human** | create, unblock, reassign, comment, list, show, heartbeat |
 
-**权限模式：**
-- **有 `role_permissions`**：严格模式，仅声明的 role-verb 映射生效
-- **无 `role_permissions`**：开放模式，任何 member 可执行所有 verb（向后兼容）
+**权限模型（增量覆盖）：**
+- 系统始终以**安全默认值**为基线（以上表为准）
+- `role_permissions` 字段为**增量覆盖**：指定了 role-verb 对则覆盖该 role 的默认值，未指定的 role 保持默认
+- 默认值确保 `orchestrator`/`verifier`/`worker`/`human` 四角色都有适当的权限范围
 - 同一成员可拥有多个 role（在 `members` 中出现多次）
 
 **新增 role 无需改代码：**
