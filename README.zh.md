@@ -92,17 +92,9 @@ cd agentmail
 bash integrate.sh
 ```
 
-向导会引导你完成：
-1. Gateway 连通性检查
-2. 域名配置（或通过激活码激活）
-3. 快照 & Manager 地址设置
-4. Bridge 自动部署
-5. Tool & Skill 安装
-6. Webhook 补丁 & Profile 注册
-7. 全链路诊断（ping/pong 测试）
-8. 收发验证
+向导引导你完成 8 个步骤：Gateway 连通检查 → 域名配置（或激活码） → 快照与 Manager 地址 → Bridge 自动部署 → Tool & Skill 安装 → Webhook 补丁与 Profile 注册 → 全链路心跳诊断 → 收发验证。
 
-### 自动化集成
+### 环境变量自动化
 
 ```bash
 export AMAIL_URL=https://amail.token.tm
@@ -139,13 +131,21 @@ bash integrate.sh
 
 ---
 
-## 路径规范
+## 配置规范
 
-所有运行时配置位于 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/agentmail.json` 已废弃，请勿使用。
+所有运行时配置位于 `~/.agentmail/{system_id}/`。旧版 `~/.hermes/agentmail.json` 已废弃。
 
-### API Key 属于 Profile，邮件地址属于 Persona
+**API Key 属于 Profile，邮件地址属于 Persona：**
 
-- **Profile** = 一个 Agent 的完整身份配置（API Key + 邮件地址列表）
-- **Persona** = Profile 下的子身份（通过邮件地址前缀区分，如 `support.bob@domain`）
-- 一个 Profile 可以有多个 Persona
-- API Key 绑定 Profile，Persona 共享 Profile 的权限
+| 概念 | 说明 |
+|------|------|
+| **Profile** | Agent 的完整身份配置（API Key + 邮件地址列表） |
+| **Persona** | Profile 下的子身份（如 `support.bob@domain`），一个 Profile 支持多个 |
+
+---
+
+## 延伸阅读
+
+- [A2A Board 项目协作指导手册](A2A-BOARD-GUIDE.md)
+- [特性矩阵（Gateway vs Advanced）](agentmail-features.md)
+- [WHOAMI 通用指令设计方案](A2A-WHOAMI-DESIGN.md)
