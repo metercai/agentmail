@@ -2803,3 +2803,25 @@ try:
     )
 except Exception as _e:
     logger.warning("[a2a_board] tool registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="board_roles",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_board_roles",
+            "description": "获取board的角色权限表或按角色查找成员",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "board_id": {"type": "string", "description": "Board 标识"},
+                    "role": {"type": "string", "description": "角色名称（可选，不填返回全部角色及权限）"}
+                },
+                "required": ["board_id"]
+            }
+        },
+        handler=board_roles,
+        emoji="🛡️",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)
