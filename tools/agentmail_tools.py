@@ -46,16 +46,19 @@ def fill_template(text: str, ctx: dict) -> str:
 
 
 def _read_role_file(name: str) -> str:
-    """Read agentmail/skill/role/<name>.md from skill directory."""
-    search_dirs = [
-        Path.home() / ".hermes" / "skills" / "agentmail" / "role",
-        Path(__file__).resolve().parent.parent / "skill" / "role",
-    ]
-    for d in search_dirs:
-        p = d / f"{name}.md"
-        if p.exists():
-            return p.read_text(encoding="utf-8")
-    logger.warning("[a2a_board] role file not found: %s", name)
+    """Read a2a_board role file from ~/.agentmail/a2a_board/skills/role/<name>.md.
+    Falls back to 'common.md' if the named role file is not found."""
+    role_dir = Path.home() / ".agentmail" / "a2a_board" / "skills" / "role"
+    # Try exact match first
+    p = role_dir / f"{name}.md"
+    if p.exists():
+        return p.read_text(encoding="utf-8")
+    # Fallback to common.md
+    common = role_dir / "common.md"
+    if common.exists():
+        logger.info("[a2a_board] role '%s' not found, using common.md", name)
+        return common.read_text(encoding="utf-8")
+    logger.warning("[a2a_board] role file not found: %s (common.md also missing)", name)
     return ""
 
 

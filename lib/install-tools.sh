@@ -49,64 +49,36 @@ for name in tool_names:
         content = re.sub(r'(_HERMES_CORE_TOOLS\\s*=\\s*\\[)', r'\\1\\n    "' + name + '",', content, count=1)
         needs_write = True
 
-# Add amail toolset to TOOLSETS if not present
-if '"agentmail"' not in content:
-    amail_block = '    "agentmail": {\n'
-    amail_block += '        "description": "Agent email tools: send, contacts, contact profiles, and thread summaries via amail",\n'
-    amail_block += '        "tools": ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"],\n'
-    amail_block += '        "includes": [],\n'
-    amail_block += '    },\n'
-    content = re.sub(r'(TOOLSETS\\s*=\\s*\\{)', r'\\1\\n' + amail_block, content, count=1)
-    needs_write = True
-
 if needs_write:
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         f.write(content)
-    print("updated")
-else:
-    print("nochange")
 PYEOF
         echo "$T_OK"
     else
-        echo "$T_FAILED"
-        step_warn "$T_TOOLS_FAIL"
+        echo "$T_SKIP"
     fi
 fi
 
-# ── Install amail skill ─────────────────────────────────────────
-SKILL_SRC="$SCRIPT_DIR/skill/SKILL.md"
-DESC_SRC="$SCRIPT_DIR/skill/DESCRIPTION.md"
-SKILL_DIR="$HOME/.hermes/skills/amail"
-mkdir -p "$SKILL_DIR"
-for f_pair in "SKILL.md:SKILL_SRC" "DESCRIPTION.md:DESC_SRC"; do
-    fname="${f_pair%%:*}"
-    var="${f_pair##*:}"
-    eval src="\$$var"
-    dst="$SKILL_DIR/$fname"
-    if [ ! -f "$src" ]; then
-        step_warn "amail skill $fname copy failed (missing $src)"
-        continue
-    fi
-    need_copy=false
-    if [ ! -f "$dst" ]; then
-        need_copy=true
-    else
-        src_md5=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
-        dst_md5=$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1)
-        [ "$src_md5" != "$dst_md5" ] && need_copy=true
-    fi
-    if [ "$need_copy" = true ]; then
-        cp "$src" "$dst" 2>/dev/null
-    fi
-done
-step_ok "amail skill installed"
+# ── Install a2a_board role files ──
+ROLE_SRC="$PROJECT_ROOT/skill/role"
+ROLE_DST="$HOME/.agentmail/a2a_board/skills/role"
+mkdir -p "$ROLE_DST"
+if [ -d "$ROLE_SRC" ]; then
+    for f in "$ROLE_SRC"/*.md; do
+        [ -f "$f" ] || continue
+        fname=$(basename "$f")
+        if [ ! -f "$ROLE_DST/$fname" ] || [ "$f" -nt "$ROLE_DST/$fname" ]; then
+            cp "$f" "$ROLE_DST/$fname" 2>/dev/null
+        fi
+    done
+fi
 
-# ── Install skill for named profiles ────────────────────────────
-PROFILES_DIR="$HOME/.hermes/profiles"
-if [ -d "$PROFILES_DIR" ]; then
-    for prof in "$PROFILES_DIR"/*/; do
-        prof_name=$(basename "$prof")
-        prof_skill_dir="$prof/skills/amail"
+# Copy skill files to each Hermes profile
+if [ -f "$HERMES_DIR/profiles.py" ]; then
+    SKILL_SRC="$PROJECT_ROOT/skill"
+    for prof_dir in "$HOME/.hermes/profiles"/*/; do
+        [ -d "$prof_dir" ] || continue
+        prof_skill_dir="$prof_dir/skills/agentmail"
         for f_pair in "SKILL.md:SKILL_SRC" "DESCRIPTION.md:DESC_SRC"; do
             fname="${f_pair%%:*}"
             var="${f_pair##*:}"
