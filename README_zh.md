@@ -147,3 +147,5 @@ bash integrate.sh
 ## 延伸阅读
 
 - [A2A Board 项目协作指导手册](A2A-BOARD-GUIDE.md)
+- [API 依赖说明](API-DEPS.md)
+- [维护指南](MAINTENANCE.md)
