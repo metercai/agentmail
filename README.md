@@ -2,33 +2,70 @@
 
 # AgentMail
 
-**Real-time, human-like email communication for AI agents — with humans or other agents.**
+**A dedicated instant email system for AI agents — highly controllable, network-adaptable, and built for open collaboration.**
 
-AgentMail gives every AI agent its own dedicated email address, enabling seamless
-integration into daily workflows. Built on SMTP + Webhook (no POP3/IMAP, no polling),
-it delivers high-controllability, full-network adaptability, and multi-role A2A
-collaboration — freeing agents from platform lock-in.
+AgentMail gives every AI agent its own unique email address, enabling seamless integration into daily workflows through standard SMTP and Webhook protocols. No platform lock-in, no polling, no IMAP configuration.
+
+---
+
+## Why AgentMail?
+
+Email is the most fundamental and widely-used communication tool on the internet — structured, persistent, and inherently formal. It supports both private 1:1 conversations and multi-party collaboration with equal ease.
+
+AgentMail is neither IM nor a traditional mailbox. The key differences:
+
+| Dimension | IM | Traditional Mailbox | **AgentMail** |
+|-----------|-----|---------------------|---------------|
+| **Identity** | Platform-bound, closed | Globally unique, open | Globally unique, open |
+| **Content** | Fragmented, informal | Structured, formal | Structured, formal |
+| **Access** | Proprietary API/SDK | POP3/IMAP, provider-dependent | SMTP + Webhook, self-hosted |
+| **Latency** | Real-time, resource-heavy | Polling, high latency | Webhook push, near real-time |
+| **Access Control** | Contact list, group permissions | Open, spam-prone | Default whitelist, bidirectional control |
+| **Multi-party** | Group chat, unstructured | Forward/CC, threaded | Same as email + A2A Board, multi-role autonomous collaboration |
+
+AgentMail is not about teaching agents to use email. It's about giving agents email as a **protocol-native collaboration medium** — with humans and other agents alike.
 
 ---
 
 ## Use Cases
 
-- AI agents handling customer support via email
-- Multi-agent collaboration over email threads
-- Automated reporting and notification delivery
-- Human-in-the-loop approval workflows
-- Integration with existing email-based business processes
-- Agent-to-agent (A2A) communication via SMTP
+- **Contract Review:** Legal Agent takes over the contract inbox. Send agreements as attachments — the Agent auto-parses clauses, flags risks, and replies with annotations, CC'ing approvers. Full audit trail preserved.
+- **Progress Reports:** Agent periodically summarizes project status, risks, and milestones into structured reports, auto-sending to project members. Customize content by role (executive summary for leaders, details for executors).
+- **Clarification Requests:** When Agent encounters contradictions or gaps during analysis, it automatically emails the relevant colleague with context. Upon reply, the Agent parses the answer and continues without human tool-switching.
+- **Survey Distribution:** Agent sends survey emails in bulk, tracks response progress, sends reminders, aggregates results, and emails the analysis back to the initiator.
+- **Process Collaboration:** In a website redesign involving designer Agent, frontend Agent, and PM, the A2A Board syncs all communication and decisions via email. When a design is finalized, notifications automatically trigger the next role to begin development.
+- **Financial Pre-audit:** Employee CCs the pre-audit Agent on expense reports. Agent verifies receipts, compliance, and budget — replying "approved", "rejected", or "needs supplement" — CC'ing the finance reviewer for final approval.
+- **Customer Support:** Agent takes over `support@` inbox. Auto-classifies intent and sentiment. Answers FAQs (password reset, order lookup) automatically. Escalates complex cases to human agents with context summaries.
 
-## Features
+---
 
-- **Zero-config inbound** — webhook-based, no polling, no IMAP
-- **Standard SMTP outbound** — no proprietary API, works with any SMTP relay
-- **End-to-end heartbeat** — built-in ping/pong test verifies the full pipeline
-- **Persona support** — one agent profile, multiple email identities via persona prefix
-- **Hook-based lifecycle** — auto-register/deregister on profile creation/deletion
-- **Bilingual integration wizard** — interactive `integrate.sh` with EN/ZH support
-- **Pipeline diagnostics** — `check_status.py` verifies all 4 layers in one command
+## Key Advantages
+
+1. **Dual SMTP-HTTP Relay, Ordered Inbound & Outbound**  
+SMTP receive → Webhook push. HTTP send → SMTP relay → Webhook internal delivery. Four lanes, unified scheduling, full-chain logging.
+
+2. **Bidirectional Whitelist, Security by Default**  
+Default whitelist prevents unauthorized senders from reaching the Agent, and prevents the Agent from sending to unauthorized recipients. Closed-loop security.
+
+3. **Auto Markdown Conversion, LLM-Friendly**  
+Rich HTML emails are automatically converted to clean Markdown — stripped of styling noise. Agents read structured content directly.
+
+4. **Email is Conversation, Conversation is Instruction**  
+Sending and receiving email IS the conversation, with context automatically appended. `[A2A]` instruction emails make conversations programmable, seamlessly embedding into daily workflows.
+
+5. **Built-in Collaboration Primitives and Board, Human-Agent Co-working**  
+Native A2A collaboration board with customizable workflow engine. 20+ instruction verbs + 10 auto-notification types + collaboration primitives. Supports cross-system, heterogeneous Agent collaboration across the internet.
+
+6. **Multi-Mode Message Delivery, Any Network Environment**  
+Webhook Push/Pull dual mode coexists, adapting to diverse Agent types and network conditions.
+
+7. **Multi-Role Agent Addresses, Dynamic Identity Switching**  
+One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@domain`). Sending auto-matches identity; receiving auto-identifies Persona for context switching.
+
+8. **One-Click Integration & Diagnostics, Low-Barrier Deployment**  
+`integrate.sh` bilingual wizard completes 8 steps — from domain configuration to full-chain heartbeat diagnostics. From zero to operational in minutes.
+
+---
 
 ## Quick Start
 
@@ -39,7 +76,7 @@ collaboration — freeing agents from platform lock-in.
 - [amail-bridge](https://github.com/metercai/amail-bridge) (auto-deployed by script)
 - Python 3.10+
 
-### One-command integration
+### One-Command Integration
 
 ```bash
 git clone https://github.com/metercai/agentmail.git
@@ -47,23 +84,17 @@ cd agentmail
 bash integrate.sh
 ```
 
-The wizard guides you through:
-1. Gateway connectivity check
-2. Domain configuration (or activation via product code)
-3. Snapshot & manager address setup
-4. Bridge auto-deployment
-5. Tool & skill installation
-6. Webhook patching & profile registration
-7. Full pipeline diagnostics with ping/pong test
-8. Send/receive verification
+The wizard guides you through 8 steps: Gateway check → Domain config (or activation code) → Snapshot & Manager address → Bridge auto-deploy → Tool & Skill install → Webhook patch & Profile registration → Heartbeat diagnostics → Send/receive verification.
 
-### Automated integration
+### Environment Variable Automation
 
 ```bash
 export AMAIL_URL=https://amail.token.tm
 export AMAIL_ADMIN_KEY=your_admin_key_here
 bash integrate.sh
 ```
+
+---
 
 ## Architecture
 
@@ -90,70 +121,23 @@ bash integrate.sh
               └─────────────┘
 ```
 
-## Usage Notes
+---
 
-### Path convention
+## Configuration
 
-All runtime config lives under `~/.agentmail/{system_id}/`. The legacy
-`~/.hermes/agentmail.json` is no longer used — do not rely on it.
+All runtime config lives under `~/.agentmail/{system_id}/`. Legacy `~/.hermes/agentmail.json` is deprecated.
 
-### API keys belong to profiles, email addresses to personas
+**API Keys belong to Profiles, email addresses to Personas:**
 
-Each Hermes profile (e.g. `default`, `ql-biopharm`) has its own API key.
-Root config `~/.agentmail/{system_id}/agentmail.json` holds the base profile's key.
-Named profiles store keys in `profiles/{name}/agentmail.json`.
+| Concept | Description |
+|---------|-------------|
+| **Profile** | A complete Agent identity config (API Key + email address list) |
+| **Persona** | A sub-identity under a Profile (e.g. `support.bob@domain`); one Profile supports multiple |
 
-Email addresses can carry a **persona prefix**: `support.agent@domain` routes
-to profile `agent` with persona `support`. The agent uses this to adopt the
-correct identity when replying. The API key, however, is tied to the profile,
-not the persona.
+---
 
-Activation of a named profile does NOT overwrite the root profile's key.
+## Further Reading
 
-### No backward-compat fallback
-
-All tools and scripts read config from `~/.agentmail/{system_id}/` paths only.
-If you have older deployments with files under `~/.hermes/`, migrate them.
-
-### Re-running integration
-
-`integrate.sh` is idempotent — re-running detects existing config and skips
-completed steps. Use `uninstall.sh` to fully clean up before a fresh start.
-
-### Ping/pong test
-
-```bash
-python3 lib/check_status.py --ping
-```
-
-Sends a ping email through the full pipeline (SMTP → gateway → bridge → webhook)
-and expects a pong response. Verifies all links without invoking the LLM.
-
-## Project Structure
-
-```
-├── integrate.sh              # Main integration wizard (EN/ZH)
-├── lib/
-│   ├── helpers.sh            # UI helpers (step_*, info, ask_param)
-│   ├── i18n.sh               # Bilingual strings
-│   ├── check_status.py       # Pipeline diagnostics + ping/pong
-│   ├── deploy_bridge.py      # Bridge download & deployment
-│   ├── register_profiles.py  # Profile email registration
-│   ├── send_welcome.py       # Send/receive test
-│   ├── activate_system.py    # Product code activation
-│   └── hermes_gateway.sh     # Multi-profile gateway management
-├── tools/
-│   └── agentmail_tools.py        # Hermes Agent runtime tools
-├── patches/
-│   ├── apply_webhook_patch.py
-│   └── apply_profiles_patch.py
-├── skill/                    # Hermes skill definitions
-├── tests/                    # Integration tests
-└── references/               # Design docs & architecture guides
-```
-
-## Related Projects
-
-- [amail-gateway](https://github.com/metercai/amail-gateway) — SMTP email gateway for AI agents
-- [amail-bridge](https://github.com/metercai/amail-bridge) — NAT traversal bridge for webhook delivery
-- [Hermes Agent](https://github.com/nousresearch/hermes-agent) — Personal AI agent framework
+- [A2A Board Collaboration Guide](A2A-BOARD-GUIDE.md)
+- [API Dependencies](API-DEPS.md)
+- [Maintenance Guide](MAINTENANCE.md)
