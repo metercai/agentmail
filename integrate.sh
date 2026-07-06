@@ -22,7 +22,7 @@ BOLD='\033[1m'
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export SCRIPT_DIR
-LIB_DIR="$SCRIPT_DIR/lib"
+SCRIPT_DIR="$SCRIPT_DIR/lib"
 
 # ── Language selection ──────────────────────────────────────────
 LANG_CHOICE="${AMAIL_LANG:-}"
@@ -38,8 +38,8 @@ if [ -z "$LANG_CHOICE" ]; then
 fi
 
 # ── Load language strings and helpers ───────────────────────────
-source "$LIB_DIR/i18n.sh"
-source "$LIB_DIR/helpers.sh"
+source "$SCRIPT_DIR/i18n.sh"
+source "$SCRIPT_DIR/helpers.sh"
 
 TOOLS_PY="$SCRIPT_DIR/tools/agentmail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
@@ -57,7 +57,7 @@ fi
 
 # ═══════════════════════════════════════════════════════════════
 echo ""
-TITLE="$T_TITLE" python3 "$SCRIPT_DIR/lib/print_banner.py"
+TITLE="$T_TITLE" python3 "$SCRIPT_DIR/scripts/print_banner.py"
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Step 1: Configure agentmail gateway                                         ║
@@ -211,7 +211,7 @@ if ! $USE_PRODUCT_CODE; then
 
         while true; do
             DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-            BARE_DOMAINS=$(python3 "$SCRIPT_DIR/lib/list_domains.py" 2>/dev/null)
+            BARE_DOMAINS=$(python3 "$SCRIPT_DIR/scripts/list_domains.py" 2>/dev/null)
             DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
@@ -283,7 +283,7 @@ else
         step_begin "$T_ACTIVATE"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
-        ACTIVATE_RESULT=$(python3 "$LIB_DIR/activate_system.py")
+        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/activate_system.py")
         # Parse result markers
         SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::set-system-id::\(.*\)/\1/')
         ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::set-admin-key::\(.*\)/\1/')
@@ -419,7 +419,7 @@ export INTEGRATE_SYSTEM_NAME="$SYSTEM_NAME"
 export INTEGRATE_PRODUCT_CODE="$PRODUCT_CODE"
 export INTEGRATE_ADMIN_KEY="$ADMIN_KEY"
 export INTEGRATE_USE_PRODUCT_CODE="$USE_PRODUCT_CODE"
-python3 "$SCRIPT_DIR/lib/setup_system.py" 2>&1
+python3 "$SCRIPT_DIR/scripts/setup_system.py" 2>&1
 ) || EXIT_CODE=$?
 _ERR_MSG=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error','') or d.get('detail',''))" 2>/dev/null || echo "")
 [ $EXIT_CODE -ne 0 ] && step_fail "Activation failed: ${_ERR_MSG:-Unknown error}"
@@ -446,7 +446,7 @@ export GATEWAY_URL ADMIN_KEY SYSTEM_ID AMAIL_DOMAIN WEBHOOK_MODE WEBHOOK_HOST US
 # Recompute _GW_CFG now that SYSTEM_ID is definitely set
 _GW_CFG=$(_find_gw_cfg)
 
-python3 "$LIB_DIR/deploy_bridge.py"
+python3 "$SCRIPT_DIR/deploy_bridge.py"
 
 CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/agentmail_gateway.json}"
 if [ -f "$CONFIG_FILE" ]; then
@@ -458,12 +458,12 @@ fi
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Steps 5-8: tools, configure, diagnostics, test                            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-source "$LIB_DIR/install-tools.sh"
+source "$SCRIPT_DIR/install-tools.sh"
 
 # Step 6: Configure Hermes (patches + profiles + gateway)
 PATCH_STEP_PARENT=1
 step_begin "$T_WEBHOOK"
-source "$LIB_DIR/configure_hermes.sh"
+source "$SCRIPT_DIR/configure_hermes.sh"
 unset PATCH_STEP_PARENT
 
 # Step 7: Full pipeline diagnostics + ping-pong test
@@ -477,7 +477,7 @@ if [ -n "$AMAIL_AGENT" ]; then
 else
     AGENT_FLAG=""
 fi
-python3 "$SCRIPT_DIR/lib/check_status.py" $AGENT_FLAG
+python3 "$SCRIPT_DIR/scripts/check_status.py" $AGENT_FLAG
 STEP9_EXIT=$?
 set -e
 if [ $STEP9_EXIT -eq 0 ]; then
@@ -485,8 +485,8 @@ if [ $STEP9_EXIT -eq 0 ]; then
 else
     step_warn "$T_DIAG_PARTIAL"
 fi
-python3 "$SCRIPT_DIR/lib/check_status.py" --ping $AGENT_FLAG
+python3 "$SCRIPT_DIR/scripts/check_status.py" --ping $AGENT_FLAG
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
-python3 "$SCRIPT_DIR/lib/send_welcome.py"
+python3 "$SCRIPT_DIR/scripts/send_welcome.py"

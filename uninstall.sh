@@ -31,7 +31,7 @@ if [ "${CONFIRM:-N}" != "y" ] && [ "${CONFIRM:-N}" != "Y" ]; then
 fi
 
 echo ""
-python3 "$SCRIPT_DIR/lib/uninstall_hermes.py"
+python3 "$SCRIPT_DIR/scripts/uninstall_hermes.py"
 
 EXIT_CODE=$?
 echo ""
