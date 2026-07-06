@@ -1,6 +1,6 @@
-# A2A Board — 使用指导手册
+# A2A Board 项目协作指导手册
 
-A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮件指令**驱动任务流转，支持 AI Agent 与人类在同一看板上协同工作。
+通过 A2A Board，团队成员（人类 + AI Agent）只用邮件就能完成项目协作——从组队、方案设计、任务分解、执行管理到验收归档，全过程邮件驱动。
 
 ---
 
@@ -8,72 +8,261 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 
 | 概念 | 说明 |
 |------|------|
-| **Board** | 一个项目看板，有唯一的 `board_id` 和 `board_email` |
-| **Board Email** | `{short_id}.a2a@{domain}` 格式的专属邮件地址 |
-| **指令流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理所有指令动词 |
-| **会话流** | 成员互发 + CC Board 地址，自动注入 `board_id` / `board_role` / `from_role` |
-| **通知流** | 事件通知邮件，10 种自动通知类型 |
+| **Board** | 一个项目看板，有唯一的 `board_id` 和专属 Board Email |
+| **Board Email** | `{项目名}.a2a@{domain}` 格式，所有项目邮件汇聚于此 |
+| **指令流** | `[A2A]` 前缀的指令邮件，Rust 闭环处理 |
+| **会话流** | 成员互发 + CC Board 地址，自动注入角色上下文 |
+| **通知流** | 项目事件（分配/审阅/阻塞…）自动通知相关成员 |
+| **[WHOAMI]** | 通用指令，查询任意 Agent 的角色和能力自述 |
 
 ---
 
-## 2. 创建与更新 Board
+## 2. 项目全生命周期场景
 
-### Board 创建：`[create]` 邮件
+以下用一个完整的项目案例，展示从组队到归档的全流程。
 
-Human 发邮件给 Orchestrator，系统自动创建 Board（不需要 board 地址预先存在）：
+**项目背景：** 公司要做官网改版，Human 发起，由 PM（orchestrator）、设计师（designer）、前端（dev）、测试（qa）协作完成。
+
+---
+
+### 阶段一：Human 组队，创建 Board
+
+Human（项目发起人）发送组队邮件给 PM：
 
 ```
-To:      orchestrator@shared.domain
-Subject: [create] myproject: 网站改版项目协同看板
+To:      pm@company.com
+Subject: [create] web-redesign: 官网改版项目
 
 {
   "members": [
-    {"email": "orchestrator@shared.domain", "role": "orchestrator", "display_name": "PM"},
-    {"email": "verifier@shared.domain",     "role": "verifier",     "display_name": "QA"},
-    {"email": "worker@shared.domain",       "role": "worker",       "display_name": "Dev"}
+    {"email": "pm@company.com",     "role": "orchestrator", "display_name": "PM"},
+    {"email": "qa@company.com",     "role": "verifier",     "display_name": "QA"},
+    {"email": "dev@company.com",    "role": "worker",       "display_name": "Dev"},
+    {"email": "design@company.com", "role": "designer",     "display_name": "Design"}
   ],
   "role_permissions": [
-    {"role": "orchestrator", "verbs": ["create","assign","review","block","cancel","edit","list","show"]},
-    {"role": "verifier",     "verbs": ["verify","approve","reject","list","show"]},
-    {"role": "worker",       "verbs": ["complete","commit","heartbeat","list","show"]}
+    {"role": "orchestrator", "verbs": ["create","assign","review","block","unblock","cancel","edit","deadline","output","notify","members","list","show","heartbeat"]},
+    {"role": "verifier",     "verbs": ["verify","approve","reject","output","list","show","heartbeat"]},
+    {"role": "worker",       "verbs": ["complete","commit","heartbeat","comment","list","show"]},
+    {"role": "designer",     "verbs": ["edit","output","comment","list","show","heartbeat"]}
   ]
 }
 ```
 
-**约束：**
-- `members` 中**必须**包含 `orchestrator` 和 `verifier`
-- 收件人**必须**是 `members` 中声明的 `orchestrator`
-- `short_id` 从标题提取：`[create] {short_id}: {描述}`
-- `board_id` / `board_email` 由 `SHA256(short_id:domain)` 自动计算
-- `role_permissions` 可选，缺省使用安全默认值
+系统自动分配 Board Email `web-redesign.a2a@company.com`，所有成员收到通知。
 
 ---
 
-### Board 更新：`[A2A] update` 邮件
+### 阶段二：Orchestrator 牵头——目标确认与方案设计
 
-Board 创建后，Orchestrator 可向 Board 地址发送指令更新成员和权限：
+PM 接到组队完成通知后，开始梳理项目目标和方案。需要了解各成员能力：
 
 ```
-To:      myproject.a2a@shared.domain
-Subject: [A2A] update
+To:      dev@company.com
+Subject: [WHOAMI]
+```
+→ Agent 返回：`Role: worker, Skills: 前端开发, React/Vue/TS`
+
+```
+To:      design@company.com
+Subject: [WHOAMI]
+```
+→ Agent 返回：`Role: designer, Skills: UI设计, Figma/Sketch`
+
+PM 了解各成员能力后，通过会话流向团队发布项目方案：
+
+```
+From: pm@company.com
+To:   dev@company.com, design@company.com
+CC:   web-redesign.a2a@company.com
+Subject: 官网改版方案 v1——请各位审阅
+
+方案概要：
+- 首页重新设计（designer 主导）
+- 产品页重构（dev 主导）
+- 统一品牌色系（designer + dev 协作）
+```
+
+成员们通过会话流讨论方案细节，所有讨论自动关联 Board 上下文。
+
+---
+
+### 阶段三：Orchestrator 任务分解
+
+方案确定后，PM 将工作拆分为可执行的任务：
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] create
 
 {
-  "members": [
-    {"email": "orchestrator@shared.domain", "role": "orchestrator", "display_name": "PM"},
-    {"email": "worker@shared.domain",       "role": "worker",       "display_name": "Dev"},
-    {"email": "designer@shared.domain",     "role": "designer",     "display_name": "Design"}
-  ],
-  "role_permissions": [
-    {"role": "designer", "verbs": ["edit","comment","list","show","heartbeat"]}
+  "board_id": "abc123def45678901234",
+  "tasks": [
+    {"title": "首页视觉设计稿", "body": "3 个方案，含移动端适配", "assignee": "design@company.com", "reviewer": "qa@company.com"},
+    {"title": "产品页重构",     "body": "从 jQuery 迁移到 React", "assignee": "dev@company.com",    "reviewer": "qa@company.com"},
+    {"title": "品牌色系统一",   "body": "全局 CSS 变量替换",     "assignee": "design@company.com", "reviewer": "qa@company.com"}
   ]
 }
 ```
 
-`[A2A] update` 使用 `INSERT OR REPLACE`，成员和权限均可增量更新。未指定的 role 保持原有权限不变。
+任务分配通知（通知流）自动发给各成员。
 
 ---
 
-## 3. 角色与权限
+### 阶段四：Verifier 确认验收标准
+
+QA 收到 review 通知后，为每个任务设定验收标准：
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] verify T1
+
+{"board_id": "abc123...", "verdict": "验收标准：PC+移动端 3 方案，暗色模式兼容"}
+```
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] verify T2
+
+{"board_id": "abc123...", "verdict": "验收标准：React 18 + 原功能无回归 + Lighthouse > 90"}
+```
+
+---
+
+### 阶段五：Orchestrator 驱动执行过程管理
+
+PM 跟踪进度，处理执行中的阻塞：
+
+**5.1 查看任务状态：**
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] list
+```
+
+返回所有任务及状态。
+
+**5.2 设置审阅者：**
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] review T1
+
+{"board_id": "abc123...", "reviewer": "qa@company.com"}
+```
+
+**5.3 设计师完成 T3，提交产出：**
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] output T3
+
+{"board_id": "abc123...", "output": "全局 CSS 变量已替换，PR #42"}
+```
+
+**5.4 处理阻塞——T2 依赖外部 API 文档未到位：**
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] block T2
+
+{"board_id": "abc123...", "reason": "等待第三方 API 文档更新"}
+```
+
+阻塞通知发给全 Board。
+
+**5.5 细节讨论（会话流）：**
+
+设计师在实现 T1 时遇到颜色方案问题，与 PM 讨论：
+
+```
+From: design@company.com
+To:   pm@company.com
+CC:   web-redesign.a2a@company.com
+Subject: T1 暗色模式方案选择
+
+暗色模式用了两套方案：A-纯黑底 #000，B-深灰底 #1a1a2e。
+建议用方案 B，阅读体验更好。PM 确认一下？
+```
+
+**5.6 阶段性汇报：**
+
+PM 发通知流手动通知，汇总当前进度：
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] notify_all
+
+{"board_id": "abc123...", "message": "T3 已完成，T1 设计中(80%)，T2 阻塞中——本周五前解除"}
+```
+
+**5.7 API 文档到齐，解除 T2 阻塞：**
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] unblock T2
+```
+
+---
+
+### 阶段六：Verifier 产出物验收
+
+QA 对各任务进行最终验收：
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] approve T1
+
+{"board_id": "abc123...", "comment": "3 方案均已提交，暗色模式兼容完成"}
+```
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] approve T2
+
+{"board_id": "abc123...", "comment": "React 迁移完成，Lighthouse 94 分"}
+```
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] approve T3
+
+{"board_id": "abc123...", "comment": "CSS 变量迁移完成，无回归"}
+```
+
+---
+
+### 阶段七：项目完成与归档
+
+全部任务验收通过，PM 发送最终通知，Board 关闭归档。
+
+---
+
+## 3. [WHOAMI] 快速参考
+
+`[WHOAMI]` 用于在项目方案设计和任务分配阶段了解各 Agent 的能力：
+
+```
+To:      agent@domain
+Subject: [WHOAMI]
+```
+
+Agent 自动回复角色和能力自述（Rust 层闭环，不消耗 LLM token）。内容由 Agent 启动时通过 `set_public_whoami()` 配置。
+
+---
+
+## 4. 功能参考
+
+### 4.1 Board 创建与更新
+
+| 操作 | 格式 | 说明 |
+|------|------|------|
+| 创建 | `[create] 项目名: 描述` → Orchestrator | Human 发起组队 |
+| 更新 | `[A2A] update` → Board 地址 | 修改成员或权限 |
+
+`role_permissions` 可选，缺省使用安全默认值，有则增量覆盖。
+
+### 4.2 角色与权限
 
 | 角色 | 默认权限 |
 |------|---------|
@@ -82,215 +271,59 @@ Subject: [A2A] update
 | **worker** | complete, commit, heartbeat, comment, list, show |
 | **human** | create, unblock, reassign, comment, list, show, heartbeat |
 
-**权限模型：**
-- 系统始终以**安全默认值**为基线（以上表为准）
-- `role_permissions` 字段为**增量覆盖**：指定了 role-verb 对则覆盖该 role 的默认值，若role为新值则是新增，未指定的 role 保持默认
-- 默认值确保 `orchestrator`/`verifier`/`worker`/`human` 四角色都有适当的权限范围
-- 同一成员可拥有多个 role（在 `members` 中出现多次）
+新增 role 无需改代码：在 `members` 中声明 + `role_permissions` 中定义 verbs + 可选编写 `~/.agentmail/a2a_board/skills/role/{role}.md`。
 
-**新增 role 无需改代码：**
-1. 在 `members` 中写上新的 role 名
-2. 在 `role_permissions` 中声明该 role 的 verb 映射
-3. 在 `~/.agentmail/a2a_board/skills/role/{role}.md` 编写角色 prompt（可选）
-
----
-
-## 4. 指令流 — 19 个动词指令
-
-所有 指令流邮件格式：`Subject: [A2A] {verb} {task_id?}`，正文为 JSON。
-
-### 4.1 任务管理
-
-| 动词 | 发送者 | 说明 | 示例 |
-|------|--------|------|------|
-| `create` | orchestrator, human | 创建任务 | `[A2A] create` |
-| `assign` | orchestrator | 分配任务 | `[A2A] assign T1` |
-| `review` | orchestrator | 设置审阅者 | `[A2A] review T1` |
-| `complete` | worker | 完成任务 | `[A2A] complete T1` |
-| `cancel` | orchestrator | 取消任务 | `[A2A] cancel T1` |
-| `edit` | orchestrator | 编辑任务 | `[A2A] edit T1` |
-| `deadline` | orchestrator | 设截止日期 | `[A2A] deadline T1` |
-| `reassign` | orchestrator | 重新分配 | `[A2A] reassign T1` |
-
-**create 示例：**
-```json
-{
-  "board_id": "abc123def45678901234",
-  "tasks": [
-    {"title": "设计首页 Logo", "body": "需要3个方案", "assignee": "worker@domain", "reviewer": "verifier@domain"},
-    {"title": "修复登录 Bug",  "body": "iOS 端 crash", "assignee": "worker@domain"}
-  ]
-}
-```
-
-### 4.2 审阅流程
+### 4.3 指令流全部动词
 
 | 动词 | 发送者 | 说明 |
 |------|--------|------|
-| `verify` | verifier | 验证任务 |
-| `approve` | verifier | 审阅通过 |
-| `reject` | verifier | 审阅驳回 |
+| `create` | orch, human | 创建任务 |
+| `assign` | orch | 分配任务 |
+| `review` | orch | 设置审阅者 |
+| `complete` | worker | 完成任务 |
+| `cancel` | orch | 取消任务 |
+| `edit` | orch | 编辑任务 |
+| `deadline` | orch | 设截止日期 |
+| `reassign` | orch | 重新分配 |
+| `block` / `unblock` | orch, human | 阻塞/解除 |
+| `verify` / `approve` / `reject` | verifier | 审阅流程 |
+| `output` | verifier | 提交产出 |
+| `comment` | 所有人 | 评论 |
+| `arbitrate` | orch, verifier | 请求仲裁 |
+| `list` / `show` / `members` / `heartbeat` / `gateway_info` | — | 查询类 |
 
-### 4.3 阻塞管理
+### 4.4 会话流
 
-| 动词 | 发送者 | 说明 |
-|------|--------|------|
-| `block` | orchestrator | 阻塞任务 |
-| `unblock` | orchestrator, human | 解除阻塞 |
+成员互发邮件 + CC Board 地址时，自动注入 `board_id` / `board_role` / `from_role`。FROM 和 TO 都必须为 Board 成员，CC 必须包含 Board Email。
 
-### 4.4 输出与交互
+### 4.5 通知流
 
-| 动词 | 发送者 | 说明 |
-|------|--------|------|
-| `output` | verifier | 提交任务产出 |
-| `comment` | 所有人 | 添加评论 |
-| `arbitrate` | orchestrator, verifier | 请求仲裁 |
-
-### 4.5 查询
-
-| 动词 | 说明 |
+| 通知 | 触发 |
 |------|------|
-| `list` | 列出任务 |
-| `show {task_id}` | 查看任务详情 |
-| `members` | 查看成员 |
-| `heartbeat {task_id}` | 更新任务心跳 |
-| `gateway_info` | 查看 Gateway 信息 |
+| `assigned` | create / assign |
+| `review-needed` | review |
+| `approved` / `rejected` | approve / reject |
+| `blocked` / `unblocked` | block / unblock |
+| `cancelled` | cancel |
+| `output` / `comment` | output / comment |
+| `notify_all` | update / 手动 |
 
----
+### 4.6 Toolset API
 
-## 5. 会话流 — 成员间自然语言讨论
-
-会话流通过 **成员互发邮件 + CC 抄送 Board 地址** 触发：
-
-- **发件人 (FROM)：** 必须是 Board 成员
-- **收件人 (TO)：** 必须是 Board 成员
-- **抄送 (CC)：** 必须包含 Board 邮件地址（`{short_id}.a2a@{domain}`）
-
-三者同时满足时，系统自动注入三个身份字段：
-
-| 注入字段 | 含义 | 来源 |
-|----------|------|------|
-| `board_id` | Board 标识 | CC 中的 `.a2a` 地址解析 |
-| `board_role` | 收件人角色 | TO 地址在 `board_members` 中的 role |
-| `from_role` | 发件人角色 | FROM 地址在 `board_members` 中的 role |
-
-**会话流邮件示例：**
-```
-From: worker@shared.domain
-To:   orchestrator@shared.domain
-CC:   myproject.a2a@shared.domain
-Subject: Design review feedback for T1
-
-首页 Logo 的配色需要调整，与品牌色不一致。
-```
-
-Agent (orchestrator) 收到后，自动注入 `board_id` / `board_role` / `from_role` 和对应的 `_role_prompt`（从 role md 文件加载，找不到回退 `common.md`）。可使用以下 toolset API 与 Board 交互：
-
-| 工具 | 说明 |
+| 端点 | 说明 |
 |------|------|
-| `board_task_show` | 查看任务详情 |
-| `board_task_list` | 列出所有任务 |
-| `board_members` | 查看成员列表 |
-| `board_roles` | 查看角色的成员和动作 |
-| `board_heartbeat` | 更新任务心跳
-
-
----
-
-## 6. 通知流 — 事件通知
-
-10 种自动通知，在 指令流指令执行后触发：
-
-| 通知类型 | 触发事件 | 收件人 |
-|----------|---------|--------|
-| `assigned` | create / assign | 被分配者 |
-| `review-needed` | review | 审阅者 |
-| `approved` | approve | 被分配者 |
-| `rejected` | reject | 被分配者 |
-| `blocked` | block | 被分配者 + 抄送全 Board |
-| `unblocked` | unblock | 被分配者 |
-| `cancelled` | cancel | 全 Board |
-| `output` | output | 全 Board |
-| `comment` | comment | 审阅者（若 assignee 评论）|
-| `notify_all` | update / 手动 | 全 Board |
-
-通知邮件通过 Gateway 的 SMTP relay 发出，路由由调度器自动选择（同域内转 webhook，外域走 SMTP）。
+| `GET /api/v1/board/:id/tasks` | 列出任务 |
+| `GET /api/v1/board/:id/members` | 列出成员 |
+| `GET /api/v1/board/:id/roles` | 角色权限表 |
+| `GET /api/v1/board/:id/task/:tid` | 任务详情 |
+| `POST /api/v1/board/:id/task/:tid/heartbeat` | 心跳 |
 
 ---
 
-## 7. Toolset API
-
-Agent 通过以下 5 个 API 端点与 Board 交互：
-
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/board/:board_id/tasks` | GET | 列出任务（支持 `?status=&assignee=`） |
-| `/api/v1/board/:board_id/members` | GET | 列出成员（可选 `?email=` 过滤） |
-| `/api/v1/board/:board_id/roles` | GET | 角色权限表（可选 `?role=` 过滤） |
-| `/api/v1/board/:board_id/task/:task_id` | GET | 查看任务详情 |
-| `/api/v1/board/:board_id/task/:task_id/heartbeat` | POST | 更新心跳 |
-
-需 `X-Api-Key` 鉴权，返回 JSON。
-
----
-
-## 8. Role Prompt 文件
-
-每个 role 对应一个 Prompt 模板文件，位于：
-
-```
-~/.agentmail/a2a_board/skills/role/{role}.md
-```
-
-安装时自动从 `agentmail/skills/role/` 复制。支持 `{{VARIABLE}}` 模板占位符：
-
-| 变量 | 含义 |
-|------|------|
-| `{{BOARD_ID}}` | Board 标识 |
-| `{{BOARD_ROLE}}` | 当前角色 |
-| `{{AGENTMAIL_ADDRESS}}` | Agent 邮件地址 |
-| `{{FROM_ROLE}}` | 发件人角色 |
-| `{{INQUIRY_SENDER}}` | 发件人 |
-| `{{INQUIRY_SUBJECT}}` | 邮件主题 |
-| `{{SOUL_MD_CONTENT}}` | Agent 的 SOUL.md 内容 |
-| `{{SKILLS_LIST}}` | 当前加载的 Skills 列表 |
-
-**fallback 机制：** `{role}.md` 不存在 → `common.md` → 空字符串。
-
----
-
-## 9. 典型工作流
-
-```
-1. Human 发送 [create] 邮件 → Board 创建，orchestrator 收到初始化确认
-
-2. Orchestrator 发送 [A2A] create → 创建任务 T1, T2
-   → Worker 收到 assigned 通知（通知流）
-
-3. Orchestrator 发送 [A2A] review → 设置 verifier 为审阅者
-   → Verifier 收到 review-needed 通知
-
-4. Verifier 发送 [A2A] approve → T1 审阅通过
-
-5. Worker 发送普通邮件（会话流）→ 讨论 T1 的实现细节
-
-6. Worker 发送 [A2A] complete → T1 完成
-   → Orchestrator 收到 approved 通知
-
-7. 任何一个 Agent 通过 toolset API 查询 Board 状态
-```
-
----
-
-## 10. 测试
+## 5. 测试
 
 ```bash
-# 基础 E2E 测试（board 创建 + 任务 + API）
 cd amail-gateway && bash tests/category-1-core.sh
-
-# 全动词覆盖测试（19 verb + 通知流通知）
 cd amail-gateway && bash tests/category-0-a2a-verbs.sh
-
-# Agent 集成测试（per-recipient webhook + API + 会话流）
 cd amail-gateway && bash tests/category-5-agent-integration.sh
 ```
