@@ -16,11 +16,11 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 
 ---
 
-## 2. 创建 Board
+## 2. 创建与更新 Board
 
-### 方式一：`[create]` 流（推荐）
+### Board 创建：`[create]` 邮件
 
-Human 直接发邮件给 Orchestrator，是新board创建的起点：
+Human 发邮件给 Orchestrator，系统自动创建 Board（不需要 board 地址预先存在）：
 
 ```
 To:      orchestrator@shared.domain
@@ -31,17 +31,27 @@ Subject: [create] myproject: 网站改版项目协同看板
     {"email": "orchestrator@shared.domain", "role": "orchestrator", "display_name": "PM"},
     {"email": "verifier@shared.domain",     "role": "verifier",     "display_name": "QA"},
     {"email": "worker@shared.domain",       "role": "worker",       "display_name": "Dev"}
+  ],
+  "role_permissions": [
+    {"role": "orchestrator", "verbs": ["create","assign","review","block","cancel","edit","list","show"]},
+    {"role": "verifier",     "verbs": ["verify","approve","reject","list","show"]},
+    {"role": "worker",       "verbs": ["complete","commit","heartbeat","list","show"]}
   ]
 }
 ```
 
 **约束：**
-- `members` 中**必须**包含 `orchestrator` 和 `verifier`（缺一不可）
+- `members` 中**必须**包含 `orchestrator` 和 `verifier`
 - 收件人**必须**是 `members` 中声明的 `orchestrator`
 - `short_id` 从标题提取：`[create] {short_id}: {描述}`
-- `board_id` / `board_email` / `gateway_url` 由系统自动计算
+- `board_id` / `board_email` 由 `SHA256(short_id:domain)` 自动计算
+- `role_permissions` 可选，缺省使用安全默认值
 
-### 方式二：`[A2A] update`（更新已有 Board）
+---
+
+### Board 更新：`[A2A] update` 邮件
+
+Board 创建后，Orchestrator 可向 Board 地址发送指令更新成员和权限：
 
 ```
 To:      myproject.a2a@shared.domain
@@ -50,19 +60,20 @@ Subject: [A2A] update
 {
   "members": [
     {"email": "orchestrator@shared.domain", "role": "orchestrator", "display_name": "PM"},
-    {"email": "worker@shared.domain",       "role": "worker",       "display_name": "Dev"}
+    {"email": "worker@shared.domain",       "role": "worker",       "display_name": "Dev"},
+    {"email": "designer@shared.domain",     "role": "designer",     "display_name": "Design"}
   ],
   "role_permissions": [
-    {"role": "orchestrator", "verbs": ["create","assign","review","block","cancel","edit","output","notify","members","list","show","heartbeat"]},
-    {"role": "verifier",     "verbs": ["verify","approve","reject","output","list","show","heartbeat"]},
-    {"role": "worker",       "verbs": ["complete","commit","heartbeat","list","show"]}
+    {"role": "designer", "verbs": ["edit","comment","list","show","heartbeat"]}
   ]
 }
 ```
 
-`[A2A] update` 用于更新已有 Board 的成员和权限（需已获得 board 地址）。`role_permissions` 可选，缺省保持现有配置。
+`[A2A] update` 使用 `INSERT OR REPLACE`，成员和权限均可增量更新。未指定的 role 保持原有权限不变。
 
 ---
+
+## 3.---
 
 ## 3. 角色与权限
 
