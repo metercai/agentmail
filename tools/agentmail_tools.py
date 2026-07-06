@@ -104,6 +104,7 @@ def build_ctx(payload: dict, headers: dict) -> dict:
         "AGENTMAIL_ADDRESS": payload.get("my_amail_addr", ""),
         "BOARD_ID": payload.get("board_id", ""),
         "BOARD_ROLE": payload.get("board_role", ""),
+        "FROM_ROLE": payload.get("from_role", ""),
         "INQUIRY_SENDER": payload.get("from", ""),
         "INQUIRY_SUBJECT": payload.get("subject", ""),
         "SOUL_MD_CONTENT": _read_soul_md(),
