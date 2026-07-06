@@ -10,9 +10,9 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 |------|------|
 | **Board** | 一个项目看板，有唯一的 `board_id` 和 `board_email` |
 | **Board Email** | `{short_id}.a2a@{domain}` 格式的专属邮件地址 |
-| **A 流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理 19 个动词 |
-| **B 流** | 自然语言讨论邮件，自动注入 `board_id` / `board_role` 上下文 |
-| **C 流** | 事件通知邮件，10 种自动通知类型 |
+| **指令流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理 19 个动词 |
+| **会话流** | 自然语言讨论邮件，自动注入 `board_id` / `board_role` 上下文 |
+| **通知流** | 事件通知邮件，10 种自动通知类型 |
 
 ---
 
@@ -86,9 +86,9 @@ Subject: [A2A] init
 
 ---
 
-## 4. A 流 — 19 个动词指令
+## 4. 指令流 — 19 个动词指令
 
-所有 A 流邮件格式：`Subject: [A2A] {verb} {task_id?}`，正文为 JSON。
+所有 指令流邮件格式：`Subject: [A2A] {verb} {task_id?}`，正文为 JSON。
 
 ### 4.1 任务管理
 
@@ -149,16 +149,16 @@ Subject: [A2A] init
 
 ---
 
-## 5. B 流 — 自然语言讨论
+## 5. 会话流 — 自然语言讨论
 
-任何发往 `{board}.a2a@{domain}` 的非 `[A2A]` 邮件自动触发 B 流：
+任何发往 `{board}.a2a@{domain}` 的非 `[A2A]` 邮件自动触发 会话流：
 
 - 系统自动检测 board 上下文（`board_id` / `board_role`）
 - Agent 收到邮件时会注入对应的 role prompt（从 `~/.agentmail/a2a_board/skills/role/{role}.md` 加载）
 - 如果找不到对应 role 文件，回退到 `common.md`
 - Agent 可使用 `board_task_show` / `board_task_list` / `board_members` / `board_heartbeat` 工具交互
 
-**B 流邮件示例：**
+**会话流邮件示例：**
 ```
 To:      myproject.a2a@shared.domain
 Subject: Design review feedback for T1
@@ -170,9 +170,9 @@ Agent 收到后，自动注入 `_role_prompt`（从 `worker.md` 或 `common.md` 
 
 ---
 
-## 6. C 流 — 事件通知
+## 6. 通知流 — 事件通知
 
-10 种自动通知，在 A 流指令执行后触发：
+10 种自动通知，在 指令流指令执行后触发：
 
 | 通知类型 | 触发事件 | 收件人 |
 |----------|---------|--------|
@@ -236,14 +236,14 @@ Agent 通过以下 4 个 API 端点与 Board 交互：
 1. Human 发送 [create] 邮件 → Board 创建，orchestrator 收到初始化确认
 
 2. Orchestrator 发送 [A2A] create → 创建任务 T1, T2
-   → Worker 收到 assigned 通知（C 流）
+   → Worker 收到 assigned 通知（通知流）
 
 3. Orchestrator 发送 [A2A] review → 设置 verifier 为审阅者
    → Verifier 收到 review-needed 通知
 
 4. Verifier 发送 [A2A] approve → T1 审阅通过
 
-5. Worker 发送普通邮件（B 流）→ 讨论 T1 的实现细节
+5. Worker 发送普通邮件（会话流）→ 讨论 T1 的实现细节
 
 6. Worker 发送 [A2A] complete → T1 完成
    → Orchestrator 收到 approved 通知
@@ -259,9 +259,9 @@ Agent 通过以下 4 个 API 端点与 Board 交互：
 # 基础 E2E 测试（board 创建 + 任务 + API）
 cd amail-gateway && bash tests/category-1-core.sh
 
-# 全动词覆盖测试（19 verb + C 流通知）
+# 全动词覆盖测试（19 verb + 通知流通知）
 cd amail-gateway && bash tests/category-0-a2a-verbs.sh
 
-# Agent 集成测试（per-recipient webhook + API + B 流）
+# Agent 集成测试（per-recipient webhook + API + 会话流）
 cd amail-gateway && bash tests/category-5-agent-integration.sh
 ```
