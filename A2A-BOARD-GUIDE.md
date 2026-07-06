@@ -10,7 +10,7 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 |------|------|
 | **Board** | 一个项目看板，有唯一的 `board_id` 和 `board_email` |
 | **Board Email** | `{short_id}.a2a@{domain}` 格式的专属邮件地址 |
-| **指令流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理 19 个动词 |
+| **指令流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理所有指令动词 |
 | **会话流** | 成员互发 + CC Board 地址，自动注入 `board_id` / `board_role` / `from_role` |
 | **通知流** | 事件通知邮件，10 种自动通知类型 |
 
@@ -72,8 +72,6 @@ Subject: [A2A] update
 `[A2A] update` 使用 `INSERT OR REPLACE`，成员和权限均可增量更新。未指定的 role 保持原有权限不变。
 
 ---
-
-## 3.---
 
 ## 3. 角色与权限
 
@@ -214,7 +212,7 @@ Agent (orchestrator) 收到后，自动注入 `board_id` / `board_role` / `from_
 | `cancelled` | cancel | 全 Board |
 | `output` | output | 全 Board |
 | `comment` | comment | 审阅者（若 assignee 评论）|
-| `notify_all` | init / 手动 | 全 Board |
+| `notify_all` | update / 手动 | 全 Board |
 
 通知邮件通过 Gateway 的 SMTP relay 发出，路由由调度器自动选择（同域内转 webhook，外域走 SMTP）。
 
@@ -222,7 +220,7 @@ Agent (orchestrator) 收到后，自动注入 `board_id` / `board_role` / `from_
 
 ## 7. Toolset API
 
-Agent 通过以下 4 个 API 端点与 Board 交互：
+Agent 通过以下 5 个 API 端点与 Board 交互：
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -251,6 +249,7 @@ Agent 通过以下 4 个 API 端点与 Board 交互：
 | `{{BOARD_ID}}` | Board 标识 |
 | `{{BOARD_ROLE}}` | 当前角色 |
 | `{{AGENTMAIL_ADDRESS}}` | Agent 邮件地址 |
+| `{{FROM_ROLE}}` | 发件人角色 |
 | `{{INQUIRY_SENDER}}` | 发件人 |
 | `{{INQUIRY_SUBJECT}}` | 邮件主题 |
 | `{{SOUL_MD_CONTENT}}` | Agent 的 SOUL.md 内容 |
