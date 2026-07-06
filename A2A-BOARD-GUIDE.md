@@ -215,7 +215,8 @@ Agent 通过以下 4 个 API 端点与 Board 交互：
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/v1/board/:board_id/tasks` | GET | 列出任务（支持 `?status=&assignee=`） |
-| `/api/v1/board/:board_id/members` | GET | 列出成员 |
+| `/api/v1/board/:board_id/members` | GET | 列出成员（可选 `?email=` 过滤） |
+| `/api/v1/board/:board_id/roles` | GET | 角色权限表（可选 `?role=` 过滤） |
 | `/api/v1/board/:board_id/task/:task_id` | GET | 查看任务详情 |
 | `/api/v1/board/:board_id/task/:task_id/heartbeat` | POST | 更新心跳 |
 
