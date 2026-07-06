@@ -147,5 +147,3 @@ bash integrate.sh
 ## 延伸阅读
 
 - [A2A Board 项目协作指导手册](A2A-BOARD-GUIDE.md)
-- [特性矩阵（Gateway vs Advanced）](agentmail-features.md)
-- [WHOAMI 通用指令设计方案](A2A-WHOAMI-DESIGN.md)
