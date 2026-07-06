@@ -2674,35 +2674,35 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
 
 
 
-def board_members(board_id: str, email: str = "") -> dict:
-    """List board members, optionally filtered by email.
+def board_members(board_id: str, email: str = "") -> str:
+    """列出 Board 成员。可选按 email 过滤。"""
+    import json, urllib.parse
+    cfg = _load_profile_config()
+    if not cfg:
+        return json.dumps({"error": "no profile config"})
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    try:
+        path = f"/api/v1/board/{board_id}/members"
+        if email:
+            path += f"?email={urllib.parse.quote(email)}"
+        return json.dumps(client._request("GET", path), indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
-    Args:
-        board_id: Board identifier
-        email: Optional email to filter. If empty, returns all members.
-
-    Returns:
-        dict with 'members' list.
-    """
-    params = {}
-    if email:
-        params["email"] = email
-    return _gateway_get(f"/api/v1/board/{board_id}/members", params=params)
-
-def board_roles(board_id: str, role: str = "") -> dict:
-    """Get board roles and their permissions, or find members by role.
-
-    Args:
-        board_id: Board identifier
-        role: Optional role name to filter. If empty, returns all roles with verbs.
-
-    Returns:
-        dict with 'roles' map or 'members' list + 'verbs' list.
-    """
-    params = {}
-    if role:
-        params["role"] = role
-    return _gateway_get(f"/api/v1/board/{board_id}/roles", params=params)
+def board_roles(board_id: str, role: str = "") -> str:
+    """获取 Board 角色权限表。可选按 role 过滤返回该角色的成员和权限。"""
+    import json, urllib.parse
+    cfg = _load_profile_config()
+    if not cfg:
+        return json.dumps({"error": "no profile config"})
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    try:
+        path = f"/api/v1/board/{board_id}/roles"
+        if role:
+            path += f"?role={urllib.parse.quote(role)}"
+        return json.dumps(client._request("GET", path), indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 def board_heartbeat(task_id: str, note: str = "") -> str:
     """发心跳更新任务时间戳。长任务期间定期调用，让Board/Orchestrator知道任务仍在进行。"""
