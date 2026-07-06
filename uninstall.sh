@@ -20,7 +20,7 @@ echo "  1. Stop Hermes gateway + amail bridge processes"
 echo "  2. Restore 3 Hermes source files via git checkout"
 echo "  3. Remove agentmail-inbound route from webhook_subscriptions.json"
 echo "  4. Remove amail from config.yaml platform_toolsets"
-echo "  5. Delete all amail config/skill/tool files from ~/.hermes/"
+echo "  5. Delete all amail config/skills/tool files from ~/.hermes/"
 echo ""
 
 echo -n -e "${BOLD}Continue? [y/N]: ${NC}"

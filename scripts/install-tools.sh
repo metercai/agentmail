@@ -60,7 +60,7 @@ PYEOF
 fi
 
 # ── Install a2a_board role files ──
-ROLE_SRC="$PROJECT_ROOT/skill/role"
+ROLE_SRC="$PROJECT_ROOT/skills/role"
 ROLE_DST="$HOME/.agentmail/a2a_board/skills/role"
 mkdir -p "$ROLE_DST"
 if [ -d "$ROLE_SRC" ]; then
@@ -75,7 +75,7 @@ fi
 
 # Copy skill files to each Hermes profile
 if [ -f "$HERMES_DIR/profiles.py" ]; then
-    SKILL_SRC="$PROJECT_ROOT/skill"
+    SKILL_SRC="$PROJECT_ROOT/skills"
     for prof_dir in "$HOME/.hermes/profiles"/*/; do
         [ -d "$prof_dir" ] || continue
         prof_skill_dir="$prof_dir/skills/agentmail"
