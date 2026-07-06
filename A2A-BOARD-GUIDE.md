@@ -11,7 +11,7 @@ A2A Board 是 AgentMail 内置的多角色项目协作看板系统，通过**邮
 | **Board** | 一个项目看板，有唯一的 `board_id` 和 `board_email` |
 | **Board Email** | `{short_id}.a2a@{domain}` 格式的专属邮件地址 |
 | **指令流** | 指令邮件（`[A2A]` 前缀），Rust 闭环处理 19 个动词 |
-| **会话流** | 自然语言讨论邮件，自动注入 `board_id` / `board_role` 上下文 |
+| **会话流** | 成员互发 + CC Board 地址，自动注入 `board_id` / `board_role` / `from_role` |
 | **通知流** | 事件通知邮件，10 种自动通知类型 |
 
 ---
@@ -149,24 +149,43 @@ Subject: [A2A] init
 
 ---
 
-## 5. 会话流 — 自然语言讨论
+## 5. 会话流 — 成员间自然语言讨论
 
-任何发往 `{board}.a2a@{domain}` 的非 `[A2A]` 邮件自动触发 会话流：
+会话流通过 **成员互发邮件 + CC 抄送 Board 地址** 触发：
 
-- 系统自动检测 board 上下文（`board_id` / `board_role`）
-- Agent 收到邮件时会注入对应的 role prompt（从 `~/.agentmail/a2a_board/skills/role/{role}.md` 加载）
-- 如果找不到对应 role 文件，回退到 `common.md`
-- Agent 可使用 `board_task_show` / `board_task_list` / `board_members` / `board_heartbeat` 工具交互
+- **发件人 (FROM)：** 必须是 Board 成员
+- **收件人 (TO)：** 必须是 Board 成员
+- **抄送 (CC)：** 必须包含 Board 邮件地址（`{short_id}.a2a@{domain}`）
+
+三者同时满足时，系统自动注入三个身份字段：
+
+| 注入字段 | 含义 | 来源 |
+|----------|------|------|
+| `board_id` | Board 标识 | CC 中的 `.a2a` 地址解析 |
+| `board_role` | 收件人角色 | TO 地址在 `board_members` 中的 role |
+| `from_role` | 发件人角色 | FROM 地址在 `board_members` 中的 role |
 
 **会话流邮件示例：**
 ```
-To:      myproject.a2a@shared.domain
+From: worker@shared.domain
+To:   orchestrator@shared.domain
+CC:   myproject.a2a@shared.domain
 Subject: Design review feedback for T1
 
 首页 Logo 的配色需要调整，与品牌色不一致。
 ```
 
-Agent 收到后，自动注入 `_role_prompt`（从 `worker.md` 或 `common.md` 加载），并携带 `board_id` / `board_role` 上下文。
+Agent (orchestrator) 收到后，自动注入：
+- `board_id` = "abc123..."
+- `board_role` = "orchestrator"（收件人角色）
+- `from_role` = "worker"（发件人角色）
+- `_role_prompt` 从 `~/.agentmail/a2a_board/skills/role/orchestrator.md` 加载
+
+**约束：**
+- FROM 和 TO **都必须是** Board 成员，否则不注入
+- CC 中必须能解析出 `.a2a` 地址，否则不注入
+- 如果找不到对应 role 文件，回退到 `common.md`
+- TO 为 board 地址是**指令流**的触发方式，不触发会话流
 
 ---
 
