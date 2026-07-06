@@ -1,137 +1,203 @@
-# [WHOAMI] 通用身份问询 — 设计方案 v3
+# [WHOAMI] 通用身份问询 — 设计方案 v4
 
 ---
 
-## 1. 执行阶段澄清
+## 1. 核心原则
 
-**interceptor 运行在 webhook 投递阶段，不在 SMTP 入站阶段：**
+**安全优先，入口标记，统一拦截。**
 
-```
-SMTP receiver (收邮件，写 EmailRecord)
-        │
-        ▼
-   scheduler 调度
-        │
-        ├─ webhook delivery → interceptor 链 → Python preprocessor
-        └─ SMTP relay (外投)
-```
-
-陌生人 [WHOAMI] 不应走到 webhook 阶段——应在 **SMTP receiver 层闭环**。
+- SMTP receiver 和 send API 入口处**不做放开**，而是**检测 + 标记**
+- 标记通过 headers 传递，后续 interceptor 统一处理
+- 所有流入邮件（SMTP 入站 + send API 出站内转）经过同一个 interceptor 链
+- 自动回复通过创建 EmailRecord → scheduler → webhook 或 SMTP，不走旁路
 
 ---
 
-## 2. 陌生人 [WHOAMI] 处理（SMTP receiver 层闭环）
+## 2. 处理流程
 
 ```
-SMTP session
-  │
-  ├─ rcpt() ← 收件人在本地 ✓
-  │
-  ├─ mail_from() 
-  │   ├─ sender 在白名单 → known = true
-  │   └─ sender 不在白名单 → known = false → 标记为 stranger
-  │
-  ├─ data() ← 收到完整邮件体
-  │   │
-  │   ├─ 检查 subject
-  │   │   ├─ 以 [WHOAMI] 开头，stranger = true
-  │   │   │   ├─ 查 agent_state["public_whoami"]
-  │   │   │   │   ├─ 存在 → 构造 SMTP 自动回复 → ok()
-  │   │   │   │   └─ 不存在 → "Agent not configured yet" → ok()
-  │   │   │   └─ 不写 EmailRecord，不穿透 LLM
-  │   │   │
-  │   │   ├─ 其他通用指令（[VERIFY], [HELP]...）→ 预留扩展点
-  │   │   │
-  │   │   └─ 非通用指令 + stranger → 按现有 whitelist 规则拒绝
-  │   │
-  │   └─ 非 [WHOAMI] + known → 正常创建 EmailRecord
-  │
-  └─ 正常流程
-```
+Entry Points                          Interceptor Chain
+────────────                          ─────────────────
 
-**关键点：** 陌生人 [WHOAMI] 在 SMTP receiver 的 `data()` 阶段直接处理并返回，不创建 EmailRecord，不到达 scheduler/interceptor/webhook/Python 任何后续环节。
-
----
-
-## 3. 入站/出站统一
-
-陌生人检测统一在**入站侧**的 SMTP receiver 处理：
-
-```
-出站 send API (Agent A)               入站 SMTP (Agent B 的 gateway)
-─────────────────────               ─────────────────────────────
-  创建 EmailRecord                      接收 SMTP 连接
-  → scheduler 投递                      → rcpt() ✓
-  → SMTP relay → Agent B's gateway      → mail_from() 判断 stranger
-                                        → data() 检测 [WHOAMI]
-                                        → SMTP 自动回复 public_whoami
-```
-
-无论邮件来自 send API 还是外部 SMTP，到达 Agent B 的 gateway 时都经过同一个 SMTP receiver。**陌生人检测只需在 SMTP receiver 一处实现。**
-
----
-
-## 4. 已知联系人 [WHOAMI]（现有流程不变）
-
-```
-SMTP receiver → 创建 EmailRecord → scheduler webhook →
-interceptor → Python preprocessor → [WHOAMI] 检测 →
-_whoami_prompt 注入 → LLM 生成回复 → 顺便更新 agent_state["public_whoami"]
+SMTP 入站 ─┐
+           │
+send API ──┤ (内转 inbound 方向)
+           │
+           ├─ 1. 检测 sender 是否在白名单
+           │     ├─ NO  → 标记: X-Mail-Stranger: true
+           │     └─ YES → 不标记
+           │
+           ├─ 2. 检测 subject 是否通用指令
+           │     ├─ [WHOAMI] → 标记: X-Mail-Command: whoami
+           │     ├─ [VERIFY]  → 标记: X-Mail-Command: verify  (预留)
+           │     └─ 其他     → 不标记
+           │
+           ├─ 3. 创建 EmailRecord（含标记 headers）
+           │
+           ▼
+    scheduler → webhook delivery (内转)
+           │
+           ▼
+    interceptor 链
+           │
+    ┌──────┴──────┐
+    │ A2aInterceptor (p=20)
+    │ WhoamiInterceptor (p=5)
+    │ ... 其他 interceptors
+    └─────────────┘
+           │
+    WhoamiInterceptor::intercept()
+           │
+    ├─ subject 非 [WHOAMI] → PassThrough
+    │
+    ├─ sender 在白名单 → PassThrough (已知联系人，走 LLM)
+    │
+    └─ sender 不在白名单 (stranger)
+         │
+         ├─ 读取 agent_state["public_whoami"]
+         ├─ 构造 outbound 自动回复 (EmailRecord)
+         │     └─ create_outbound(from=recipient, to=sender, body=public_whoami)
+         └─ Handled (不再触发 LLM)
 ```
 
 ---
 
-## 5. public_whoami 生成时机
+## 3. 标记 headers 格式
 
-| 时机 | 触发 | 实现 |
-|------|------|------|
-| Agent 启动 | Hermes profile 加载 | Agent 调用 set_agent_state("public_whoami", ...) |
-| 联系人 [WHOAMI] | LLM 处理后 | add_conversation_turn 钩子 → 回写 agent_state |
+```
+X-Mail-Stranger: true                     # sender 不在任何白名单中
+X-Mail-Command:  whoami                   # 通用指令类型
+```
 
-无定时刷新。
+**扩展性：** 未来 `X-Mail-Command: verify` 或 `help` 等指令只需增加标记类型，interceptor 中增加对应处理分支。
 
 ---
 
-## 6. 陌生人回复模板
+## 4. 入口层检测
 
-```
-Subject: Re: [WHOAMI]
-Body:
-  Role: {role}
-  Available tools: {tools_list}
-  Version: agentmail/1.0
-  Contact: Send email to verify your identity for full access.
-```
-
-- 不含邮箱地址、真实姓名
-- 不含 board_id
-- 引导对方完成身份验证
-
----
-
-## 7. 陌生人分支扩展性
+### 4.1 SMTP receiver (`src/core/smtp/receiver.rs`)
 
 ```rust
-// src/core/smtp/receiver.rs
-fn handle_stranger_command(&self, cmd: &str, sender: &str, rcpt: &str, body: &str) -> Response {
-    match cmd.to_uppercase().as_str() {
-        "[WHOAMI]" => self.reply_public_whoami(sender, rcpt),
-        // 预留:
-        // "[VERIFY]" => self.handle_stranger_verify(sender, rcpt, body),
-        // "[HELP]"   => self.reply_help(sender, rcpt),
-        _ => Ok(())
+fn data(&mut self, data: &[u8]) -> Response {
+    // ... 现有逻辑 ...
+
+    // 陌生人检测：sender 不在收件人的 from-whitelist 中
+    let is_stranger = !self.is_from_whitelisted(&sender, &recipient);
+
+    // 通用指令检测
+    let command = detect_stranger_command(&subject);  // [WHOAMI], [VERIFY], ...
+
+    if is_stranger && command.is_some() {
+        // 注入标记 headers，放行邮件
+        self.message_headers.push(("X-Mail-Stranger", "true"));
+        self.message_headers.push(("X-Mail-Command", &command.unwrap()));
+    } else if is_stranger {
+        // 非通用指令 + 陌生人 → 按现有规则拒绝
+        return perm_fail("Sender not whitelisted");
+    }
+    // 继续正常流程
+}
+```
+
+### 4.2 send API (`src/core/api/send.rs`)
+
+```rust
+pub async fn send_email(...) -> ... {
+    // ... 现有逻辑 ...
+
+    // 出站内转时检测（direction = inbound, delivery_type = webhook）
+    // sender 不在收件人白名单 → mark as stranger
+    // subject 是通用指令 → mark command type
+    // 注入 merged_headers 中的 X-Mail-Stranger / X-Mail-Command
+}
+```
+
+---
+
+## 5. Interceptor 层
+
+### WhoamiInterceptor (`src/core/interceptor/whoami.rs`)
+
+```rust
+impl InboundInterceptor for WhoamiInterceptor {
+    fn name(&self) -> &str { "WhoamiInterceptor" }
+    fn priority(&self) -> u32 { 5 }
+
+    async fn intercept(&self, record, payload) -> Decision {
+        let headers = payload["headers"].as_object();
+        let is_stranger = header_eq(headers, "x-mail-stranger", "true");
+        let command = header_str(headers, "x-mail-command");
+
+        // 只处理 stranger 通用指令
+        if !is_stranger || command != Some("whoami") {
+            return PassThrough;
+        }
+
+        // 读取 public_whoami
+        let body = match get_agent_state("public_whoami") {
+            Some(v) => v,
+            None => "Agent not configured yet. Please try again later.".into(),
+        };
+
+        // 自动回复：sender ← recipient
+        let reply_to = payload["from"].as_str();
+        let reply_from = payload["to"][0].as_str();
+        self.create_auto_reply(reply_from, reply_to, "Re: [WHOAMI]", &body).await;
+
+        Handled  // 不穿透 LLM
     }
 }
 ```
 
 ---
 
-## 8. 代码变更清单
+## 6. 自动回复路径
+
+```
+WhoamiInterceptor::create_auto_reply()
+  │
+  └─ EmailFactory::create_outbound(from, to, subject, body, headers)
+       │
+       ▼
+  EmailRecord (direction=outbound, delivery_type=webhook or smtp)
+       │
+       ▼
+  scheduler → deliver_webhook() or deliver_smtp()
+```
+
+正常走 outbound 通道，不旁路。
+
+---
+
+## 7. 已知联系人 [WHOAMI]
+
+sender 在白名单 → WhoamiInterceptor PassThrough → 现有流程不变：
+
+```
+webhook → Python preprocessor → [WHOAMI] 检测 → _whoami_prompt → LLM
+```
+
+LLM 处理后，通过 `add_conversation_turn` 钩子 → 回写 `agent_state["public_whoami"]`。
+
+---
+
+## 8. public_whoami 生成
+
+| 时机 | 触发 |
+|------|------|
+| Agent 启动 | Hermes 加载时调用 `set_agent_state("public_whoami", ...)` |
+| 联系人 [WHOAMI] | LLM 处理完 → `add_conversation_turn` 钩子回写 |
+
+---
+
+## 9. 代码变更清单
 
 | 文件 | 变更 |
 |------|------|
-| `src/core/smtp/receiver.rs` | 新增 `handle_stranger_command()`，检测 [WHOAMI] + 自动回复 |
-| `src/core/storage.rs` | 新增 `get_agent_state()` / `set_agent_state()` 公共 API |
-| `agentmail_tools.py` | 新增 `set_agent_state()` tool；联系人 [WHOAMI] 后回写 |
-| `agentmail_tools.py` | 添加 `add_conversation_turn` 钩子，在 LLM 处理后更新 public_whoami |
-| `agentmail/lib/` | 安装脚本在启动时调用 set_agent_state 初始化 public_whoami |
+| `src/core/smtp/receiver.rs` | 陌生人 + 通用指令检测，注入 X-Mail-* headers |
+| `src/core/api/send.rs` | 出站内转方向：陌生人 + 通用指令检测，注入 headers |
+| `src/core/interceptor/whoami.rs` | **新增** WhoamiInterceptor (p=5) |
+| `src/core/storage.rs` | get/set agent_state API |
+| `src/server.rs` | 注册 WhoamiInterceptor |
+| `agentmail_tools.py` | `add_conversation_turn` 钩子回写 public_whoami |
+| `agentmail/lib/` | 启动时 set_agent_state("public_whoami") |
