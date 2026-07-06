@@ -18,7 +18,18 @@ SMTP 入站 / send API 出站内转
           X-Mail-Command:  whoami   (或 verify / help ...)
 ```
 
-**只有**携带识别出的通用指令的陌生人才放行。其他陌生人邮件按现有规则拒绝。安全边界清晰：白名单是"正常门"，指令则是陌生人的"临时准入令牌"。
+**只有**携带识别出的通用指令的陌生人才放行。其他陌生人邮件按现有规则拒绝。
+
+**所有 [WHOAMI] 最终处理矩阵：**
+
+| 收件人 | 发件人 | 入口标记 | Interceptor | 自动回复 |
+|--------|--------|---------|-------------|:--:|
+| agent 地址 | 已知 | 无 | PassThrough → Python → LLM | — |
+| agent 地址 | 陌生人 | X-Mail-Stranger=true | StrangerInterceptor (p=5) | ✅ |
+| board 地址 | 已知 | 无 | A2aInterceptor (p=20) | ✅ |
+| board 地址 | 陌生人 | 无（board 收件人自带语境） | A2aInterceptor (p=20) | ✅ |
+
+**Board 地址一律在 Rust 闭环，永不穿透 LLM。**安全边界清晰：白名单是"正常门"，指令则是陌生人的"临时准入令牌"。
 
 ---
 
@@ -69,7 +80,20 @@ fn handle_whoami(&self, payload: &Value) -> Decision {
 
 ---
 
-## 4. 已知联系人 [WHOAMI]
+## 4. Board 地址 [WHOAMI]
+
+Board 地址没有 LLM 基础设施，所有邮件由 Rust interceptor 闭环处理。A2aInterceptor 检测到 board 地址 + [WHOAMI] subject 时直接自动回复：
+
+```rust
+// A2aInterceptor 内部
+if board_addr_is_rcpt && subject.starts_with("[WHOAMI]") {
+    let body = get_agent_state("public_whoami");
+    self.create_auto_reply(rcpt, sender, "Re: [WHOAMI]", &body);
+    return Handled;
+}
+```
+
+## 5. 已知联系人 [WHOAMI] (agent 地址)
 
 白名单内的联系人 [WHOAMI] 与现有流程一致：
 
