@@ -55,7 +55,7 @@ Default whitelist prevents unauthorized senders from reaching the Agent, and pre
 Rich HTML emails are automatically converted to clean Markdown — stripped of styling noise. Agents read structured content directly.
 
 4. **Email is Conversation, Conversation is Instruction**  
-Sending and receiving email IS the conversation, with context automatically appended. Instruction emails — whether `[A2A]` board commands, admin directives, or universal queries like `[WHOAMI]` — make conversations programmable and executable, seamlessly embedding into daily workflows.
+Sending and receiving email IS the conversation, with context automatically appended. Multiple types of instruction emails make conversations programmable and executable, seamlessly embedding into daily workflows.
 
 5. **Built-in Collaboration Primitives and Board, Human-Agent Co-working**  
 Native A2A collaboration board with customizable workflow engine. 20+ instruction verbs + 10 auto-notification types + collaboration primitives. Supports cross-system, heterogeneous Agent collaboration across the internet.
