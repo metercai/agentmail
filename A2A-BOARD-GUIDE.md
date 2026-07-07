@@ -4,7 +4,20 @@
 
 ---
 
-## 1. 核心概念
+## 1. 角色定位
+
+在 A2A Board 的项目管理中，四个角色各司其职：
+
+| 角色 | 定位 | 核心职责 |
+|------|------|---------|
+| **Human** | 项目发起人 | 组队创建 Board、审批方案和验收标准、增减成员。Human 是最终决策者 |
+| **Orchestrator** | 项目管理者 | 方案设计、任务分解、执行跟踪、阻塞处理。Orchestrator 驱动日常运转 |
+| **Verifier** | 质量守护者 | 制定验收标准、审阅产出物。Verifier 确保交付质量 |
+| **Worker** | 任务执行者 | 完成任务、遇到困难主动 block。Worker 是交付力 |
+
+---
+
+## 2. 核心概念
 
 | 概念 | 说明 |
 |------|------|
@@ -17,7 +30,7 @@
 
 ---
 
-## 2. 项目全生命周期场景
+## 3. 项目全生命周期场景
 
 以下用一个完整的项目案例，展示从组队到归档的全流程。
 
@@ -245,23 +258,10 @@ Subject: [A2A] refresh
 
 ---
 
-## 3. [WHOAMI] 快速参考
-
-`[WHOAMI]` 用于在项目方案设计和任务分配阶段了解各 Agent 的能力：
-
-```
-To:      agent@domain
-Subject: [WHOAMI]
-```
-
-- **陌生人（不在白名单）：** Rust 层自动回复 `public_whoami`，不消耗 LLM token。
-- **已知联系人：** 正常进入 LLM，Agent 根据上下文个性化回复。
-
-Agent 需通过 `set_public_whoami(text)` 工具主动配置自己的公开名片。
-
----
 
 ## 4. 功能参考
+
+### 4.1 [WHOAMI] 通用指令
 
 ### 4.1 Board 操作
 
@@ -339,23 +339,23 @@ Agent 在会话流中可使用以下工具与 Board 交互：
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
-| `board_task_list` | `board_id` | 列出所有任务 |
-| `board_task_show` | `task_id` | 查看任务详情 |
-| `board_members` | `board_id`, `email?` | 列出成员，可选按 email 过滤 |
-| `board_roles` | `board_id`, `role?` | 查角色权限表。带 `role` 则返回该角色的成员和 verbs |
-| `board_status` | `board_id` | 状态总览：管线分布 + 依赖关系 + 负责人 |
+| `board_task_list` | — | 列出所有任务（board_id 由上下文自动注入） |
+| `board_task_show` | `task_id` | 查看任务详情（board_id 自动注入） |
+| `board_members` | `email?` | 列出成员，可选按 email 过滤 |
+| `board_roles` | `role?` | 查角色权限表。带 `role` 则返回该角色的成员和 verbs |
+| `board_status` | — | 状态总览：管线分布 + 依赖关系 + 负责人 |
 | `board_heartbeat` | `task_id`, `note?` | 更新任务心跳（长任务定期调用，不发邮件） |
 
 **调用示例：**
 
 ```
-board_status("abc123")
+board_status()
 → {board: {description, plan_version, criteria_version...}, pipeline: {...}, dependencies: {T1: {assignee, reviewer, parents, children}, ...}}
 
-board_roles("abc123", "worker")
+board_roles("worker")
 → {role: "worker", members: ["dev@company.com"], verbs: ["complete","commit","block","heartbeat",...]}
 
-board_members("abc123", "design@company.com")
+board_members("design@company.com")
 → {members: [{email: "design@company.com", role: "designer", display_name: "Design"}]}
 ```
 
