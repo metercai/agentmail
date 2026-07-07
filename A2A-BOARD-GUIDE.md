@@ -291,7 +291,21 @@ Subject: [A2A] refresh
 
 ### 4.1 [WHOAMI] 通用指令
 
-### 4.1 Board 操作
+`[WHOAMI]` 用于在项目方案设计和任务分配阶段了解各 Agent 的能力：
+
+```
+To:      agent@domain
+Subject: [WHOAMI]
+```
+
+- **陌生人（不在白名单）：** Rust 层自动回复 `public_whoami`，不消耗 LLM token
+- **已知联系人：** 正常进入 LLM，Agent 根据上下文个性化回复
+
+Agent 需通过 `set_public_whoami(text)` 工具主动配置自己的公开名片。
+
+---
+
+### 4.2 Board 操作
 
 | 操作 | 指令 | 发送者 | 说明 |
 |------|------|--------|------|
@@ -299,10 +313,11 @@ Subject: [A2A] refresh
 | 更新 | `[A2A] refresh` | **human 硬编码专属** | 增减 member、更新 role_permissions、更新 description |
 | 审批方案 | `[Confirm] plan v{N}` | Human | TO 含 board 地址，自动写入 plan_version/plan_text/plan_confirmed_at |
 | 审批验收标准 | `[Confirm] criteria v{N}` | Human | TO 含 board 地址，自动写入 criteria_version/criteria_text/criteria_confirmed_at |
+| 审批产出物 | `[Confirm] output {board}` | Human | TO 含 board 地址，board.status→completed，全员通知 |
 
 `role_permissions` 可选，缺省使用安全默认值，有则增量覆盖。`[A2A] refresh` 不在 `role_permissions` 中，不可修改。
 
-### 4.2 角色与权限
+### 4.3 角色与权限
 
 | 角色 | 默认权限 |
 |------|---------|
@@ -318,7 +333,7 @@ Subject: [A2A] refresh
 3. 在 `~/.agentmail/a2a_board/skills/role/` 目录下创建 `{role}.md`，编写该角色的 prompt 模板。若未提供 `{role}.md`，系统自动回退到 `common.md` 通用模板。
 
 
-### 4.3 指令流全部动词
+### 4.4 指令流全部动词
 
 所有指令发送至 Board 地址，`board_id` 系统自动注入无需传。
 
@@ -339,7 +354,7 @@ Subject: [A2A] refresh
 | `arbitrate` | orch, verifier | 请求仲裁 |
 | `list` / `show` / `members` / `roles` / `status` / `heartbeat` | — | 查询类 |
 
-### 4.4 会话流
+### 4.5 会话流
 
 成员互发邮件 + CC Board 地址时，自动注入 `board_id` / `board_role` / `from_role`。FROM 和 TO 都必须为 Board 成员，CC 必须包含 Board Email。
 
@@ -354,7 +369,7 @@ Subject: [A2A] refresh
 | `[Criteria] {看板} 验收标准 v{N}` | Verifier | 发起验收标准确认 |
 | `[Review] {看板} {对象} {任务}` | Worker | 成员互评 |
 
-### 4.5 通知流
+### 4.6 通知流
 
 通知邮件由 Board 自动发送给相关成员。From 为 Board Email，Subject 以 `[A2A]` 标记。
 
@@ -412,14 +427,15 @@ task_id: {id}
 任务已取消，请停止工作等待新分配。
 ```
 
-**`output`** — 项目输出（output）→ 全员
+**`output`** — 项目输出（output）→ Human（请求验收）
 ```
 output by: verifier
 board: {short_id}
+task: {short_id}
 最终输出: {title}
 summary: {summary}
 
-项目已完成。
+请 Human 验收确认。发送 [Confirm] output {short_id} 完成最终验收。
 ```
 
 **`comment`** — 评论（comment）→ 对方（assignee↔reviewer）
@@ -441,7 +457,7 @@ task_id: {id}
 争议: {dispute}
 ```
 
-### 4.6 Toolset 使用指南
+### 4.7 Toolset 使用指南
 
 Agent 在会话流中可使用以下工具与 Board 交互：
 
