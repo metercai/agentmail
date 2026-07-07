@@ -323,53 +323,90 @@ Subject: [A2A] refresh
 
 ### 4.5 通知流
 
-通知邮件由 Board 自动发送给相关成员。From 为 Board Email，Subject 以 `[A2A]` 标记，Body 为纯文本键值对格式。
+通知邮件由 Board 自动发送给相关成员。From 为 Board Email，Subject 以 `[A2A]` 标记。
 
-| 通知 | 触发 | 收件人 | Body 格式示例 |
-|------|------|--------|-------------|
-| `assigned` | create / assign | 被分配者 | `task_id: xxx
-board: xxx
-标题: xxx
-描述: xxx
-审阅者: xxx
-创建人: xxx` |
-| `review-needed` | review | 审阅者 | `task_id: xxx
-完成人: xxx
-标题: xxx
-summary: xxx
+**`assigned`** — 任务分配（create / assign）→ 被分配者
+```
+task_id: {id}
+board: {board_id}
+标题: {title}
+描述: {body}
+审阅者: {reviewer}
+创建人: {created_by}
+```
 
-请审阅后执行 [A2A] approve T1 或 [A2A] reject T1。` |
-| `approved` | approve | 被分配者 | `task_id: xxx
-任务 T1 已通过审阅，状态: 已完成。` |
-| `rejected` | reject | 被分配者 | `task_id: xxx
-审阅人: xxx
-原因: xxx
-状态: 已退回，请修订后重新 [A2A] complete T1。` |
-| `blocked` | block | 被分配者 + orchestrator | `task_id: xxx
-阻挡人: xxx
-请 Orchestrator 协调处理。` |
-| `unblocked` | unblock | 被分配者 | `task_id: xxx
-解除人: xxx
-状态: 已解除阻挡，请继续执行。` |
-| `cancelled` | cancel | 被分配者 | `task_id: xxx
-任务已取消，请停止工作等待新分配。` |
-| `output` | output | 全员 | `output by: verifier
-board: xxx
-最终输出: xxx
-summary: xxx
+**`review-needed`** — 待审阅（review）→ 审阅者
+```
+task_id: {id}
+完成人: {assignee}
+标题: {title}
+summary: {summary}
 
-项目已完成。` |
-| `comment` | comment | 对方（assignee→reviewer 或反向） | `task_id: xxx
-来自: xxx
-评论: xxx` |
-| `notify_all` | refresh / 手动 | 全员 | 自定义 message |
-| `arbitrate` | arbitrate | Admin + 请求者 | `仲裁请求来自: xxx
-task: xxx
-争议: xxx` |
+请审阅后执行 [A2A] approve {short_id} 或 [A2A] reject {short_id}。
+```
 
-Agent 可根据 `task_id` 和 `board` 字段通过 toolset 查询更多上下文。Body 中的指令提示（如"请执行 [A2A] approve T1"）仅作为人类可读提示，Agent 应自行判断。
+**`approved`** — 审阅通过（approve）→ 被分配者
+```
+task_id: {id}
+任务 {short_id} 已通过审阅，状态: 已完成。
+```
 
-### 4.6 Toolset 使用指南
+**`rejected`** — 审阅退回（reject）→ 被分配者
+```
+task_id: {id}
+审阅人: {reviewer}
+原因: {reason}
+状态: 已退回，请修订后重新 [A2A] complete {short_id}。
+```
+
+**`blocked`** — 任务阻塞（block）→ 被分配者 + orchestrator
+```
+task_id: {id}
+阻挡人: {blocker}
+请 Orchestrator 协调处理。
+```
+
+**`unblocked`** — 解除阻塞（unblock）→ 被分配者
+```
+task_id: {id}
+解除人: {unblocker}
+状态: 已解除阻挡，请继续执行。
+```
+
+**`cancelled`** — 任务取消（cancel）→ 被分配者
+```
+task_id: {id}
+任务已取消，请停止工作等待新分配。
+```
+
+**`output`** — 项目输出（output）→ 全员
+```
+output by: verifier
+board: {short_id}
+最终输出: {title}
+summary: {summary}
+
+项目已完成。
+```
+
+**`comment`** — 评论（comment）→ 对方（assignee↔reviewer）
+```
+task_id: {id}
+来自: {commenter}
+评论: {text}
+```
+
+**`notify_all`** — 全员通知（refresh / 手动）→ 全员
+```
+{自定义 message}
+```
+
+**`arbitrate`** — 仲裁请求（arbitrate）→ Admin + 请求者
+```
+仲裁请求来自: {requester}
+{task_info}
+争议: {dispute}
+```### 4.6 Toolset 使用指南
 
 Agent 在会话流中可使用以下工具与 Board 交互：
 
