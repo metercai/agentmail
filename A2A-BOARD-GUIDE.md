@@ -323,15 +323,51 @@ Subject: [A2A] refresh
 
 ### 4.5 通知流
 
-| 通知 | 触发 |
-|------|------|
-| `assigned` | create / assign |
-| `review-needed` | review |
-| `approved` / `rejected` | approve / reject |
-| `blocked` / `unblocked` | block / unblock |
-| `cancelled` | cancel |
-| `output` / `comment` | output / comment |
-| `notify_all` | refresh / 手动 |
+通知邮件由 Board 自动发送给相关成员。From 为 Board Email，Subject 以 `[A2A]` 标记，Body 为纯文本键值对格式。
+
+| 通知 | 触发 | 收件人 | Body 格式示例 |
+|------|------|--------|-------------|
+| `assigned` | create / assign | 被分配者 | `task_id: xxx
+board: xxx
+标题: xxx
+描述: xxx
+审阅者: xxx
+创建人: xxx` |
+| `review-needed` | review | 审阅者 | `task_id: xxx
+完成人: xxx
+标题: xxx
+summary: xxx
+
+请审阅后执行 [A2A] approve T1 或 [A2A] reject T1。` |
+| `approved` | approve | 被分配者 | `task_id: xxx
+任务 T1 已通过审阅，状态: 已完成。` |
+| `rejected` | reject | 被分配者 | `task_id: xxx
+审阅人: xxx
+原因: xxx
+状态: 已退回，请修订后重新 [A2A] complete T1。` |
+| `blocked` | block | 被分配者 + orchestrator | `task_id: xxx
+阻挡人: xxx
+请 Orchestrator 协调处理。` |
+| `unblocked` | unblock | 被分配者 | `task_id: xxx
+解除人: xxx
+状态: 已解除阻挡，请继续执行。` |
+| `cancelled` | cancel | 被分配者 | `task_id: xxx
+任务已取消，请停止工作等待新分配。` |
+| `output` | output | 全员 | `output by: verifier
+board: xxx
+最终输出: xxx
+summary: xxx
+
+项目已完成。` |
+| `comment` | comment | 对方（assignee→reviewer 或反向） | `task_id: xxx
+来自: xxx
+评论: xxx` |
+| `notify_all` | refresh / 手动 | 全员 | 自定义 message |
+| `arbitrate` | arbitrate | Admin + 请求者 | `仲裁请求来自: xxx
+task: xxx
+争议: xxx` |
+
+Agent 可根据 `task_id` 和 `board` 字段通过 toolset 查询更多上下文。Body 中的指令提示（如"请执行 [A2A] approve T1"）仅作为人类可读提示，Agent 应自行判断。
 
 ### 4.6 Toolset 使用指南
 
