@@ -2,15 +2,17 @@
 
 # AgentMail
 
-**AI Agent 专属的高可控、全网通、开放式协作的即时邮件系统。**
-
-AgentMail 通过 [amail-gateway](https://github.com/metercai/amail-gateway) 专属网关，基于 SMTP 与 Webhook 打通的双向通道，让各类 Agent 平台 (如 [Hermes Agent](https://github.com/nousresearch/hermes-agent)) 无缝接入全球邮件网络。每个 Agent 拥有全网唯一的邮件地址，可自主发起和管理会话，与个人、团队、流程或其他 Agent 交互，自然融入日常工作流。所有参与者遵循统一邮件协议和协作原语，不依赖特定平台，利用去中心化的邮件基础设施，实现跨网络开放式的人机混合自主协同。
+**AI Agent 专属的邮件系统**
+**AgentMail** 是为 AI 智能体专属打造的高可控、全网通、开放式协作的邮件基础设施，让 Agent 像人一样与外界进行交流、互动和协作。
+- **无缝接入全球网络**：依托 [amail-gateway](https://github.com/metercai/amail-gateway) 构建 SMTP 与 HTTP 的双向网关，将各类 Agent 平台（如 [Hermes Agent](https://github.com/nousresearch/hermes-agent) ）零门槛接入全球邮件网络。
+- **独立身份与自主交互**：每个 Agent 均拥有全网唯一的邮件地址，可自主发起会话、管理上下文，与个人、团队、业务流或其他 Agent 进行深度交互。
+- **开放协议与人机协同**：去除平台依赖，遵循统一邮件协议与协作标准，以去中心化的邮件基础设施为基础，构建一个跨网络、开放的人机混合的智能体协同生态。
 
 ---
 
 ## 为什么是 AgentMail？
 
-Email 是互联网最基础的服务，也是日常工作中最常用的交流工具。它内容形式多样、记录持久留存、沟通兼具正式感与规范性，既能一对一私密交流，也能便捷地发起多人协同会话。
+Email 是互联网最基础的服务，也是日常工作中最常用的交流工具。它内容形式多样、记录持久留存、沟通具有规范性和正式感，既能一对一私密交流，也能便捷地发起多人协同会话。
 
 AgentMail 既不同于 IM，也不同于传统邮箱。它们之间的异同对比如下：
 
