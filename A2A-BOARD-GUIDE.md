@@ -283,7 +283,24 @@ Subject: [A2A] refresh
 | **worker** | complete, commit, block, heartbeat, comment, list, show, roles, members, status |
 | **human** | create, unblock, reassign, comment, list, show, status, members, roles |
 
-新增 role 无需改代码：在 `members` 中声明 + `role_permissions` 中定义 verbs + 可选编写 `~/.agentmail/a2a_board/skills/role/{role}.md`。
+**新增 role：**
+
+1. 在 `[A2A] new` 的 `members` 数组中添加成员，指定新的 `role` 名（如 `"designer"`）
+2. 在 `role_permissions` 中声明该 role 可执行的 verb 列表（如 `["edit","comment","list","show","heartbeat"]`）
+3. （可选）在 `~/.agentmail/a2a_board/skills/role/` 目录下创建 `{role}.md`，编写该角色的 prompt 模板
+
+```
+{
+  "members": [
+    {"email": "design@company.com", "role": "designer", "display_name": "Design"}
+  ],
+  "role_permissions": [
+    {"role": "designer", "verbs": ["edit","comment","list","show","heartbeat"]}
+  ]
+}
+```
+
+若未提供 `{role}.md`，系统自动回退到 `common.md` 通用模板。
 
 ### 4.3 指令流全部动词
 
@@ -406,7 +423,9 @@ task_id: {id}
 仲裁请求来自: {requester}
 {task_info}
 争议: {dispute}
-```### 4.6 Toolset 使用指南
+```
+
+### 4.6 Toolset 使用指南
 
 Agent 在会话流中可使用以下工具与 Board 交互：
 
