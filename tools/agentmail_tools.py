@@ -2880,13 +2880,6 @@ try:
 except Exception as _e:
     logger.warning("[a2a_board] tool registration failed: %s", _e)
 
-try:
-    registry.register(
-        name="board_roles",
-        emoji="🛡️",
-    )
-except Exception as _e:
-    logger.warning("[a2a_board] tool registration failed: %s", _e)
 def set_public_whoami(text: str) -> str:
     """Set Agent public WHOAMI card for stranger queries."""
     import json
