@@ -21,7 +21,7 @@
 
 | 概念 | 说明 |
 |------|------|
-| **Board** | 一个项目看板，有唯一的 `board_id` 和专属 Board Email |
+| **Board** | 项目看板。生命周期：active → awaiting_human(output提交) → completed(Human确认) |
 | **Board Email** | `{short_id}.a2a@{domain}` 格式（short_id 限 5-16 位字母数字/连字符/下划线） |
 | **指令流** | `[A2A]` 前缀的指令邮件，Rust 闭环处理。`board_id` 由系统自动注入，无需在邮件正文中传 |
 | **会话流** | 成员互发 + CC Board 地址，自动注入 `board_id`/`board_role`/`from_role` |
@@ -222,7 +222,7 @@ Subject: [A2A] unblock T2
 
 ---
 
-### 阶段六：Verifier 产出物验收
+### 阶段六：Verifier 产出物验收 → Human 最终批示
 
 QA 对各任务进行最终验收：
 
@@ -232,6 +232,34 @@ Subject: [A2A] approve T1
 
 {"comment": "3 方案均已提交，暗色模式兼容完成"}
 ```
+
+全部任务验收完毕后，Verifier 提交最终产出并请求 Human 验收：
+
+```
+To:      web-redesign.a2a@company.com
+Subject: [A2A] output T1
+
+{"output": "最终产出确认，请 Human 验收"}
+```
+
+系统自动通知 Human（Board 状态变为 `awaiting_human`）：
+
+```
+Subject: [A2A] output: web-redesign T1
+Body: 请 Human 验收确认。发送 [Confirm] output web-redesign 完成最终验收。
+```
+
+Human 验收通过，发送确认邮件（TO 含 board 地址）：
+
+```
+From: human@company.com
+To:   web-redesign.a2a@company.com
+Subject: [Confirm] output web-redesign
+
+所有产出物已验收通过，项目正式完成。
+```
+
+系统自动归档：`board.status = "completed"`，`board.completed_at = now`，全员收到完成通知。
 
 ---
 
@@ -287,20 +315,8 @@ Subject: [A2A] refresh
 
 1. 在 `[A2A] new` 的 `members` 数组中添加成员，指定新的 `role` 名（如 `"designer"`）
 2. 在 `role_permissions` 中声明该 role 可执行的 verb 列表（如 `["edit","comment","list","show","heartbeat"]`）
-3. （可选）在 `~/.agentmail/a2a_board/skills/role/` 目录下创建 `{role}.md`，编写该角色的 prompt 模板
+3. 在 `~/.agentmail/a2a_board/skills/role/` 目录下创建 `{role}.md`，编写该角色的 prompt 模板。若未提供 `{role}.md`，系统自动回退到 `common.md` 通用模板。
 
-```
-{
-  "members": [
-    {"email": "design@company.com", "role": "designer", "display_name": "Design"}
-  ],
-  "role_permissions": [
-    {"role": "designer", "verbs": ["edit","comment","list","show","heartbeat"]}
-  ]
-}
-```
-
-若未提供 `{role}.md`，系统自动回退到 `common.md` 通用模板。
 
 ### 4.3 指令流全部动词
 
