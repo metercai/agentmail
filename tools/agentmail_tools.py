@@ -2705,6 +2705,17 @@ def board_roles(board_id: str, role: str = "") -> str:
     except Exception as e:
         return json.dumps({"error": str(e)})
 
+def board_status(board_id: str) -> str:
+    """获取 Board 状态总览：管线分布 + 依赖关系 + 负责人。"""
+    import json
+    cfg = _load_profile_config()
+    if not cfg: return json.dumps({"error": "no profile config"})
+    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    try:
+        return json.dumps(client._request("GET", f"/api/v1/board/{board_id}/status"), indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
 def board_heartbeat(task_id: str, note: str = "") -> str:
     """发心跳更新任务时间戳。长任务期间定期调用，让Board/Orchestrator知道任务仍在进行。"""
     import json
@@ -2843,6 +2854,35 @@ try:
             }
         },
         handler=board_roles,
+        emoji="🛡️",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="board_status",
+        toolset=_TOOLSET,
+        schema={
+            "name": "a2a_board_status",
+            "description": "获取 Board 状态总览：任务管线分布、依赖关系、负责人",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "board_id": {"type": "string", "description": "Board 标识"}
+                },
+                "required": ["board_id"]
+            }
+        },
+        handler=board_status,
+        emoji="📊",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="board_roles",
         emoji="🛡️",
     )
 except Exception as _e:
