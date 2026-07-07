@@ -62,7 +62,17 @@ Subject: [A2A] new web-redesign: 官网改版项目
 }
 ```
 
-系统自动分配 Board Email `web-redesign.a2a@company.com`，所有成员收到通知。
+系统自动分配 Board Email `web-redesign.a2a@company.com`，所有成员收到通知：
+
+```
+From: web-redesign <web-redesign.a2a@company.com>
+Subject: [A2A] notice: web-redesign Board web-redesign initialized
+Body: Board web-redesign initialized
+```
+
+收到通知后：
+- **Orchestrator** → 进入阶段二，开始方案设计
+- **Verifier / Worker** → 确认已加入项目，等待任务分配
 
 ---
 
