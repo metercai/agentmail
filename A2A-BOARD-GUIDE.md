@@ -263,7 +263,7 @@ Subject: [Confirm] output web-redesign
 
 ---
 
-### 阶段七：Owner 更新 Board 成员
+> **附：Owner 更新 Board 成员**  
 
 项目中期加入一位设计师。Owner 发送更新指令（`[A2A] refresh` 是 owner 硬编码专属指令）：
 
