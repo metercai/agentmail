@@ -64,6 +64,7 @@ def _read_role_file(name: str) -> str:
 
 def _read_soul_md() -> str:
     """Read SOUL.md from current Hermes profile."""
+    # Also capture board context from session
     profile_dir = os.environ.get("HERMES_PROFILE_DIR", "")
     if not profile_dir:
         profile_dir = str(Path.home() / ".hermes")
@@ -122,6 +123,22 @@ _TOOLSET = "agentmail"
 # ═══════════════════════════════════════════════════════════════
 # _GatewayClient -- HTTP client for agentmail API
 # ═══════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════
+# Board context — auto-injected from session flow
+# ═══════════════════════════════════════════════════════════════
+
+_current_board_id: str = ""
+
+def _set_current_board(board_id: str):
+    """Called by preprocessor when session flow injects board context."""
+    global _current_board_id
+    _current_board_id = board_id
+
+def _get_current_board() -> str:
+    """Get the current board_id from session context."""
+    return _current_board_id
 
 class _GatewayClient:
     """Thin HTTP wrapper around agentmail REST API.
@@ -1401,6 +1418,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
             result["_role_prompt"] = fill_template(role_raw, ctx)
         sender = result.get("from", "")
         result["_a2a_session_key"] = f"a2a:{board_id}:{sender}"
+    _set_current_board(board_id)
 
     return result
 
@@ -2638,14 +2656,16 @@ def _resolve_board(task_id: str) -> str:
     return ""
 
 
-def board_task_show(task_id: str) -> str:
+def board_task_show(task_id: str, board_id: str = "") -> str:
+    board_id = board_id or _get_current_board()
     """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
     import json
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
     client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
-    board_id = _resolve_board(task_id)
+    if not board_id:
+        board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
     try:
@@ -2655,7 +2675,8 @@ def board_task_show(task_id: str) -> str:
         return json.dumps({"error": str(e)})
 
 
-def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
+def board_task_list(board: str = "", status: str = "", assignee: str = "") -> str:
+    board = board or _get_current_board()
     """按条件过滤 task 列表。支持 status、assignee 过滤。常用于巡视。"""
     import json
     cfg = _load_profile_config()
@@ -2675,7 +2696,8 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
 
 
 
-def board_members(board_id: str, email: str = "") -> str:
+def board_members(board_id: str = "", email: str = "") -> str:
+    board_id = board_id or _get_current_board()
     """列出 Board 成员。可选按 email 过滤。"""
     import json, urllib.parse
     cfg = _load_profile_config()
@@ -2690,7 +2712,8 @@ def board_members(board_id: str, email: str = "") -> str:
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-def board_roles(board_id: str, role: str = "") -> str:
+def board_roles(board_id: str = "", role: str = "") -> str:
+    board_id = board_id or _get_current_board()
     """获取 Board 角色权限表。可选按 role 过滤返回该角色的成员和权限。"""
     import json, urllib.parse
     cfg = _load_profile_config()
@@ -2705,7 +2728,8 @@ def board_roles(board_id: str, role: str = "") -> str:
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-def board_status(board_id: str) -> str:
+def board_status(board_id: str = "") -> str:
+    board_id = board_id or _get_current_board()
     """获取 Board 状态总览：管线分布 + 依赖关系 + 负责人。"""
     import json
     cfg = _load_profile_config()
@@ -2723,7 +2747,8 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
     if not cfg:
         return "{\"error\": \"no profile config\"}"
     client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
-    board_id = _resolve_board(task_id)
+    if not board_id:
+        board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
     try:
@@ -2850,7 +2875,7 @@ try:
                     "board_id": {"type": "string", "description": "Board 标识"},
                     "role": {"type": "string", "description": "角色名称（可选，不填返回全部角色及权限）"}
                 },
-                "required": ["board_id"]
+                "required": []
             }
         },
         handler=board_roles,
@@ -2871,7 +2896,7 @@ try:
                 "properties": {
                     "board_id": {"type": "string", "description": "Board 标识"}
                 },
-                "required": ["board_id"]
+                "required": []
             }
         },
         handler=board_status,
