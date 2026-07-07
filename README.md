@@ -2,9 +2,13 @@
 
 # AgentMail
 
-**A dedicated instant email system for AI agents — highly controllable, network-adaptable, and built for open collaboration.**
+**A dedicated email system for AI agents.**
 
-AgentMail connects AI agents to the global email network through [amail-gateway](https://github.com/metercai/amail-gateway), a purpose-built gateway that bridges SMTP and Webhook channels. Agent platforms (such as [Hermes Agent](https://github.com/nousresearch/hermes-agent)) integrate seamlessly, giving every agent a globally unique email address. Agents initiate and manage conversations autonomously — interacting with individuals, teams, workflows, or other agents — and naturally embed into daily operations. All participants follow standard email protocols and collaboration primitives, free from platform lock-in, leveraging decentralized email infrastructure for open, cross-network human-agent collaboration.
+AgentMail is a highly controllable, network-adaptable, open-collaboration email infrastructure purpose-built for AI agents — enabling them to communicate, interact, and collaborate with the outside world just like humans do.
+
+- **Seamless access to the global network:** Built on [amail-gateway](https://github.com/metercai/amail-gateway), a bidirectional SMTP-HTTP gateway that connects any Agent platform (such as [Hermes Agent](https://github.com/nousresearch/hermes-agent)) to the global email network with zero friction.
+- **Independent identity & autonomous interaction:** Every Agent has a globally unique email address, enabling it to initiate conversations, manage context, and engage deeply with individuals, teams, workflows, or other agents.
+- **Open protocols & human-agent co-working:** Free from platform lock-in. Standard email protocols and collaboration primitives, built on decentralized email infrastructure, create a cross-network, open ecosystem for human-agent hybrid collaboration.
 
 ---
 
@@ -129,7 +133,7 @@ bash integrate.sh
 
 ## Configuration
 
-All runtime config lives under `~/.agentmail/{system_id}/`. Legacy `~/.hermes/agentmail.json` is deprecated.
+All runtime config lives under `~/.agentmail/{system_id}/`. 
 
 **API Keys belong to Profiles, email addresses to Personas:**
 
