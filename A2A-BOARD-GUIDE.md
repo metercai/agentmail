@@ -412,23 +412,23 @@ Agent 在会话流中可使用以下工具与 Board 交互：
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
-| `board_task_list` | — | 列出所有任务（board_id 由上下文自动注入） |
-| `board_task_show` | `task_id` | 查看任务详情（board_id 自动注入） |
-| `board_members` | `email?` | 列出成员，可选按 email 过滤 |
-| `board_roles` | `role?` | 查角色权限表。带 `role` 则返回该角色的成员和 verbs |
-| `board_status` | — | 状态总览：管线分布 + 依赖关系 + 负责人 |
+| `board_task_list` | `board_id` | 列出/过滤任务（`status?`, `assignee?`） |
+| `board_task_show` | `task_id` | 查看任务详情 |
+| `board_members` | `board_id`, `email?` | 列出成员，可选按 email 过滤 |
+| `board_roles` | `board_id`, `role?` | 查角色权限表。带 `role` 则返回该角色的成员和 verbs |
+| `board_status` | `board_id` | 状态总览：管线分布 + 依赖关系 + 负责人 |
 | `board_heartbeat` | `task_id`, `note?` | 更新任务心跳（长任务定期调用，不发邮件） |
 
 **调用示例：**
 
 ```
-board_status()
+board_status("abc123")
 → {board: {description, plan_version, criteria_version...}, pipeline: {...}, dependencies: {T1: {assignee, reviewer, parents, children}, ...}}
 
-board_roles("worker")
+board_roles("abc123", "worker")
 → {role: "worker", members: ["dev@company.com"], verbs: ["complete","commit","block","heartbeat",...]}
 
-board_members("design@company.com")
+board_members("abc123", "design@company.com")
 → {members: [{email: "design@company.com", role: "designer", display_name: "Design"}]}
 ```
 
