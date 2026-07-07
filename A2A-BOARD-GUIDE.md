@@ -62,7 +62,25 @@ Subject: [A2A] new web-redesign: 官网改版项目
 }
 ```
 
-系统自动分配 Board Email `web-redesign.a2a@company.com`，所有成员收到通知。
+系统自动分配 Board Email `web-redesign.a2a@company.com`，所有成员收到团队初始化通知：
+
+```
+Subject: [A2A] notice: Board web-redesign created — 官网改版项目
+
+项目: web-redesign (官网改版项目)
+Board Email: web-redesign.a2a@company.com
+Board ID: abc123def45678901234
+
+团队成员:
+  PM (pm@company.com) — orchestrator
+  QA (qa@company.com) — verifier
+  Dev (dev@company.com) — worker
+  Design (design@company.com) — designer
+
+请将团队成员的邮件地址加入你的联系人中。
+```
+
+收到通知后，各成员应将团队成员的邮件地址加入联系人。Orchestrator 进入阶段二开始方案设计。
 
 ---
 
