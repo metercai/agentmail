@@ -48,9 +48,8 @@ def fill_template(text: str, ctx: dict) -> str:
 def _read_role_file(name: str) -> str:
     """Read a2a_board role file from ~/.agentmail/a2a_board/skills/role/<name>.md.
     Falls back to 'common.md' if the named role file is not found."""
-    _load_gateway_config()  # ensure system_id is loaded
-    sid = os.environ.get("HERMES_SYSTEM_ID", _load_gateway_config_system_id())
-    role_dir = Path.home() / ".agentmail" / (sid or "default") / "board" / "role_prompt"
+    sid = os.environ.get("AMAIL_SYS_ID") or os.environ.get("AMAIL_TENANT_ID") or "default"
+    role_dir = Path.home() / ".agentmail" / sid / "board" / "role_prompt"
     # Try exact match first
     p = role_dir / f"{name}.md"
     if p.exists():
