@@ -143,7 +143,7 @@ AgentMail consists of two core components: **amail-gateway** (mail gateway) and 
                      │         │          │
                      │ ┌───────┴────────┐ │
                      │ │   LLM Engine   │ │
-                     │ │ · email→prompt│ │
+                     │ │ · email→prompt │ │
                      │ │ · context inj. │ │
                      │ │ · cmd execution│ │
                      │ └────────────────┘ │

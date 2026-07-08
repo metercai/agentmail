@@ -150,7 +150,7 @@ AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Herme
                      │ │   LLM Engine   │ │
                      │ │ · email→prompt │ │
                      │ │ · context inj. │ │
-                     │ │ · cmd execution │ │
+                     │ │ · cmd execution│ │
                      │ └────────────────┘ │
                      └────────────────────┘
 ```
