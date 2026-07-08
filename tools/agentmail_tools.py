@@ -1533,7 +1533,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         else:
             email = f"{name}.{system_name}@{domain}"
     else:
-        email = f"agent@{domain}"
+        email = f"agent@{domain}" if name == "default" else f"{name}.agent@{domain}"
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config
