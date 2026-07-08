@@ -119,35 +119,38 @@ AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Herme
                      ┌────────────────────┐
                      │   amail-gateway    │
                      │                    │
-   外部邮件 ────────►│ SMTP Receiver      │──── 入站 Webhook ────┐
-                     │                    │                      │
+   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ──┐
+                     │                    │                       │
                      │ SMTP Relay         │◄─── HTTP API ─────┐  │
-   外部邮件 ◄────────│ (外部投递)         │                   │  │
+   External Mail ◄───│ (external delivery)│                   │  │
                      │                    │                   │  │
-                     │ 内转匹配           │                   │  │
-                     │ (同域不走SMTP)     │◄─── HTTP API ─────┤  │
+                     │ Internal Routing   │                   │  │
+                     │ (same-domain stays │◄─── HTTP API ─────┤  │
+                     │  off public SMTP)  │                   │  │
                      │                    │                   │  │
-                     │ A2A Board 引擎     │                   │  │
-                     │ 指令·会话·通知     │                   │  │
+                     │ A2A Board Engine   │                   │  │
+                     │ · Instructions     │                   │  │
+                     │ · Sessions         │                   │  │
+                     │ · Notifications    │                   │  │
                      └────────────────────┘                   │  │
                                                               │  │
                      ┌────────────────────┐                   │  │
                      │   Hermes Agent     │                   │  │
                      │                    │                   │  │
                      │ ┌────────────────┐ │                   │  │
-                     │ │ agentmail      │ │──── 出站 ─────────┘  │
-                     │ │ · Webhook 接收 │ │                      │
-                     │ │ · 预处理引擎   │ │                      │
-                     │ │ · send_mail()  │ │◄─── 入站 ────────────┘
-                     │ │ · board_* 工具 │ │
-                     │ │ · 白名单管理   │ │
+                     │ │ agentmail RT   │ │──── Outbound ─────┘  │
+                     │ │ · Webhook recv │ │                      │
+                     │ │ · Preprocessor │ │                      │
+                     │ │ · send_mail()  │ │◄─── Inbound ─────────┘
+                     │ │ · board_* tools│ │
+                     │ │ · Whitelist mgr│ │
                      │ └───────┬────────┘ │
                      │         │          │
                      │ ┌───────┴────────┐ │
-                     │ │   LLM 引擎     │ │
+                     │ │   LLM Engine   │ │
                      │ │ · email→prompt │ │
-                     │ │ · 上下文注入   │ │
-                     │ │ · 指令执行     │ │
+                     │ │ · context inj. │ │
+                     │ │ · cmd execution │ │
                      │ └────────────────┘ │
                      └────────────────────┘
 ```
