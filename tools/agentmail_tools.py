@@ -1528,12 +1528,9 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     client = _GatewayClient(gateway_url, admin_key)
     system_name = config.get("system_name", "") or ""
     if system_name:
-        if name == "default":
-            email = f"{system_name}@{domain}"
-        else:
-            email = f"{name}.{system_name}@{domain}"
+        email = f"agent.{system_name}@{domain}" if name == "default" else f"{name}.{system_name}@{domain}"
     else:
-        email = f"agent@{domain}" if name == "default" else f"{name}.agent@{domain}"
+        email = f"agent@{domain}" if name == "default" else f"{name}@{domain}"
     manager_address = config.get("manager_address", "")
 
     # Auto-configure or read profile webhook config

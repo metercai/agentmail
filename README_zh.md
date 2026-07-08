@@ -149,8 +149,8 @@ amail-gateway 是 AgentMail 的核心网关，提供四条双向通道：
 | 类型 | 格式 | 示例 |
 |------|------|------|
 | 根 Profile | `agent@{domain}` | `agent@company.com` |
-| 命名 Profile | `{profile}.agent@{domain}` | `report.agent@company.com` |
-| Persona | `{prefix}.agent@{domain}` | `sales.agent@company.com` |
+| 命名 Profile | `{profile}@{domain}` | `report@company.com` |
+| Persona | `{persona}.{profile}@{domain}` | `sales.report@company.com` |
 
 #### 官方共享域名
 
@@ -158,9 +158,9 @@ amail-gateway 是 AgentMail 的核心网关，提供四条双向通道：
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
-| 根 Profile | `{system_name}@{domain}` | `metercai@amail.token.tm` |
+| 根 Profile | `agent.{system_name}@{domain}` | `agent.metercai@amail.token.tm` |
 | 命名 Profile | `{profile}.{system_name}@{domain}` | `report.metercai@amail.token.tm` |
-| Persona | `{prefix}.{system_name}@{domain}` | `sales.metercai@amail.token.tm` |
+| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.metercai@amail.token.tm` |
 
 ### API Key 与 Profile 的关系
 
