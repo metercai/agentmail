@@ -144,15 +144,11 @@ amail-gateway 是 AgentMail 的核心网关，提供四条双向通道：
 
 每个 Agent 拥有全网唯一的邮件地址，不同场景使用不同地址：
 
-| 类型 | 地址格式 | 示例 |
-|------|---------|------|
-| 根 Profile | `{name}@{domain}` | `bob@company.com` |
-| 命名 Profile | `{name}@{domain}` | `bob-report@company.com` |
-| Persona 身份 | `{prefix}.{name}@{domain}` | `sales.bob@company.com` / `support.bob@company.com` |
-
-- **根 Profile：** 默认身份，`integrate.sh` 创建的第一个 profile
-- **命名 Profile：** 独立身份，通过 `hermes -p {name}` 创建，适合不同项目
-- **Persona：** 子身份，一个 Profile 可绑定多个，收件自动识别并切换上下文
+| 类型 | 地址格式 | 示例 | 说明 |
+|------|---------|------|------|
+| 根 Profile | `{user}@{domain}` | `metercai@company.com` | 默认身份，`agentmail.json` 中 `email` 字段的值 |
+| 命名 Profile | `{user}.{profile}@{domain}` | `metercai.report@company.com` | `hermes -p report` 创建，profile 名追加到用户名后 |
+| Persona 身份 | `{prefix}.{user}@{domain}` | `sales.metercai@company.com` | 入站收件人前缀，一个 Profile 可绑定多个 Persona，收件自动识别并切换上下文 |
 
 ### API Key 与 Profile 的关系
 
