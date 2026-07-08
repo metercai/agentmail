@@ -142,13 +142,23 @@ amail-gateway 是 AgentMail 的核心网关，提供四条双向通道：
 
 ### 邮件地址规范
 
-每个 Agent 拥有全网唯一的邮件地址，不同场景使用不同地址：
+每个 Agent 拥有全网唯一的邮件地址。系统分为两种部署方式：
 
-| 类型 | 地址格式 | 示例 | 说明 |
-|------|---------|------|------|
-| 根 Profile | `{system_name}@{domain}` 或无 `system_name` 时 `agent@{domain}` | `metercai@company.com` | 默认身份，`agentmail.json` 中 `email` 字段的值 |
-| 命名 Profile | `{profile}.{system_name}@{domain}` | `report.metercai@company.com` | `hermes -p report` 创建，profile 名前缀 |
-| Persona 身份 | `{prefix}.{system_name}@{domain}` | `sales.metercai@company.com` | 入站收件人前缀，一个 Profile 可绑定多个，收件自动识别并切换上下文 |
+| 方式 | 说明 | 根 Profile 邮箱 | 示例 |
+|------|------|------------|------|
+| **共享域名** | 申请官方激活码，共享 `amail.token.tm` 域名 | `{system_name}@{domain}` | `metercai@amail.token.tm` |
+| **非共享域名** | 自建 amail-gateway，使用自己的域名 | `agent@{domain}` | `agent@company.com` |
+
+- **共享域名：** `system_name` 在激活时由用户输入（3-8 字符）
+- **非共享域名：** 无 `system_name`，固定为 `agent@{domain}`
+
+**三种 Profile 身份：**
+
+| 类型 | 格式 | 示例 |
+|------|------|------|
+| 根 Profile | `{system_name 或 agent}@{domain}` | `agent@company.com` |
+| 命名 Profile | `{profile}.{system_name}@{domain}` | `report.metercai@amail.token.tm` |
+| Persona | `{prefix}.{system_name}@{domain}` | `sales.metercai@amail.token.tm` |
 
 ### API Key 与 Profile 的关系
 
