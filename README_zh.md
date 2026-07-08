@@ -113,38 +113,48 @@ bash integrate.sh
 
 ## 完整架构
 
+AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Hermes Agent**（LLM 引擎），运行时通过 Webhook 和 HTTP API 协同工作。
+
 ```
-┌──────────────────── AgentMail 系统 ────────────────────┐
-│                                                          │
-│  ┌────────────────┐                  ┌────────────────┐ │
-│  │  amail-gateway │                  │   agentmail    │ │
-│  │                │                  │                │ │
-│  │ SMTP Receiver  │── Webhook ──────►│ Webhook 接收   │ │
-│  │ SMTP Relay     │◄─ HTTP API ─────│ send_mail()   │ │
-│  │ HTTP API       │                  │ board_* 工具集 │ │
-│  │ A2A Board 引擎 │                  │ 白名单管理     │ │
-│  │ Webhook Push   │                  │ 预处理引擎     │ │
-│  │ 内转匹配       │                  │                │ │
-│  │                │                  │                │ │
-│  │ amail-bridge   │◄── Pull/Push ───│                │ │
-│  │ (可选)         │                  │                │ │
-│  └────────────────┘                  └───────┬────────┘ │
-│                                               │          │
-│                                       ┌───────┴────────┐ │
-│                                       │  Hermes Agent   │ │
-│                                       │  (LLM 引擎)     │ │
-│                                       └────────────────┘ │
-└──────────────────────────────────────────────────────────┘
+                     ┌────────────────────┐
+                     │   amail-gateway     │
+                     │                    │
+   外部邮件 ────────►│ SMTP Receiver      │──── 入站 Webhook ────┐
+                     │                    │                       │
+                     │ SMTP Relay         │◄─── HTTP API ─────┐  │
+   外部邮件 ◄────────│ (外部投递)         │                   │  │
+                     │                    │                   │  │
+                     │ 内转匹配            │                   │  │
+                     │ (同域不走SMTP)      │◄─── HTTP API ─────┤  │
+                     │                    │                   │  │
+                     │ A2A Board 引擎      │                   │  │
+                     │ 指令流·会话流·通知流│                   │  │
+                     └────────────────────┘                   │  │
+                                                              │  │
+                     ┌────────────────────┐                   │  │
+                     │   Hermes Agent      │                   │  │
+                     │                    │                   │  │
+                     │ ┌────────────────┐ │                   │  │
+                     │ │ agentmail 运行时│ │◄── 入站 ──────────┘  │
+                     │ │ · Webhook 接收  │ │                      │
+                     │ │ · 预处理引擎    │ │                      │
+                     │ │ · send_mail()  │ │──── 出站 ────────────┘
+                     │ │ · board_* 工具 │ │
+                     │ │ · 白名单管理   │ │
+                     │ └───────┬────────┘ │
+                     │         │          │
+                     │ ┌───────┴────────┐ │
+                     │ │   LLM 引擎     │ │
+                     │ │ · email → prompt│ │
+                     │ │ · 上下文注入   │ │
+                     │ │ · 指令执行     │ │
+                     │ └────────────────┘ │
+                     └────────────────────┘
 ```
 
-**四条数据通道：**
+**入站流程：** 外部邮件 → gateway SMTP Receiver → Webhook → agentmail 预处理（格式转换、上下文注入、board 角色识别）→ LLM 引擎决策
 
-| 方向 | 路径 |
-|------|------|
-| 外部 → Agent | 外部 SMTP → Gateway SMTP Receiver → Webhook/Bridge → Agent |
-| Agent → 同域 | Agent `send_mail()` → HTTP API → 内转匹配 → Webhook → 收件 Agent |
-| Agent → 外部 | Agent `send_mail()` → HTTP API → SMTP Relay → 外部 SMTP |
-| Bridge 拉取 | Bridge 定时 → HTTP API → 取待投递 → Webhook → Agent |
+**出站流程：** LLM 决策 → `send_mail()` → HTTP API → gateway 内转匹配（同域收件人直接 Webhook）或 SMTP Relay（外部收件人）
 
 ---
 
