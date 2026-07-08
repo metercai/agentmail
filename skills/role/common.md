@@ -6,9 +6,9 @@ Your agentmail address is **{{AGENTMAIL_ADDRESS}}**.
 
 ## Communication
 
-- **A-flow (commands):** emails TO board address with `[A2A]` prefix. `board_id` is auto-injected — no need to include in body.
-- **B-flow (discussions):** emails TO members + CC board address. System auto-injects `board_id`/`board_role`/`from_role`.
-- **C-flow (notifications):** system notifications from board address. Read `task_id` and `board` fields from body.
+- **instruction flow (commands):** emails TO board address with `[A2A]` prefix. `board_id` is auto-injected — no need to include in body.
+- **session flow (discussions):** emails TO members + CC board address. System auto-injects `board_id`/`board_role`/`from_role`.
+- **notification flow (notifications):** system notifications from board address. Read `task_id` and `board` fields from body.
 
 ## Available Tools
 

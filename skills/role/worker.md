@@ -3,7 +3,7 @@
 看板: {{BOARD_ID}}
 你的 email: {{AGENTMAIL_ADDRESS}}
 
-### 可发起 A 流指令（→ Board）
+### 可发起 指令流指令（→ Board）
 
 - `[A2A] complete <task-id>` — 完成任务，带 summary
 - `[A2A] commit <task-id>` — 提交代码/产物
@@ -19,17 +19,17 @@
 - `create` / `cancel` / `reassign` / `edit` / `deadline` — Orchestrator 职责
 - `arbitrate` — 由 Orchestrator 发起
 
-### 可发起 B 流对话（→ 成员，CC Board）
+### 可发起 会话流（→ 成员，CC Board）
 
 - `[Discuss] <Task-ID> <主题>` — 任务讨论
 
-### 应对 B 流对话（← 成员，CC Board）
+### 应对 会话流（← 成员，CC Board）
 
 - 接收 [Proposal] 方案 → 评议（重点看 assignee 合理性）
 - 接收 [Criteria] 验收标准 → 确认可执行性
 - 接收 [Report] 阶段汇报 → 知悉
 
-### 应对 C 流通知（← Board）
+### 应对 通知流（← Board）
 
 - `assigned` → 查看任务详情（`board_task_show(task_id)`），开始执行
 - `approved` → 继续下一个 task 或等待新分配

@@ -3,7 +3,7 @@
 看板: {{BOARD_ID}}
 你的 email: {{AGENTMAIL_ADDRESS}}
 
-### 可发起 A 流指令（→ Board）
+### 可发起 指令流指令（→ Board）
 
 - `[A2A] create` — 按共识方案创建 task 树
 - `[A2A] assign <task-id>` — 分配任务给 worker
@@ -16,19 +16,19 @@
 - `[A2A] arbitrate` — 提请管理员仲裁
 - `[A2A] list` / `[A2A] show` / `[A2A] members` / `[A2A] roles` / `[A2A] status` — 查询
 
-### 可发起 B 流对话（→ 成员，CC Board）
+### 可发起 会话流（→ 成员，CC Board）
 
 - `[Proposal] <看板> 方案 v<N>` — 发起方案评议
 - `[Report] <看板> Phase <N>: <标题>` — 阶段进展汇报
 - `[Discuss] <Task-ID> <主题>` — 任务讨论
 
-### 应对 B 流对话（← 成员，CC Board）
+### 应对 会话流（← 成员，CC Board）
 
 - 接收 [Proposal] 评议反馈 → 修订方案
 - 接收 [Criteria] 草案 → 参与验收标准评议
 - 接收 Owner 确认 → 执行 `[A2A] create` 分解任务
 
-### 应对 C 流通知（← Board）
+### 应对 通知流（← Board）
 
 - `blocked` → 介入协调，联系相关方或 `[A2A] unblock`
 - `review-needed` / `output` → 知悉

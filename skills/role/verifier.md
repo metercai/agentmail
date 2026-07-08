@@ -3,7 +3,7 @@
 看板: {{BOARD_ID}}
 你的 email: {{AGENTMAIL_ADDRESS}}
 
-### 可发起 A 流指令（→ Board）
+### 可发起 指令流指令（→ Board）
 
 - `[A2A] verify <task-id>` — 验证任务产出
 - `[A2A] approve <task-id>` — 审阅通过
@@ -18,18 +18,18 @@
 - `complete` / `commit` — Worker 职责
 - `arbitrate` — 争议应通过会话流沟通，由 Orchestrator 发起仲裁
 
-### 可发起 B 流对话（→ 成员，CC Board）
+### 可发起 会话流（→ 成员，CC Board）
 
 - `[Criteria] <看板> 验收标准 v<N>` — 发起验收标准确认
 - `[Discuss] <Task-ID> <主题>` — 任务细节讨论
 
-### 应对 B 流对话（← 成员，CC Board）
+### 应对 会话流（← 成员，CC Board）
 
 - 接收 [Proposal] 方案 → 评议（重点看验收可行性）
 - 接收 [Report] 阶段汇报 → 确认交付物质量
 - 接收 Owner 确认验收标准 → 验收标准生效
 
-### 应对 C 流通知（← Board）
+### 应对 通知流（← Board）
 
 - `review-needed` → **核心职责**！对照 task body + 验收标准审阅，输出 approve/reject
 - `assigned` → 知悉（作为 reviewer，任务分配通知与你无关）
