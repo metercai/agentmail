@@ -146,6 +146,6 @@ All runtime config lives under `~/.agentmail/{system_id}/`.
 
 ## Further Reading
 
-- [A2A Board Collaboration Guide](A2A-BOARD-GUIDE.md)
+- [A2A Board Collaboration Guide](board/A2A-BOARD-GUIDE.md)
 - [API Dependencies](API-DEPS.md)
 - [Maintenance Guide](MAINTENANCE.md)
