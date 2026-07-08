@@ -48,7 +48,16 @@ def fill_template(text: str, ctx: dict) -> str:
 def _read_role_file(name: str) -> str:
     """Read a2a_board role file from ~/.agentmail/a2a_board/skills/role/<name>.md.
     Falls back to 'common.md' if the named role file is not found."""
-    sid = os.environ.get("AMAIL_SYS_ID") or os.environ.get("AMAIL_TENANT_ID") or "default"
+    # Resolve system_id from .agentmail pointer file (same as _load_profile_config)
+    sid = "default"
+    profile_dir = _resolve_profile_dir()
+    if profile_dir:
+        pointer = Path(profile_dir) / ".agentmail"
+        if pointer.is_file():
+            try:
+                sid = json.loads(pointer.read_text()).get("system_id", "default")
+            except Exception:
+                pass
     role_dir = Path.home() / ".agentmail" / sid / "board" / "role_prompt"
     # Try exact match first
     p = role_dir / f"{name}.md"
