@@ -125,11 +125,10 @@ bash integrate.sh
 │  │ A2A Board 引擎 │                  │ 白名单管理     │ │
 │  │ Webhook Push   │                  │ 预处理引擎     │ │
 │  │ 内转匹配       │                  │                │ │
-│  │                │                  │ 集成脚本       │ │
-│  │ amail-bridge   │◄── Pull/Push ───│ integrate.sh  │ │
-│  │ (可选)         │                  │ check_status  │ │
-│  └────────────────┘                  │ install-tools │ │
-│                                       └───────┬────────┘ │
+│  │                │                  │                │ │
+│  │ amail-bridge   │◄── Pull/Push ───│                │ │
+│  │ (可选)         │                  │                │ │
+│  └────────────────┘                  └───────┬────────┘ │
 │                                               │          │
 │                                       ┌───────┴────────┐ │
 │                                       │  Hermes Agent   │ │
@@ -153,7 +152,7 @@ bash integrate.sh
 
 ### 邮件地址规范
 
-#### 自建网关，独享域名
+- 自建网关，独享域名
 
 部署自己的 [amail-gateway](https://github.com/metercai/amail-gateway)，使用自有域名。根 Profile 固定为 `agent@{domain}`，其他 Profile 通过 `hermes -p` 创建。
 
@@ -163,15 +162,15 @@ bash integrate.sh
 | 命名 Profile | `{profile}@{domain}` | `report@company.com` |
 | Persona | `{persona}.{profile}@{domain}` | `sales.report@company.com` |
 
-#### 官方共享域名
+- 官方共享域名
 
-通过官方激活码使用共享域名，激活时用户输入 `system_name`（3-8 字符）。
+通过官方共享域名激活码激活系统时，需用户输入 `system_name`（3-8 字符）进行区隔，例如: `meter`。
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
-| 根 Profile | `agent.{system_name}@{domain}` | `agent.metercai@amail.token.tm` |
-| 命名 Profile | `{profile}.{system_name}@{domain}` | `report.metercai@amail.token.tm` |
-| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.metercai@amail.token.tm` |
+| 根 Profile | `agent.{system_name}@{domain}` | `agent.meter@amail.token.tm` |
+| 命名 Profile | `{profile}.{system_name}@{domain}` | `report.meter@amail.token.tm` |
+| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.meter@amail.token.tm` |
 
 ### API Key 与 Profile 的关系
 
