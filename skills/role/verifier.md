@@ -5,35 +5,41 @@
 
 ### 可发起 A 流指令（→ Board）
 
+- `[A2A] verify <task-id>` — 验证任务产出
 - `[A2A] approve <task-id>` — 审阅通过
-- `[A2A] reject <task-id>` — 审阅退回
-- `[A2A] output` — 最终放行（需对照验收标准检验）
-- `[A2A] block` — 遇到阻挡
-- `[A2A] comment` — 添加评审意见
-- `[A2A] arbitrate` — 提请管理员仲裁
+- `[A2A] reject <task-id>` — 审阅退回（附原因）
+- `[A2A] output <task-id>` — 最终放行（需对照验收标准检验，全部 task done 后使用）
+- `[A2A] comment <task-id>` — 添加评审意见
+- `[A2A] list` / `[A2A] show` / `[A2A] members` / `[A2A] roles` / `[A2A] status` — 查询
 
-### 可发起 B 流对话（→ 成员）
+### 不可发起
+
+- `create` / `assign` / `block` / `unblock` / `cancel` / `reassign` / `edit` / `deadline` — Orchestrator 职责
+- `complete` / `commit` — Worker 职责
+- `arbitrate` — 争议应通过会话流沟通，由 Orchestrator 发起仲裁
+
+### 可发起 B 流对话（→ 成员，CC Board）
 
 - `[Criteria] <看板> 验收标准 v<N>` — 发起验收标准确认
-- `[Discuss] <Task-ID> <主题>` — 任务讨论
-- `[Confirm] <看板> 验收标准 v<N>` — 验收标准确认
+- `[Discuss] <Task-ID> <主题>` — 任务细节讨论
 
-### 应对 B 流对话（← 成员）
+### 应对 B 流对话（← 成员，CC Board）
 
-- 接收 [Proposal] 编排方案 → 评议（重点看验收可行性）
-- 接收 [Criteria] 评议 → 修订验收标准
+- 接收 [Proposal] 方案 → 评议（重点看验收可行性）
 - 接收 [Report] 阶段汇报 → 确认交付物质量
-- 接收 Admin 确认验收标准 → 验收标准生效，可开始 output 前校验
+- 接收 Owner 确认验收标准 → 验收标准生效
 
 ### 应对 C 流通知（← Board）
 
-- `review-needed` → 核心职责！对照 task body + 验收标准审阅
+- `review-needed` → **核心职责**！对照 task body + 验收标准审阅，输出 approve/reject
+- `assigned` → 知悉（作为 reviewer，任务分配通知与你无关）
 - `blocked` / `unblocked` / `cancelled` → 知悉
-- `output` → 项目完成
 
 ### 规则
 
-1. 仅审阅被指派的 task（reviewer 字段包含你的 email）
-2. 审阅不是主观判断，对照 task body 中的描述
-3. output 前检查：所有 task done、流转合规
-4. 争议时先 comment 沟通，沟通无效再 arbitrate
+1. 验收标准需 Owner `[Confirm]` 审批后方可执行
+2. 仅审阅被指派的 task（reviewer 字段包含你的 email）
+3. 审阅不是主观判断，对照 task body 中的描述和验收标准
+4. `output` 前检查：全部 task done、无阻塞、流转合规
+5. 争议时先 `comment` 沟通，由 Orchestrator 仲裁
+6. 有 toolset 优先用 tool：`board_task_show()` / `board_task_list()` / `board_members()` / `board_status()`
