@@ -52,8 +52,8 @@ AgentMail seamlessly integrates AI agents into any email-based workflow — cont
 1. **Dual SMTP-HTTP Relay, Ordered Inbound & Outbound**  
 SMTP receive → Webhook push. HTTP send → SMTP relay → Webhook internal delivery. Four lanes, unified scheduling, full-chain logging.
 
-2. **Bidirectional Whitelist, Security by Default**  
-Default whitelist prevents unauthorized senders from reaching the Agent, and prevents the Agent from sending to unauthorized recipients. Closed-loop security.
+2. **Multi-Layer Security, Default Whitelist**  
+Default whitelist prevents unauthorized senders from reaching the Agent, and prevents the Agent from sending to unauthorized recipients. Bidirectional control with security officer confirmation for critical operations.
 
 3. **Auto Markdown Conversion, LLM-Friendly**  
 Rich HTML emails are automatically converted to clean Markdown — stripped of styling noise. Agents read structured content directly.
@@ -81,8 +81,7 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 
 - [amail-gateway](https://github.com/metercai/amail-gateway) (running)
 - [Hermes Agent](https://github.com/nousresearch/hermes-agent) (installed)
-- [amail-bridge](https://github.com/metercai/amail-bridge) (auto-deployed by script)
-- Python 3.10+
+- Linux + Python 3.10+
 
 ### One-Command Integration
 
@@ -94,53 +93,115 @@ bash integrate.sh
 
 The wizard guides you through 8 steps: Gateway check → Domain config (or activation code) → Snapshot & Manager address → Bridge auto-deploy → Tool & Skill install → Webhook patch & Profile registration → Heartbeat diagnostics → Send/receive verification.
 
-### Environment Variable Automation
+### Using .env Configuration
+
+Copy `.env.example` to `.env` and fill in your Gateway details:
 
 ```bash
-export AMAIL_URL=https://amail.token.tm
-export AMAIL_ADMIN_KEY=your_admin_key_here
+cp .env.example .env
+# AMAIL_URL       — Gateway URL. Scripts call APIs for domain registration and key issuance.
+# AMAIL_ADMIN_KEY — Admin key, used to activate the system and create Agent API Keys.
 bash integrate.sh
 ```
+
+Once configured, `integrate.sh` runs fully automated without interactive input. See `.env.example` for all variables.
 
 ---
 
 ## Architecture
 
+AgentMail consists of two core components: **amail-gateway** (mail gateway) and **Hermes Agent** (LLM engine), working together via Webhook and HTTP API at runtime.
+
 ```
-                         amail-gateway
-                    (external SMTP gateway)
-                            │
-                     ┌──────┴──────┐
-                     │             │
-              ┌──────┴──────┐     SMTP
-              │ amail-bridge│     (outbound)
-              │ (pull/push) │
-              └──────┬──────┘
-                     │ POST /webhooks/agentmail-inbound
-              ┌──────┴──────┐
-              │ Hermes Agent│
-              │  (webhook)  │
-              └──────┬──────┘
-                     │ LLM + send_mail()
-                     │
-              ┌──────┴──────┐
-              │ amail-gateway│
-              │ (outbound)  │
-              └─────────────┘
+                     ┌────────────────────┐
+                     │   amail-gateway     │
+                     │                    │
+   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ──┐
+                     │                    │                       │
+                     │ SMTP Relay         │◄─── HTTP API ─────┐  │
+   External Mail ◄───│ (external delivery)│                   │  │
+                     │                    │                   │  │
+                     │ Internal Routing   │                   │  │
+                     │ (same-domain stays │◄─── HTTP API ─────┤  │
+                     │  off public SMTP)  │                   │  │
+                     │                    │                   │  │
+                     │ A2A Board Engine   │                   │  │
+                     │ Instructions       │                   │  │
+                     │ Sessions           │                   │  │
+                     │ Notifications      │                   │  │
+                     └────────────────────┘                   │  │
+                                                              │  │
+                     ┌────────────────────┐                   │  │
+                     │   Hermes Agent      │                   │  │
+                     │                    │                   │  │
+                     │ ┌────────────────┐ │                   │  │
+                     │ │ agentmail RT    │ │◄── Inbound ───────┘  │
+                     │ │ · Webhook recv  │ │                      │
+                     │ │ · Preprocessor  │ │                      │
+                     │ │ · send_mail()  │ │──── Outbound ────────┘
+                     │ │ · board_* tools│ │
+                     │ │ · Whitelist mgr│ │
+                     │ └───────┬────────┘ │
+                     │         │          │
+                     │ ┌───────┴────────┐ │
+                     │ │   LLM Engine   │ │
+                     │ │ · email→prompt │ │
+                     │ │ · context inj. │ │
+                     │ │ · cmd execution│ │
+                     │ └────────────────┘ │
+                     └────────────────────┘
 ```
+
+**Inbound flow:** External mail → gateway SMTP Receiver → Webhook → agentmail preprocessing (format conversion, context injection, board role recognition) → LLM engine decision
+
+**Outbound flow:** LLM decision → `send_mail()` → HTTP API → gateway internal routing (same-domain recipients via Webhook directly) or SMTP Relay (external recipients)
 
 ---
 
 ## Configuration
 
-All runtime config lives under `~/.agentmail/{system_id}/`. 
+### Email Address Format
 
-**API Keys belong to Profiles, email addresses to Personas:**
+#### Self-Hosted Gateway, Custom Domain
 
-| Concept | Description |
-|---------|-------------|
-| **Profile** | A complete Agent identity config (API Key + email address list) |
-| **Persona** | A sub-identity under a Profile (e.g. `support.bob@domain`); one Profile supports multiple |
+Deploy your own [amail-gateway](https://github.com/metercai/amail-gateway) with a custom domain. Root profile defaults to `agent@{domain}`. Additional profiles created via `hermes -p`.
+
+| Type | Format | Example |
+|------|--------|---------|
+| Root Profile | `agent@{domain}` | `agent@company.com` |
+| Named Profile | `{profile}@{domain}` | `report@company.com` |
+| Persona | `{persona}.{profile}@{domain}` | `sales.report@company.com` |
+
+#### Official Shared Domain
+
+Use an official activation code with a shared domain. Enter `system_name` (3-8 chars) during activation.
+
+| Type | Format | Example |
+|------|--------|---------|
+| Root Profile | `agent.{system_name}@{domain}` | `agent.metercai@amail.token.tm` |
+| Named Profile | `{profile}.{system_name}@{domain}` | `report.metercai@amail.token.tm` |
+| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.metercai@amail.token.tm` |
+
+### API Keys and Profiles
+
+API Keys are generated per Profile, stored in `~/.agentmail/{system_id}/agentmail.json`:
+
+- Root Profile: `~/.agentmail/{system_id}/agentmail.json`
+- Named Profile: `~/.agentmail/{system_id}/profiles/{name}/agentmail.json`
+
+### Runtime Directory
+
+```
+~/.agentmail/
+├── {system_id}/
+│   ├── agentmail_gateway.json     # Gateway connection config
+│   ├── agentmail.json             # Root Profile config (email + api_key)
+│   ├── profiles/
+│   │   └── {name}/
+│   │       └── agentmail.json     # Named Profile config
+│   └── board/
+│       └── role_prompt/           # Board role prompts (installed at setup)
+└── .system_raw_key/               # Activation keys
 
 ---
 
