@@ -119,8 +119,8 @@ AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Herme
                      ┌────────────────────┐
                      │   amail-gateway    │
                      │                    │
-   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ──┐
-                     │                    │                       │
+   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ─┐
+                     │                    │                      │
                      │ SMTP Relay         │◄─── HTTP API ─────┐  │
    External Mail ◄───│ (external delivery)│                   │  │
                      │                    │                   │  │
