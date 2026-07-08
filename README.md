@@ -202,6 +202,7 @@ API Keys are generated per Profile, stored in `~/.agentmail/{system_id}/agentmai
 │   └── board/
 │       └── role_prompt/           # Board role prompts (installed at setup)
 └── .system_raw_key/               # Activation keys
+```
 
 ---
 
