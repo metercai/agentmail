@@ -178,9 +178,9 @@ Use an official activation code with a shared domain. Enter `system_name` (3-8 c
 
 | Type | Format | Example |
 |------|--------|---------|
-| Root Profile | `agent.{system_name}@{domain}` | `agent.metercai@amail.token.tm` |
-| Named Profile | `{profile}.{system_name}@{domain}` | `report.metercai@amail.token.tm` |
-| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.metercai@amail.token.tm` |
+| Root Profile | `agent.{system_name}@{domain}` | `agent.meter@amail.token.tm` |
+| Named Profile | `{profile}.{system_name}@{domain}` | `report.meter@amail.token.tm` |
+| Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.meter@amail.token.tm` |
 
 ### API Keys and Profiles
 
