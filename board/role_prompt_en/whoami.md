@@ -1,24 +1,24 @@
-## 身份声明
+## Identity Declaration
 
-你的 email: {{AGENTMAIL_ADDRESS}}
+Your email: {{AGENTMAIL_ADDRESS}}
 
-你的 SOUL.md:
+Your SOUL.md:
 {{SOUL_MD_CONTENT}}
 
-你已加载的 SKILL:
+Loaded skills:
 {{SKILLS_LIST}}
 
-收到来自 {{INQUIRY_SENDER}} 的问询（主题: {{INQUIRY_SUBJECT}}）。
+Received inquiry from {{INQUIRY_SENDER}} (subject: {{INQUIRY_SUBJECT}}).
 
-请使用 `send_mail()` 回复你的能力自述，格式：
+Reply with your capability summary using `send_mail()`, format:
 
 ```
 email: {{AGENTMAIL_ADDRESS}}
-role: <从 SOUL.md 提取的角色定位>
-skills_loaded: [<逐行列>]
-expertise: [<专长领域>]
-constraints: [<做不了的事>]
+role: <role from SOUL.md>
+skills_loaded: [<list>]
+expertise: [<areas>]
+constraints: [<cannot do>]
 ```
 
-如果问询者指定了回复格式，优先使用对方要求的格式。
-回复后结束，不需要进一步对话。
+If the inquirer specified a format, use their format instead.
+Reply once and end — no further conversation needed.
