@@ -43,8 +43,6 @@ AgentMail is not about teaching agents to use email. It's about giving agents em
 
 AgentMail seamlessly integrates AI agents into any email-based workflow — contract review, progress reporting, clarification loops, surveys, cross-role collaboration, financial pre-audit, customer support, and beyond.
 
-
-
 ---
 
 ## Key Advantages
@@ -114,10 +112,10 @@ AgentMail consists of two core components: **amail-gateway** (mail gateway) and 
 
 ```
                      ┌────────────────────┐
-                     │   amail-gateway     │
+                     │   amail-gateway    │
                      │                    │
-   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ──┐
-                     │                    │                       │
+   External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ─┐
+                     │                    │                      │
                      │ SMTP Relay         │◄─── HTTP API ─────┐  │
    External Mail ◄───│ (external delivery)│                   │  │
                      │                    │                   │  │
@@ -132,13 +130,13 @@ AgentMail consists of two core components: **amail-gateway** (mail gateway) and 
                      └────────────────────┘                   │  │
                                                               │  │
                      ┌────────────────────┐                   │  │
-                     │   Hermes Agent      │                   │  │
+                     │   Hermes Agent     │                   │  │
                      │                    │                   │  │
                      │ ┌────────────────┐ │                   │  │
-                     │ │ agentmail RT    │ │◄── Inbound ───────┘  │
-                     │ │ · Webhook recv  │ │                      │
-                     │ │ · Preprocessor  │ │                      │
-                     │ │ · send_mail()  │ │──── Outbound ────────┘
+                     │ │ agentmail RT   │ │─── Outbound ──────┘  │
+                     │ │ · Webhook recv │ │                      │
+                     │ │ · Preprocessor │ │                      │
+                     │ │ · send_mail()  │ │◄─── Inbound ─────────┘
                      │ │ · board_* tools│ │
                      │ │ · Whitelist mgr│ │
                      │ └───────┬────────┘ │
@@ -162,7 +160,7 @@ AgentMail consists of two core components: **amail-gateway** (mail gateway) and 
 
 ### Email Address Format
 
-#### Self-Hosted Gateway, Custom Domain
+- Self-Hosted Gateway, Custom Domain
 
 Deploy your own [amail-gateway](https://github.com/metercai/amail-gateway) with a custom domain. Root profile defaults to `agent@{domain}`. Additional profiles created via `hermes -p`.
 
@@ -172,9 +170,9 @@ Deploy your own [amail-gateway](https://github.com/metercai/amail-gateway) with 
 | Named Profile | `{profile}@{domain}` | `report@company.com` |
 | Persona | `{persona}.{profile}@{domain}` | `sales.report@company.com` |
 
-#### Official Shared Domain
+- Official Shared Domain
 
-Use an official activation code with a shared domain. Enter `system_name` (3-8 chars) during activation.
+Use an official activation code with a shared domain. Enter `system_name` (3-8 chars) during activation, such as: `meter`.
 
 | Type | Format | Example |
 |------|--------|---------|
