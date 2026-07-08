@@ -1,229 +1,273 @@
-# API 依赖索引
+# API Dependencies Index
 
-集成脚本及 `agentmail_tools.py` 对 amail-gateway / amail-bridge 的所有接口调用。
+All API calls from integration scripts and agentmail_tools.py to amail-gateway / amail-bridge.
 
-**图例：** 🟢 GET · 🔵 POST/PUT/DELETE
+**Legend:** GET / POST/PUT/DELETE
 
 ---
 
 ## amail-gateway
 
-### 🟢 `GET /api/v1/whoami`
-验证 API key 的身份和权限范围。
+### GET /api/v1/whoami
+Verify API key identity and permission scopes.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/deploy_bridge.py` | 创建 bridge key 前验证 admin key |
-| `lib/check_status.py` | Level 1 管道检查 |
-| `integrate.sh` | 复用/验证 admin key（Step 1） |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/deploy_bridge.py` | Verify admin key before creating bridge key |
+| `scripts/check_status.py` | Level 1 pipeline check |
+| `integrate.sh` | Reuse/verify admin key (Step 1) |
 
-### 🟢 `GET /api/v1/health`
-健康检查。
+### GET /api/v1/health
+Health check.
 
-| 调用方 | 用途 |
-|--------|------|
-| `integrate.sh` | 检测并验证网关连通性（Step 1） |
-| `lib/check_status.py` | Level 1.1 健康检查 |
-| `lib/hermes_gateway.sh` | 轮询 Hermes 网关就绪 |
+| Caller | Purpose |
+|--------|---------|
+| `integrate.sh` | Detect and verify gateway connectivity (Step 1) |
+| `scripts/check_status.py` | Level 1.1 health check |
+| `scripts/hermes_gateway.sh` | Poll Hermes gateway readiness |
 
-### 🔵 `POST /api/v1/activate-system`
-产品码激活系统（无需认证）。
+### POST /api/v1/activate-system
+Product code activation (no auth required).
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/activate_system.py` | 交互式系统激活（Step 2 product code 路径） |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/activate_system.py` | Interactive system activation (Step 2 product code path) |
 | `tools/agentmail_tools.py` | `_GatewayClient.activate_system()` |
 
-### 🔵 `POST /api/v1/activate-address`
-地址激活码兑换 API key（无需认证）。
+### POST /api/v1/activate-address
+Address activation code to API key exchange (no auth required).
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `activate_address()` — profile 自动激活 |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `activate_address()` — auto-activate profiles |
 
-### 🔵 `POST /api/v1/api-keys`
-创建 API key。
+### POST /api/v1/api-keys
+Create API key.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/deploy_bridge.py` | 创建 bridge 用的 agent key |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/deploy_bridge.py` | Create agent key for bridge |
 
-### 🟢 `GET /api/v1/api-keys`
-列出 API key。
+### GET /api/v1/api-keys
+List API keys.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `list_api_keys()` — 按 email 查找 key ID |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `list_api_keys()` — find key ID by email |
 
-### 🔵 `DELETE /api/v1/api-keys/{id}`
-删除 API key。
+### DELETE /api/v1/api-keys/{id}
+Delete API key.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `delete_api_key()` — profile 删除时清理 key |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `delete_api_key()` — clean up key on profile deletion |
 
-### 🟢 `GET /api/v1/admin/systems/{sid}/domains`
-列出系统的域名。
+### GET /api/v1/admin/systems/{sid}/domains
+List system domains.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/list_domains.py` | 域名选择菜单（Step 2） |
-| `integrate.sh` | 查询已有域名 |
-| `lib/send_welcome.py` | 查找默认 agent email |
-| `tools/agentmail_tools.py` | `list_system_domains()` — 按 email 找 domain ID |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/list_domains.py` | Domain selection menu (Step 2) |
+| `integrate.sh` | Query existing domains |
+| `scripts/send_welcome.py` | Find default agent email |
+| `tools/agentmail_tools.py` | `list_system_domains()` — find domain ID by email |
 
-### 🔵 `POST /api/v1/admin/systems/{sid}/domains`
-创建域名记录。
+### POST /api/v1/admin/systems/{sid}/domains
+Create domain record.
 
-| 调用方 | 用途 |
-|--------|------|
-| `integrate.sh` | 确保域名已创建（Step 2） |
+| Caller | Purpose |
+|--------|---------|
+| `integrate.sh` | Ensure domain created (Step 2) |
 
-### 🔵 `POST /api/v1/admin/systems/{sid}/addresses`
-注册 agent 邮件地址。
+### POST /api/v1/admin/systems/{sid}/addresses
+Register agent email address.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `register_email()` — 注册 agent 收件地址 |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `register_email()` — register agent inbox address |
 
-### 🔵 `PUT /api/v1/admin/system-domains/{id}`
-更新域名设置。
+### PUT /api/v1/admin/system-domains/{id}
+Update domain settings.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `update_system_domain()` — 更新 webhook 配置 |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `update_system_domain()` — update webhook config |
 
-### 🟢 `GET /api/v1/admin/domains/check?domain=...`
-检查域名全局唯一性。
+### GET /api/v1/admin/domains/check?domain=...
+Check global domain uniqueness.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/helpers.sh` | `domain_exists_globally()` |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/helpers.sh` | `domain_exists_globally()` |
 
-### 🟢 `GET /api/v1/admin/whitelists/check?domain_addr=...&value=...&direction=...`
-精确查询单条白名单（无信息泄漏）。
+### GET /api/v1/admin/whitelists/check?domain_addr=...&value=...&direction=...
+Exact whitelist lookup (no information leak).
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `check_whitelist_value()` — `manage_contacts("check")` |
 
-### 🔵 `POST /api/v1/admin/whitelists`
-创建白名单条目。
+### POST /api/v1/admin/whitelists
+Create whitelist entry.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `add_whitelist()` — 注册 agent 时自动白名单 manager |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `add_whitelist()` — auto-whitelist manager on agent registration |
 
-### 🔵 `PUT /api/v1/admin/whitelists?domain_addr=...&value=...`
-按组合键更新白名单 direction。
+### PUT /api/v1/admin/whitelists?domain_addr=...&value=...
+Update whitelist direction by composite key.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `update_whitelist_by_value()` — `manage_contacts("update")` |
 
-### 🔵 `DELETE /api/v1/admin/whitelists?domain_addr=...&value=...`
-按组合键删除白名单。
+### DELETE /api/v1/admin/whitelists?domain_addr=...&value=...
+Delete whitelist by composite key.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `delete_whitelist_by_value()` — `manage_contacts("remove")` |
 
-### 🔵 `POST /api/v1/send`
-发送邮件。
+### POST /api/v1/send
+Send email.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `send_mail()` — 核心发件方法 |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `send_mail()` — core outbound method |
 
-### 🔵 `POST /api/v1/upload`
-上传附件。
+### POST /api/v1/upload
+Upload attachment.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `upload_attachment()` |
 
-### 🟢 `GET /api/v1/stats/agent/me?email=...`
-Agent 自身统计数据。
+### GET /api/v1/stats/agent/me?email=...
+Agent self statistics.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/send_welcome.py` | 轮询检测欢迎邮件投递状态 |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/send_welcome.py` | Poll welcome email delivery status |
 
-### 🔵 `POST /api/v1/admin/pending`
-Bridge 拉取待投递邮件。
+### POST /api/v1/admin/pending
+Bridge pulls pending emails.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/check_status.py` | 验证 bridge ↔ gateway 拉取通路 |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/check_status.py` | Verify bridge-to-gateway pull path |
 
-### 🟢 `GET /api/v1/admin/agent-state/{key}`
-读取 agent KV 存储。
+### GET /api/v1/admin/agent-state/{key}
+Read agent KV storage.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `agent_state_get()` |
 
-### 🔵 `PUT /api/v1/admin/agent-state/{key}`
-写入 agent KV 存储。
+### PUT /api/v1/admin/agent-state/{key}
+Write agent KV storage.
 
-| 调用方 | 用途 |
-|--------|------|
-| `tools/agentmail_tools.py` | `agent_state_put()` |
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `agent_state_put()` — public_whoami, msg metadata |
 
-### 🔵 `PUT /api/v1/admin/contacts/{address}`
-写入联系人资料。
+### PUT /api/v1/admin/contacts/{address}
+Write contact profile.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `put_contact()` |
 
-### 🟢 `GET /api/v1/admin/contacts/{address}`
-查询联系人资料。
+### GET /api/v1/admin/contacts/{address}
+Read contact profile.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `get_contact()` |
 
-### 🟢 `GET /api/v1/admin/contacts?name=...`
-按姓名搜索联系人。
+### GET /api/v1/admin/contacts?name=...
+Search contacts by name.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `get_contacts_by_name()` |
 
-### 🔵 `PUT /api/v1/admin/thread-summary/{message_id}`
-更新邮件线程摘要。
+### PUT /api/v1/admin/thread-summary/{message_id}
+Update email thread summary.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `put_thread_summary()` |
 
-### 🟢 `GET /api/v1/admin/thread-summary/{message_id}`
-读取邮件线程摘要。
+### GET /api/v1/admin/thread-summary/{message_id}
+Read email thread summary.
 
-| 调用方 | 用途 |
-|--------|------|
+| Caller | Purpose |
+|--------|---------|
 | `tools/agentmail_tools.py` | `get_thread_summary()` |
+
+### A2A Board APIs
+
+### GET /api/v1/board/:id/tasks
+List board tasks.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_task_list()` |
+
+### GET /api/v1/board/:id/task/:tid
+Get task details.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_task_show()` |
+
+### GET /api/v1/board/:id/members
+List board members.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_members()` |
+
+### GET /api/v1/board/:id/roles
+List role permissions.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_roles()` |
+
+### GET /api/v1/board/:id/status
+Board pipeline overview with dependencies.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_status()` |
+
+### POST /api/v1/board/:id/task/:tid/heartbeat
+Update task heartbeat.
+
+| Caller | Purpose |
+|--------|---------|
+| `tools/agentmail_tools.py` | `board_heartbeat()` |
 
 ---
 
 ## amail-bridge
 
-### 🔵 `POST /api/v1/routes`
-注册 agent profile 的入站路由。
+### POST /api/v1/routes
+Register agent profile inbound route.
 
-| 调用方 | 用途 |
-|--------|------|
-| `lib/hermes_gateway.sh` | 启动网关时向 bridge 注册每个 profile 的路由 |
+| Caller | Purpose |
+|--------|---------|
+| `scripts/hermes_gateway.sh` | Register each profile route on bridge at gateway startup |
 
 ---
 
-## 汇总
+## Summary
 
-| 目标 | 接口数 | 调用点 |
-|------|--------|--------|
-| amail-gateway | 26 个 | ~60 处 |
-| amail-bridge | 1 个 | 1 处 |
-| 最大客户端 | `tools/agentmail_tools.py` | 全部走 `_GatewayClient` 封装 |
+| Target | Endpoints | Callers |
+|--------|-----------|---------|
+| amail-gateway | 26 + 6 board | ~65 sites |
+| amail-bridge | 1 | 1 site |
+| Max client | `tools/agentmail_tools.py` | All via `_GatewayClient` wrapper |
 
-所有 API 调用均通过 `_GatewayClient` 命名包装方法，统一使用 `_request()`（自动添加 `X-Api-Key` 和 `Content-Type` 头）。
+All API calls go through `_GatewayClient` named wrapper methods, using `_request()` (auto-adds `X-Api-Key` and `Content-Type` headers).
