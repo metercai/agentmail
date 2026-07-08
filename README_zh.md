@@ -102,11 +102,12 @@ bash integrate.sh
 
 ```bash
 cp .env.example .env
-# 编辑 .env 填入 AMAIL_URL 和 AMAIL_ADMIN_KEY
+# AMAIL_URL       — Gateway 地址，脚本用它调用 API 完成域名注册、密钥签发
+# AMAIL_ADMIN_KEY — 管理员密钥，用于激活系统和创建 Agent API Key
 bash integrate.sh
 ```
 
-`.env.example` 包含所有可配置变量及说明。
+设置后 `integrate.sh` 全自动运行，无需交互输入。`.env.example` 包含所有变量的详细说明。
 
 ---
 
