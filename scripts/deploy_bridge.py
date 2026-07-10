@@ -184,25 +184,33 @@ def main():
 
     # ── Bridge deployment ────────────────────────────────────
     bridge_dir = os.path.expanduser("~/.agentmail/bin")
-    bridge_bin = os.environ.get("AMAIL_BRIDGE_BIN",
-        os.path.join(bridge_dir, "amail-bridge"))
+    bridge_bin = os.path.join(bridge_dir, "amail-bridge")
     os.makedirs(bridge_dir, exist_ok=True)
 
-    # Download if missing
+    # Extract from local zip if missing
     if not os.access(bridge_bin, os.X_OK):
-        ver = os.environ.get("AMAIL_BRIDGE_VERSION", "v0.5.0")
-        url = f"https://github.com/metercai/amail-bridge/releases/download/{ver}/amail-bridge-{ver}-x86_64-unknown-linux-gnu.tar.gz"
-        log_step(f"Downloading bridge {ver}...")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        bridge_dir_local = os.path.join(project_root, "bridge")
+        # Detect platform
+        import platform
+        machine = platform.machine()
+        if machine == "x86_64":
+            arch = "amd64"
+        elif machine in ("aarch64", "arm64"):
+            arch = "arm64"
+        else:
+            arch = "amd64"
+        zip_base = f"amail-bridge-v0.6-linux-{arch}"
+        zip_path = os.path.join(bridge_dir_local, f"{zip_base}.zip")
+        log_step(f"Extracting bridge from {zip_path}...")
         try:
-            # Download and extract
-            dl = subprocess.run(
-                ["curl", "-sL", url],
-                capture_output=True, timeout=60)
-            if dl.returncode == 0:
-                subprocess.run(
-                    ["tar", "xz", "-C", bridge_dir, "amail-bridge"],
-                    input=dl.stdout, timeout=30, capture_output=True)
-        except: pass
+            subprocess.run(
+                ["unzip", "-o", zip_path, "-d", bridge_dir],
+                capture_output=True, timeout=30)
+            os.chmod(bridge_bin, 0o755)
+        except Exception as e:
+            log_warn(f"Failed to extract bridge: {e}")
 
     if not os.access(bridge_bin, os.X_OK):
         log_warn("bridge binary not found")

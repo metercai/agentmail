@@ -2,7 +2,7 @@
 
 # amail-bridge
 
-> 零端口，邮件入站。一个端口，即时透传所有 agent。
+**零端口，邮件入站。一个端口，即时透传所有 agent。**
 
 连接 [amail-gateway](https://github.com/metercai/amail-gateway) 和
 [Hermes agent](https://github.com/nousresearch/hermes-agent) webhook 端点的
@@ -116,9 +116,9 @@ gateway (公网)                              NAT/防火墙内
 ## 快速开始
 
 ```bash
-git clone https://github.com/metercai/amail-bridge
-cd amail-bridge
-cargo build --release
+# 解压对应平台的 zip 文件
+unzip amail-bridge-v0.6-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+chmod +x amail-bridge
 
 # Push 模式（一个端口，所有 agent）
 cat > amail_bridge.toml << 'EOF'
@@ -139,18 +139,12 @@ system_id = "admin"
 EOF
 
 # 运行
-./target/release/amail-bridge
-
-# 或守护模式
-./target/release/amail-bridge --daemon
+./amail-bridge -c amail_bridge.toml
 
 # 检查健康状态
 curl http://localhost:38080/health
-# {"status":"ok","uptime_secs":42,"version":"0.3.0"}
+# {"status":"ok","uptime_secs":42,"version":"0.6.0"}
 ```
-
----
-
 ## 配置参考
 
 ### Push
@@ -205,16 +199,6 @@ file = "/var/log/amail-bridge.log"   # 日志文件路径，不设则 stdout
 | `AMAIL_BRIDGE_ALLOWED_IPS` | `push.allowed_ips`（逗号分隔） |
 | `HERMES_HOME` | Hermes 根目录（默认 `~/.hermes`） |
 | `RUST_LOG` | tracing 过滤器（覆盖 `logging.level`） |
-
----
-
-## TLS 与 ACME
-
-设置 `hostname` 即可自动启用 Let's Encrypt TLS（HTTP-01 挑战）。
-证书自动缓存续期，端口 80 需公网可达。
-
-**双端口模式：** `addr` 为 80 + `hostname` 已设时，80 处理 ACME 验证 +
-重定向到 443，443 处理 HTTPS 应用。
 
 ---
 

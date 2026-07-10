@@ -2,7 +2,7 @@
 
 [🇨🇳 中文](README_zh.md)
 
-> Zero ports, email inbound. One port, instant forwarding to all agents.
+**Zero ports, email inbound. One port, instant forwarding to all agents.**
 
 A high-performance transparent bridge between [amail-gateway](https://github.com/metercai/amail-gateway)
 and [Hermes agent](https://github.com/nousresearch/hermes-agent) gateway webhook endpoints.
@@ -120,9 +120,9 @@ gateway (public)                              behind NAT/firewall
 ## Quickstart
 
 ```bash
-git clone https://github.com/metercai/amail-bridge
-cd amail-bridge
-cargo build --release
+# Unzip the appropriate zip for your platform
+unzip amail-bridge-v0.6-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+chmod +x amail-bridge
 
 # Push mode (single port, all agents)
 cat > amail_bridge.toml << 'EOF'
@@ -143,18 +143,12 @@ system_id = "admin"
 EOF
 
 # Run
-./target/release/amail-bridge
-
-# Or daemonize
-./target/release/amail-bridge --daemon
+./amail-bridge -c amail_bridge.toml
 
 # Check health
 curl http://localhost:38080/health
-# {"status":"ok","uptime_secs":42,"version":"0.3.0"}
+# {"status":"ok","uptime_secs":42,"version":"0.6.0"}
 ```
-
----
-
 ## Configuration
 
 ### Push
@@ -209,16 +203,6 @@ file = "/var/log/amail-bridge.log"   # log file, stdout if unset (default: none)
 | `AMAIL_BRIDGE_ALLOWED_IPS` | `push.allowed_ips` (comma-separated) |
 | `HERMES_HOME` | Hermes home directory (default `~/.hermes`) |
 | `RUST_LOG` | tracing filter (overrides `logging.level`) |
-
----
-
-## TLS & ACME
-
-Set `hostname` in config for automatic TLS via Let's Encrypt (HTTP-01 challenge).
-Certificate is cached and auto-renewed. Port 80 must be reachable for ACME validation.
-
-**Dual-port mode:** When `addr` is port 80 + `hostname` set, port 80 handles ACME
-challenge + redirects to 443; port 443 serves the application.
 
 ---
 
