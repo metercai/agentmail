@@ -20,6 +20,7 @@ Through A2A Board, team members (humans + AI Agents) collaborate on projects ent
 | Concept | Description |
 |---------|-------------|
 | **Board** | Project board. Lifecycle: active → awaiting_owner → completed |
+| **Task** | Task unit. Status: Ready → Running → Reviewing → Done (Rejected: Done→Running, Reopened: Done→Running) |
 | **Board Email** | `{short_id}.a2a@{domain}` (short_id: 5-16 alphanumeric/hyphen/underscore) |
 | **Instruction Flow** | `[A2A]` prefixed emails to board. `board_id` auto-injected |
 | **Session Flow** | Members email each other + CC Board. Injects `board_id`/`board_role`/`from_role` |
@@ -163,8 +164,8 @@ All sent to Board address. `board_id` auto-injected.
 | Verb | Sender | Description |
 |------|--------|-------------|
 | `create` | orch, owner | Create tasks |
-| `assign` | orch | Assign task |
-| `review` | orch | Set reviewer |
+| `assign` | orch | Assign/Reassign task (params: `{"new_assignee":"..."}`) |
+| `review` | orch | Set reviewer (params: `{"reviewer":"..."}`) |
 | `complete` | worker | Complete task |
 | `cancel` | orch | Cancel task |
 | `edit` | orch | Edit task |
@@ -173,6 +174,7 @@ All sent to Board address. `board_id` auto-injected.
 | `block` / `unblock` | assignee/orch, orch/owner | Block/unblock |
 | `verify` / `approve` / `reject` | verifier | Review flow |
 | `output` | verifier | Submit final output |
+| `reopen` | owner | Reject output, reset tasks |
 | `comment` | all | Comment |
 | `arbitrate` | orch, verifier | Request arbitration |
 | `list` / `show` / `members` / `roles` / `status` / `heartbeat` | — | Queries |
@@ -188,7 +190,7 @@ Members email each other + CC Board. FROM and TO must be board members.
 | `[Proposal] {board} plan v{N}` | Orchestrator | Plan review |
 | `[Report] {board} Phase {N}: {title}` | Orchestrator | Progress report |
 | `[Discuss] {Task-ID} {topic}` | All | Task discussion |
-| `[Confirm] {board} {type} v{N}` | Owner | Approve plan/criteria |
+| `[Review] {board} {target} {task}` | Worker | Peer review |
 | `[Criteria] {board} criteria v{N}` | Verifier | Criteria confirmation |
 | `[Review] {board} {target} {task}` | Worker | Peer review |
 
