@@ -2726,7 +2726,7 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
     try:
-        r = client._request("POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat",
+        r = client._request("POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?actor=toolset",
                             body={"note": note})
         return json.dumps(r, indent=2)
     except Exception as e:
