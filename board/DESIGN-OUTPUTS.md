@@ -87,12 +87,37 @@ if perm_count == 0 && mail_count <= 1 {
 
 所有 14 个 notify 函数通过 `Notifier.attachments_json` 字段统一携带附件，无需逐个改动：
 
-| 类别 | 动词数 | 动词 |
-|------|:--:|------|
-| 产出物（建 board 级权限）| 2 | `complete`, `output` |
-| 临时交流（不建 board 级权限）| 12 | `create`, `comment`, `review`, `approve`, `reject`, `reassign`, `block`, `unblock`, `cancel`, `reopen`, `arbitrate`, `refresh` |
+#### 附件通知规则
 
-产出物附件需要长期保留 → 建 `board_address` 下载权限。临时交流仅靠邮件转发，随邮件生命周期自然消失。
+"入站有附件 → 出站通知带附件" 不是无条件适用。按指令场景分类：
+
+**A 类：传递附件（入站有附件，出站通知携带）**
+
+| 动词 | 场景 | 附件含义 | 出站通知 |
+|------|------|---------|---------|
+| `complete` | worker 提交产出物 | 任务交付物 | notify_review_needed ✅ |
+| `output` | verifier 提交最终产出 | 最终交付物 | notify_output ✅ |
+| `comment` | 任何人评论 | 讨论文件（截图、参考文档）| notify_comment ✅ |
+| `create` | orch 创建任务 | 设计规格、模板 | notify_assigned ✅ |
+| `arbitrate` | 请求仲裁 | 争议证据 | notify_arbitrate ✅ |
+| `refresh`/`init` | owner 初始化/更新 board | 看板配置 | notify_all ✅ |
+
+**B 类：不传递附件（纯状态变更，入站附件忽略）**
+
+| 动词 | 场景 | 原因 |
+|------|------|------|
+| `approve` | 审阅通过 | 无新工作产物 |
+| `reject` | 审阅退回 | 无新工作产物 |
+| `reassign` | 重新分配 | 管理操作 |
+| `block`/`unblock` | 阻塞/解除 | 状态信号 |
+| `cancel` | 取消任务 | 管理操作 |
+| `edit`/`deadline` | 编辑/设截止 | 无通知 |
+| `review` | 设审阅者 | reviewer 已有 task 上下文 |
+| `reopen` | 驳回产出 | 状态信号 |
+
+**C 类：Board 级下载权限（产出物长期保留）**
+
+仅 A 类中的 `complete` 和 `output`——只有这两个指令的附件是项目交付物，需要建 `board_address` 下载权限保护到归档。其余 A 类指令的附件为临时交流，仅靠通知邮件转发。
 
 ## 5. 产出物传递
 
