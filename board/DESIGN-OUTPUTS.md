@@ -306,7 +306,7 @@ Board 采用 DAG 任务图，支持三种局部模式组合：
 
 **实现方式：**
 
-`create` / `spawn` 时设置 `parents` 数组（已有字段 `parent_ids: Vec<String>`）：
+`create` 时设置 `parents` 数组（已有字段 `parent_ids: Vec<String>`）：
 
 ```json
 {
@@ -324,22 +324,25 @@ all_done = child.parent_ids.iter().all(|pid| parent_done(pid))
 → 全部 Done 才 promote Todo → Ready
 ```
 
-### 5.2 `spawn` — 任务内部分解
+### 5.2 执行时变更
 
-Worker 在任务执行中发现需要派生子任务时，发 `[A2A] spawn`：
+Worker 执行中发现需要更多粒度时，通过**会话流**（CC board 地址）向 orchestrator 沟通：
 
 ```
-[A2A] spawn T1
-{"tasks": [
-  {"title": "登录 API",      "assignee": "be@x.com"},
-  {"title": "数据库迁移",     "assignee": "dba@x.com"}
-]}
+From: dev@x.com
+To: pm@x.com
+CC: web-redesign.a2a@x.com
+Subject: [Discuss] T2 需要拆分为 3 个子任务
+
+前端实现需要拆分为：
+- CSS 布局 + 响应式
+- API 对接
+- 状态管理
+
+请 orchestrator 补充 create
 ```
 
-与 `create` 的区别：
-- `create` 是 orchestrator 全局创建，`parents` 显式声明
-- `spawn` 是 assignee 内部拆解，自动 `parents: [T1]`
-- `spawn` 要求 sender 是 task 的 assignee，且 task 是 Running
+Orchestrator 用 `[A2A] create` 创建子任务，`parents: ["T2"]`。原 T2 可 `cancel` 或被 approve 后自然结束。
 
 ### 5.3 模式组合规则
 
@@ -348,7 +351,7 @@ Worker 在任务执行中发现需要派生子任务时，发 `[A2A] spawn`：
 | `parents` 数组不限制长度 | 任意 fan-in 深度 |
 | 同一 task 可被多个 children 引用 | fan-out 天然支持 |
 | children 可再 spawn | 嵌套分解 |
-| 循环依赖检测 | `create`/`spawn` 时拒绝 `parents` 形成环 |
+| 循环依赖检测 | `create` 时拒绝 `parents` 形成环 |
 | 跨 batch parents | `parents` 可引用已有 task（不限于同 batch）|
 
 ### 5.4 `verify_pipeline_integrity` 增强
@@ -410,12 +413,6 @@ Worker dev@x.com 同时持有 T2 和 T5 的通知：
   开始执行后发 [A2A] heartbeat T5
 ```
 
-### 6.4 新增 `spawn` 动词
-
-| 动词 | 权限 | 参数 | 说明 |
-|------|------|------|------|
-| `spawn` | assignee | `{"tasks": [{...}]}` | 正在 Running 的任务分解出子任务 |
-
 ## 7. 实施分阶段（更新）
 
 | 阶段 | 内容 | 文件 |
@@ -424,10 +421,10 @@ Worker dev@x.com 同时持有 T2 和 T5 的通知：
 | **P2** | interceptor 附件保存 + 跨 batch parents | `interceptor.rs` |
 | **P3** | `promote_children` 通知含父级产物 | `commands.rs` + `notify.rs` |
 | **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` |
-| **P5** | `spawn` 动词 (~50 行) | `commands.rs` + models |
-| **P6** | 循环依赖检测 | `db.rs` + `commands.rs` |
-| **P7** | 通知 Body 规范化 | `notify.rs` |
-| **P8** | 测试 + 文档同步 | `category-6` + `A2A-BOARD-GUIDE` |
+
+| **P5** | 循环依赖检测 | `db.rs` + `commands.rs` |
+| **P6** | 通知 Body 规范化 | `notify.rs` |
+| **P7** | 测试 + 文档同步 | `category-6` + `A2A-BOARD-GUIDE` |
 
 
 | 阶段 | 内容 | 文件 |
