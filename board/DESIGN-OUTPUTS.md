@@ -1,149 +1,120 @@
-# A2A Board 产出物传递 & 通知规范化方案
+# A2A Board 产出物传递方案
 
-## 0. 架构现实
-
-Gateway SMTP receiver（receiver.rs）对所有入站邮件做统一处理：
+## 1. 架构基础
 
 ```
-Worker SMTP → Gateway receiver.rs
-  data_end():
-    1. parse_mime_detailed → (body, attachments, subject, ...)
-    2. create_inbound → 存储邮件记录
-    3. 遍历 attachments: save_attachment → 文件落地 + attachment_meta 表 + 权限
-    4. update_email_attachments → 附件 UUID 写回邮件记录
-    5. trigger_tx → 通知 scheduler 处理
-    ↓
-Scheduler → 分发到拦截器链 → A2aInterceptor
-    ↓
-  interceptor: 从 payload 读取 subject/body → execute_command
-    ↓
-  complete → do_complete(conn, task_id, sender, summary)
+Worker SMTP complete (带附件) → Gateway receiver.rs
+  data_end(): parse MIME → save_attachment → mail_id 写入 meta
+  trigger_tx → Scheduler → Interceptor chain → A2aInterceptor
+  interceptor: 处理 [A2A] complete
+    ├─ 读取 attachments_json → 构造 summary
+    ├─ 写入 task.summary
+    ├─ create_permission (assignee + reviewer + board_address)
+    └─ 调 do_complete()
+  do_complete():
+    ├─ 更新 task.status
+    ├─ insert_event
+    └─ notify_review_needed (通知带附件 UUID)
+notify 创建出站邮件:
+  create_outbound(attachments=attachments_json) → mail_id 引用
+Scheduler 投递通知邮件:
+  load_attachment_data → 读文件 → SMTP/Webhook → Agent 接收
 ```
 
-**关键事实：**
-- 附件在 interceptor 执行前已落盘（L695-732）
-- 附件 metadata 在 `attachments_meta` 表，含 UUID → 下载权限
-- 邮件记录的 `attachments_json` 字段含附件 UUID/文件名/大小
-- Gateway 已有附件下载 API（attachment_factory）
+## 2. 数据模型
 
-
-### 0.1 附件生命周期
-
-**deliver.rs `cleanup_completed_email`（L150-324）：** 邮件交付完成后级联删除附件。保护条件：
-
+### Task 字段
 ```rust
-if perm_count == 0 && mail_count <= 1 {
-    // 删除文件
-} // 有多个 mail 引用 → 保留
+pub summary: String,     // JSON: {"description":"...", "artifacts":[...]}
 ```
 
-**当前漏洞：** notify 创建通知邮件时传给 `create_outbound` 的 `attachments_json` 是 `None`（notify.rs L54），未引用原附件 UUID → 原邮件 `mail_count=1` → 交付完成即删除。
-
-**修复（2 行）：**
-- `notify_review_needed(task, attachment_ids)` — 接受原邮件的 attachments_json
-- `interceptor` — 处理 complete 时传入 payload["attachments_json"]
-
-效果：通知邮件引用同一附件 UUID → `mail_count >= 2` → 附件存续到所有下游邮件交付完成。
-
-## 1. 产出物传递
-
-### 1.1 完整链路
-
-```
-Worker SMTP complete T1 + login_api.rs
-  ↓
-receiver.rs data_end():
-  save_attachment(data, sender, "login_api.rs", uuid)  // L701
-  create_meta(uuid, filename, content_type, sender)     // L714
-  create_permission(uuid, reviewer_email)               // L726
-  update_email_attachments(mail_id, json)               // L738
-  ↓
-interceptor 处理 [A2A] complete:
-  从 payload["attachments_json"] 取附件列表
-  从 body JSON 取 url 引用
-  合并 → 构造 summary JSON
-  调用 do_complete(conn, task_id, sender, summary)
-  ↓
-do_complete:
-  写入 task.summary
-  insert_event("completed", summary)
-  notify_review_needed → 邮件通知 reviewer
-```
-
-### 1.2 Agent 获取附件
-
-Agent 有两种方式：
-
-| 方式 | 路径 |
-|------|------|
-| 通知邮件 | notify_review_needed 邮件中包含附件 UUID → Agent 用 API 下载 |
-| Toolset | `board_task_show` 返回 summary JSON（含 artifact 名/大小）→ Agent 用文件名匹配 or API 下载 |
-
-### 1.3 Gateway 改动
-
-**do_complete()**（commands.rs，P1 ~30 行）：
-- 从 handle_complete 提取公共函数
-- 接受 summary_json 参数
-- 写入 task.summary + insert_event + notify
-
-**interceptor**（interceptor.rs L367-373，P2 ~15 行）：
-- complete 时从 payload["attachments_json"] 读取 SMTP receiver 已保存的附件列表
-- 合并 body JSON 中的 url 引用
-- 构造 summary JSON → 传给 do_complete
-
-**notify**（notify.rs，P3 ~20 行）：
-- notify_review_needed / notify_assigned 邮件中包含附件 UUID
-- Agent 用 UUID 通过 attachment API 下载
-
-### 1.4 summary JSON 结构
-
+### summary JSON
 ```json
 {
   "description": "登录 API 完成",
   "artifacts": [
-    {"name": "login_api.rs", "size": 2048, "uuid": "abc123...", "type": "attachment"},
-    {"name": "PR #42", "url": "https://github.com/x/pull/42", "type": "url"}
+    {"name":"login_api.rs", "size":2048, "uuid":"abc123", "type":"attachment"},
+    {"name":"PR #42", "url":"https://github.com/x/pull/42", "type":"url"}
   ]
 }
 ```
 
-## 2. 父级产出物传递
+## 3. 三条保护线
 
-与 §1 相同链路——promote_children 时调 notify_assigned，通知中包含父级 task.summary 中的 artifact 列表。
+| 机制 | 保护范围 | 实现 |
+|------|---------|------|
+| `mail_count` | 通知邮件引用 → 邮件交付前不删 | notify create_outbound 传入 attachments_json |
+| `perm_count` | board 地址永续权限 → 附件永不过期 | interceptor create_permission(board_address) |
+| `perm_count` | assignee + reviewer 一次性下载权 | interceptor create_permission(assignee, reviewer) |
 
-## 3. 通知格式规范
+### 时效分析
+- `cleanup_completed_email`：邮件交付完成时检查 `mail_count <= 1 && perm_count == 0` → 不删（有权限/引用）
+- `process_expired_attachments`：720h（30d）定时扫描，检查同上 → board_address 权限永续保护
 
-所有 notify 函数统一 Subject + Body 模板。
+## 4. 附件传递路径
 
-## 4. 并行执行模式
+### 路径 A：通知邮件（Agent 在线）
+```
+notify 通知邮件（含附件）→ SMTP → Agent webhook → 附件自动保存到本地
+Toolset: board_task_show → summary JSON → 匹配本地文件名/size 核验
+```
 
-parents 数组 + promote_children 已覆盖 DAG。仅需跨 batch parents + 循环检测。
+### 路径 B：API 下载（Agent 离线/晚加入）
+```
+Toolset: board_task_show → summary JSON → 提取 uuid
+         → GET /api/v1/attachments/:id → consume_download (一次性)
+         → 保存到本地
+```
 
-## 5. 实施分阶段
+## 5. Gateway 改动清单
 
-| 阶段 | 内容 | 文件 |
-|------|------|------|
-| **P1** | do_complete() + summary 参数 | commands.rs |
-| **P2** | interceptor 读取 attachments_json + 构造 summary | interceptor.rs |
-| **P3** | notify 通知含附件 UUID + 父级产物 | notify.rs + commands.rs |
-| **P4** | show/list 返回 parent_summaries | commands.rs + handlers.rs |
-| **P5** | 跨 batch parents + 循环检测 | commands.rs + db.rs |
-| **P6** | 通知 Body 规范化 | notify.rs |
-| **P7** | 测试 + 文档 | category-6 + GUIDE |
+| 文件 | 改动 | 行数 | 说明 |
+|------|------|:--:|------|
+| `commands.rs` | `do_complete()` 提取 + summary 参数 | ~30 | SMTP/Toolset 统一入口 |
+| `interceptor.rs` | 读 attachments_json → 构造 summary | ~15 | complete 时处理附件 |
+| `interceptor.rs` | `create_permission` (assignee+reviewer+board) | ~10 | 下载权限 |
+| `notify.rs` | `notify_review_needed` 接受 attachment_ids | ~5 | 通知带附件 UUID |
+| `notify.rs` | `create_outbound` 传入 attachments_json | ~2 | mail_count 保护 |
+| `commands.rs` | `notify_assigned` 含父级产物 | ~10 | promote_children 时 |
+| `commands.rs` | `show`/`list` 返回 parent_summaries | ~15 | data 字段 |
+| `handlers.rs` | `handle_get_task` 附加 parent_summaries | ~15 | API 查询 |
+| `commands.rs` | 跨 batch parents | ~5 | DAG 支持 |
+| `db.rs` | 循环依赖检测 | ~20 | DAG 校验 |
+| `notify.rs` | Body 模板统一 | ~80 | 通知规范化 |
 
-## 6. 附件可行性验证
+**总计 ~207 行。**
 
-| 环节 | 路径 | 改动 |
-|------|------|:--:|
-| 附件保存 | receiver.rs 已有 save_attachment | ❌ |
-| 附件权限创建 | interceptor 加 attachment_factory → create_permission(assignee+reviewer) | ✅ ~10 行 |
-| 权限消耗 | consume_download 一次性撤销 → Agent 下载一次存本地 | 不改 |
-| 文件回收 | mail_count 保护 → notify 通知邮件引用同一 UUID | ✅ ~2 行 |
-| 附件传递 | notify 通知邮件携带附件文件 | ✅ ~5 行 |
-| metadata 查询 | board_task_show 返回 summary JSON | ✅ ~15 行 |
+## 6. Agent 侧
 
-**实际改动总量：~35 行，不改变现有附件下载模型。**
+无代码改动——复用通用 webhook 附件接收。
 
-Agent 获取附件流程：
-1. 线上 → webhook 收通知邮件 → 附件自动保存
-2. 离线 → toolset board_task_show 拿 UUID → API download → 存本地
+- Toolset `board_task_show` → `{data: {artifacts: [...], parent_summaries: [...]}}`
+- Toolset `board_task_list ?parents=true` → 父级 summary 注入
+- Attachment 下载 → `GET /api/v1/attachments/:id`（一次性，Agent 自行缓存）
+
+## 7. 通知格式
+
+所有 notify 函数统一 Subject + Body 模板：
+
+```
+Subject: [A2A] {event-type} {short_id}: {title}
+
+Body:
+── A2A Board ──
+
+{event_label}
+  任务: {short_id} — {title}
+  看板: {board_short_id}
+
+── 上下文 ──
+{context_fields}
+
+── 操作 ──
+{action_hint}
+```
+
+## 8. 并行执行
+
+DAG 通过 `parents` 数组表达，无需新字段或新动词。改动：
+- 跨 batch parents（解除 create 中"同 batch"限制）
+- 循环依赖检测（create 时 DFS）
