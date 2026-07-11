@@ -2,13 +2,17 @@
 
 ## 1. 产出物传递
 
-### 1.1 三种传递方式共存
+**现状：** Task 有 `summary` 和 `metadata` 字段，但 `summary` 永远是空字符串，`metadata` 仅在 create 时设置后永不修改。`complete` 不支持描述产出物。SMTP 附件被拦截器忽略。
 
-| 方式 | 来源 | summary JSON 内容 |
-|------|------|------------------|
-| SMTP 附件 | `complete` 邮件附件 | `{"name":"x.rs", "path":"outputs/{tid}/item-0-x.rs"}` |
-| URL 引用 | JSON body 或 Toolset | `{"name":"PR #42", "url":"https://github.com/x/pull/42"}` |
-| 混合 | SMTP 附件 + JSON body | path + url 都写入 |
+**目标：** Worker 完成时可通过邮件附件和/或 URL 引用传递产出物，后续任务能获取。
+
+### 1.1 传递方式
+
+| 方式 | 来源 | 存到哪里 |
+|------|------|---------|
+| SMTP 附件 | `complete` 邮件附件 | `outputs/{task_id}/item-{idx}-{filename}` |
+| URL 引用 | complete JSON body | summary JSON 中的 `artifacts[].url` |
+| 混合 | 两者同时 | path + url 都写入 |
 
 ### 1.2 存储布局
 
@@ -19,22 +23,14 @@
 └── outputs/
     └── {task_id}/
         ├── item-0-login_api.rs
-        ├── item-1-api_doc.md
-        └── manifest.json
+        └── item-1-api_doc.md
 ```
 
-### 1.3 数据模型
+### 1.3 summary JSON 结构
 
-**Task 字段：**
-```rust
-pub summary: String,    // JSON: {"description":"...", "artifacts":[...]}
-pub metadata: Option<String>,  // create 时设定，保持不变
-```
-
-**summary JSON 结构：**
 ```json
 {
-  "description": "登录 API 完成，REST 接口，JWT 认证",
+  "description": "登录 API 完成",
   "artifacts": [
     {
       "name": "login_api.rs",
@@ -46,83 +42,99 @@ pub metadata: Option<String>,  // create 时设定，保持不变
 }
 ```
 
-### 1.4 两条入口，同一 `do_complete()`
+### 1.4 统一入口
+
+当前 `handle_complete` 的逻辑内嵌在 handler 中，SMTP 和 Toolset 都各走各的。提取为 `do_complete(conn, task_id, sender, summary)` 公共函数：
 
 ```
-┌─ SMTP [A2A] complete T1 (带附件) ─┐
-│  interceptor 保存附件到 outputs/    │
-│  解析 JSON body 中 artifacts[].url │
-│  合并 → 构造 summary JSON           │
-└──────────┬─────────────────────────┘
-           ▼
-       do_complete(conn, task_id, sender, summary_json)
-           │
-           ├─ 写入 task.summary
-           ├─ insert_event("completed", summary)
-           ├─ notify_review_needed (有 reviewer)
-           └─ 否则 promote_children + notify_approved
-
-┌─ Toolset/API complete ────────────┐
-│  传入 summary JSON (url only)      │
-└──────────┬────────────────────────┘
-           ▼
-       do_complete(conn, task_id, sender, summary_json)
+SMTP 入口:
+  interceptor: 解析附件 → 保存到 outputs/ → 构造 summary JSON
+              ↓
+         do_complete(conn, task_id, sender, summary)
+              ↓
+Toolset/API 入口:
+  handler: 直接从请求体取 summary JSON
+              ↓
+         do_complete(conn, task_id, sender, summary)
 ```
 
-### 1.5 interceptor 附件处理
+`do_complete` 内部：
+1. 写入 `task.summary`
+2. `insert_event("completed", summary)`
+3. 有 reviewer → `notify_review_needed`
+4. 无 reviewer → `promote_children` + `notify_approved`
 
+### 1.5 当前代码依据
+
+**commands.rs L129-146:** `handle_complete` 不接收 summary，写入状态后调 notifier。
+
+```rust
+// L129-145 现状
+fn handle_complete(conn, notifier, cmd, sender) {
+    let task_id = extract_task_id(cmd)?;  // 从 cmd.task_id 取
+    let mut task = db::get_task(conn, &task_id)?;
+    require_assignee(&task, sender)?;
+    // 无 summary 写入
+    if task.reviewer.is_some() {
+        task.status = TaskStatus::Reviewing;
+    } else {
+        task.status = TaskStatus::Done;
+    }
+    db::update_task(conn, &task)?;
+    // ...
+}
 ```
-handle_board_email():
-  if verb == "complete":
-    1. 解析 payload["attachments"] 数组
-    2. 对每个 attachment:
-       - 写到 outputs/{task_id}/item-{idx}-{filename}
-       - 写入 manifest
-    3. 从 body JSON 取 artifacts[].url
-    4. 合并 attachment paths + urls → 构造 summary JSON
-    5. 调用 do_complete(...)
+
+**interceptor.rs L367-373:** 对 SMTP 入口调用 execute_command 时，只传递 subject 解析出的 verb+task_id+params，忽略附件。
+
+```rust
+// L367-373 现状
+let cmd = A2aCommand { verb, task_id, params };  // params = body JSON
+match commands::execute_command(&conn, &notifier, &cmd, &sender) {
 ```
 
 ## 2. 父级产出物传递
 
-### 2.1 promote_children 通知增强
+**现状：** `promote_children`（commands.rs L695-714）只在父任务全部 Done 时将子任务从 Todo→Ready，不发父级产出物信息。`notify_assigned`（notify.rs）通知不含父级上下文。
 
-子任务被 promote（Todo→Ready）时，通知包含父级产出物摘要：
+**目标：** 子任务被 promote 时，通知中包含父级产出物摘要（文件名/URL）。
 
-```
-Subject: [A2A] assigned T3: 产品页集成登录
-Body:
-  ── A2A Board ──
-  
-  新任务分配
-    任务: T3 — 产品页集成登录
-    看板: web-redesign
-  
-  ── 上下文 ──
-    描述: 用 T1 的 API 和 T2 的设计稿实现产品页
-    分配人: dev@company.com
-    审阅者: qa@company.com
-    创建人: pm@company.com
-    前序产出物:
-      T1 登录 API          → outputs/t_T1_xxx/item-0-login_api.rs
-      T2 UI 设计稿         → https://figma.com/x
-  
-  ── 操作 ──
-    开始执行后发 [A2A] heartbeat T3
+### 2.1 notify_assigned 增强
+
+notify.rs L12-22 现状：
+
+```rust
+pub fn notify_assigned(&self, task: &Task) {
+    let subject = format!("[A2A] assigned {}: {}", task.short_id, task.title);
+    let body = format!(
+        "task_id: {}\nboard: {}\n标题: {}\n描述: {}\n审阅者: {}\n创建人: {}",
+        task.id, task.board_id, task.title, task.body,
+        task.reviewer.as_deref().unwrap_or("(无)"),
+        task.created_by,
+    );
+    self.create_email(&task.assignee, &subject, &body);
+}
 ```
 
-### 2.2 show/list 返回 parent_summaries
+改为接受 `parent_summaries: Option<Vec<ParentArtifact>>` 参数，有父级时补充：
 
 ```
-[A2A] show T3
-↓
+前序产出物:
+  T1 登录 API → outputs/{tid}/item-0-login_api.rs
+  T2 UI 设计稿 → https://figma.com/x
+```
+
+### 2.2 show 返回 parent_summaries
+
+`handle_show`（commands.rs L388-391）现状只返回 task 本身。增强：
+
+```json
 {
   "status": "ok",
   "task": { ... },
   "data": {
     "parent_summaries": [
-      {"short_id":"T1","title":"登录 API","summary":{...}},
-      {"short_id":"T2","title":"UI 设计稿","summary":{...}}
+      {"short_id": "T1", "title": "登录 API", "summary": {...}}
     ]
   }
 }
@@ -130,33 +142,21 @@ Body:
 
 ## 3. 通知格式规范
 
-### 3.1 Subject 模板
+**现状：** 11 个 notifier 函数各自拼接 Subject 和 Body，格式不一致，部分用英文，部分用中文。
+
+**目标：** 统一模板，减少 Agent 理解歧义。
+
+### 3.1 Subject 统一
+
+现有 Subject 格式各异（`"Board {} initialized"`, `"[A2A] notice: ..."`, `"[A2A] output: ..."`）。统一为：
 
 ```
 [A2A] {event-type} {short_id}: {title}
-
-event-type: assigned, review-needed, approved, rejected,
-            blocked, unblocked, cancelled, output,
-            comment, arbitrate, notice
 ```
 
-| 事件 | Subject |
-|------|---------|
-| assigned | `[A2A] assigned {sid}: {title}` |
-| review-needed | `[A2A] review-needed {sid}: {title}` |
-| approved | `[A2A] approved {sid}: {title}` |
-| rejected | `[A2A] rejected {sid}: {title}` |
-| blocked | `[A2A] blocked {sid}: {title}` |
-| unblocked | `[A2A] unblocked {sid}: {title}` |
-| cancelled | `[A2A] cancelled {sid}: {title}` |
-| output | `[A2A] output {sid}: {title}` |
-| comment | `[A2A] comment {sid}: {title}` |
-| arbitrate | `[A2A] arbitrate {sid}: {title}` |
-| notify_all | `[A2A] notice: {message}` |
+### 3.2 Body 统一
 
-### 3.2 Body 模板
-
-```
+```text
 ── A2A Board ──
 
 {event_label}
@@ -170,268 +170,40 @@ event-type: assigned, review-needed, approved, rejected,
 {action_hint}
 ```
 
-**各事件具体格式：**
+各事件字段基于现有 notify.rs 参数映射，不新增数据源。详情见 notifier 各函数签名。
 
-#### assigned
-```
-── 上下文 ──
-  描述: {body}
-  分配人: {assignee}
-  审阅者: {reviewer}
-  创建人: {created_by}
-  前序产出物:
-    {short_id} {title} → {artifact_refs}
+## 4. 并行执行模式
 
-── 操作 ──
-  开始执行后发 [A2A] heartbeat {sid}
-```
+**现状：**
+- `parent_ids: Vec<String>` — 已支持多父 fan-in
+- `promote_children` L701-705 — 已检查所有 parent Done
+- 多个 task 引用同一 parent — fan-out 已支持
+- `create` 时 `parents` 参数限制在同 batch 内 — 唯一限制
 
-#### review-needed
-```
-── 上下文 ──
-  完成人: {assignee}
-  产出物:
-    {artifact_name} → {path_or_url}
+**目标：** DAG 模式全由 `create` + `parents` 表达，无需新动词或新字段。
 
-── 操作 ──
-  [A2A] approve {sid}   — 通过
-  [A2A] reject {sid}    — 退回
-```
+### 4.1 需要改的
 
-#### approved
-```
-── 上下文 ──
-  审阅人: {reviewer}
+| 需求 | 依据 | 改动 |
+|------|------|------|
+| 跨 batch parents | `handle_create` L489-490 只遍历当前 batch 做父级校验 | 去掉"同 batch"限制 |
+| 循环依赖检测 | create 时检查 parents 不形成环（新） | `db.rs` 加 DFS |
 
-── 操作 ──
-  已完成，无后续操作
-```
+其余 fan-out/fan-in/混合模式无需改代码。
 
-#### rejected
-```
-── 上下文 ──
-  审阅人: {reviewer}
-  原因: {reason}
+### 4.2 Worker 多任务
 
-── 操作 ──
-  修改后重新 [A2A] complete {sid}
-```
+现状：Worker 收到多个 `assigned` 邮件，按收件顺序处理。`list` + assignee 过滤通过 API 可用，SMTP 通过 `list` params 可用。无需特殊机制——Worker 自行决定优先级。
 
-#### blocked
-```
-── 上下文 ──
-  发起人: {blocker}
-  原因: {reason}
+## 5. 实施分阶段
 
-── 操作 ──
-  Orchestrator 协调处理
-```
-
-#### unblocked
-```
-── 上下文 ──
-  解除人: {unblocker}
-
-── 操作 ──
-  继续执行
-```
-
-#### cancelled
-```
-── 上下文 ──
-  (none)
-
-── 操作 ──
-  停止工作等待新分配
-```
-
-#### output
-```
-── 上下文 ──
-  提交人: {verifier}
-  任务: {short_id} — {title}
-  摘要: {summary}
-
-── 操作 ──
-  [Confirm] output {board}  — 验收通过，项目完成
-  [A2A] reopen              — 驳回，任务回到 Running
-```
-
-#### comment
-```
-── 上下文 ──
-  来自: {commenter}
-  内容: {text}
-
-── 操作 ──
-  直接回复邮件讨论
-```
-
-#### arbitrate
-```
-── 上下文 ──
-  请求人: {requester}
-  关联: {task_id}
-  争议: {dispute}
-
-── 操作 ──
-  Owner/Admin 介入调解
-```
-
-#### notify_all
-```
-── 上下文 ──
-  {message}
-
-── 操作 ──
-  (none)
-```
-
-
-## 5. 并行执行模式
-
-### 5.1 总体 pipeline，局部 fan-out / fan-in
-
-Board 采用 DAG 任务图，支持三种局部模式组合：
-
-```
-        T1 (总设计)
-       /          \
-  T2 (前端)    T3 (后端)     ← fan-out: T1 完成后并行启动
-       \          /
-        T4 (集成)            ← fan-in:  T2+T3 都完成才启动
-          |
-        T5 (部署)
-```
-
-**实现方式：**
-
-`create` 时设置 `parents` 数组（已有字段 `parent_ids: Vec<String>`）：
-
-```json
-{
-  "tasks": [
-    {"title": "前端实现", "assignee": "dev@x.com",    "parents": ["T1"]},
-    {"title": "后端实现", "assignee": "be@x.com",     "parents": ["T1"]},
-    {"title": "集成测试", "assignee": "qa@x.com",      "parents": ["T2", "T3"]}
-  ]
-}
-```
-
-`promote_children` 已支持多父检查（现有代码 L701-705）：
-```
-all_done = child.parent_ids.iter().all(|pid| parent_done(pid))
-→ 全部 Done 才 promote Todo → Ready
-```
-
-### 5.2 执行时变更
-
-Worker 执行中发现需要更多粒度时，通过**会话流**（CC board 地址）向 orchestrator 沟通：
-
-```
-From: dev@x.com
-To: pm@x.com
-CC: web-redesign.a2a@x.com
-Subject: [Discuss] T2 需要拆分为 3 个子任务
-
-前端实现需要拆分为：
-- CSS 布局 + 响应式
-- API 对接
-- 状态管理
-
-请 orchestrator 补充 create
-```
-
-Orchestrator 用 `[A2A] create` 创建子任务，`parents: ["T2"]`。原 T2 可 `cancel` 或被 approve 后自然结束。
-
-### 5.3 模式组合规则
-
-| 规则 | 说明 |
-|------|------|
-| `parents` 数组不限制长度 | 任意 fan-in 深度 |
-| 同一 task 可被多个 children 引用 | fan-out 天然支持 |
-| children 可再 spawn | 嵌套分解 |
-| 循环依赖检测 | `create` 时拒绝 `parents` 形成环 |
-| 跨 batch parents | `parents` 可引用已有 task（不限于同 batch）|
-
-### 5.4 `verify_pipeline_integrity` 增强
-
-现有逻辑只检查 "是否有未完成 task"。增强后：
-
-```
-pipeline issues 检查项:
-  ✗ T3 未完成 (status=running)
-  ✗ T2 已 Done 但依赖 T2 的 T4 尚未 Ready (orphan promote)
-  ✗ T1→T3→T1 循环依赖
-```
-
-## 6. Worker 并发多任务处理
-
-### 6.1 当前行为
-
-同一 Worker 被分配多个任务时，每次收到独立的 `assigned` 邮件通知。Worker 按收到顺序逐个处理。
-
-### 6.2 增强
-
-| 工具 | 功能 |
-|------|------|
-| `[A2A] list` + `?assignee=dev@x.com` | Worker 查看自己的所有任务及状态 |
-| `[A2A] list` + `?assignee=dev@x.com&status=running` | 只看进行中 |
-| `[A2A] show T1` | 看单个任务 + 父级产出物 |
-
-Worker 自行决定执行顺序。收到通知后回复 `[A2A] heartbeat` 确认开始。
-
-### 6.3 多任务通知示例
-
-Worker dev@x.com 同时持有 T2 和 T5 的通知：
-
-```
-── A2A Board ──
-
-新任务分配
-  任务: T2 — 前端实现
-  看板: web-redesign
-
-── 上下文 ──
-  前序产出物:
-    T1 总设计 → https://figma.com/x
-
-── 操作 ──
-  开始执行后发 [A2A] heartbeat T2
-
-
-── A2A Board ──
-
-新任务分配
-  任务: T5 — 导航栏
-  看板: web-redesign
-
-── 上下文 ──
-  前序产出物: (无)
-
-── 操作 ──
-  开始执行后发 [A2A] heartbeat T5
-```
-
-## 7. 实施分阶段（更新）
-
-| 阶段 | 内容 | 文件 |
-|------|------|:--:|
-| **P1** | `do_complete()` + summary 写入 | `commands.rs` |
-| **P2** | interceptor 附件保存 + 跨 batch parents | `interceptor.rs` |
-| **P3** | `promote_children` 通知含父级产物 | `commands.rs` + `notify.rs` |
-| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` |
-
-| **P5** | 循环依赖检测 | `db.rs` + `commands.rs` |
-| **P6** | 通知 Body 规范化 | `notify.rs` |
-| **P7** | 测试 + 文档同步 | `category-6` + `A2A-BOARD-GUIDE` |
-
-
-| 阶段 | 内容 | 文件 |
-|------|------|:--:|
-| **P1** | `do_complete()` 提取，summary 参数写入 | `commands.rs` |
-| **P2** | interceptor 附件保存 + summary 合并 | `interceptor.rs` |
-| **P3** | `notify_assigned` 通知含父级产出物 | `notify.rs` |
-| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` |
-| **P5** | 所有通知 Body 规范化 | `notify.rs` |
-| **P6** | 测试 + 文档同步 | `category-6` + `A2A-BOARD-GUIDE` |
+| 阶段 | 内容 | 文件 | 改动量 |
+|------|------|------|:--:|
+| **P1** | `do_complete()` + summary 参数 | `commands.rs` | ~30 行 |
+| **P2** | interceptor 附件保存 + summary 合并 | `interceptor.rs` | ~40 行 |
+| **P3** | `notify_assigned` 含父级产物 | `notify.rs` + `commands.rs` | ~20 行 |
+| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` | ~30 行 |
+| **P5** | 跨 batch parents 解除限制 | `commands.rs` | ~5 行 |
+| **P6** | 循环依赖检测 | `db.rs` | ~20 行 |
+| **P7** | 通知 Body 规范化 | `notify.rs` | ~80 行 |
+| **P8** | 测试 + 文档 | `category-6` + GUIDE | |
