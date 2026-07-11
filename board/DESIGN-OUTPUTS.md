@@ -33,8 +33,8 @@ pub summary: String,     // JSON: {"description":"...", "artifacts":[...]}
 {
   "description": "登录 API 完成",
   "artifacts": [
-    {"name":"login_api.rs", "size":2048, "uuid":"abc123", "type":"attachment"},
-    {"name":"PR #42", "url":"https://github.com/x/pull/42", "type":"url"}
+    {"attachment_id":"abc123", "filename":"login_api.rs", "content_type":"text/plain", "size":2048},
+    {"filename":"PR #42", "url":"https://github.com/x/pull/42", "type":"url"}
   ]
 }
 ```
