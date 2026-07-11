@@ -71,9 +71,9 @@ Toolset: board_task_show → summary JSON → 提取 uuid
 | 文件 | 改动 | 行数 | 说明 |
 |------|------|:--:|------|
 | `commands.rs` | `do_complete()` 提取 + summary 参数 | ~30 | SMTP/Toolset 统一入口 |
-| `interceptor.rs` | 读 attachments_json → 构造 summary | ~15 | complete 时处理附件 |
-| `interceptor.rs` | `create_permission` (assignee+reviewer+board) | ~10 | 下载权限 |
-| `notify.rs` | `notify_review_needed` 接受 attachment_ids | ~5 | 通知带附件 UUID |
+| `interceptor.rs` | 读 attachments_json → 构造 summary | ~20 | complete + output 时处理附件 |
+| `interceptor.rs` | `create_permission` (assignee+reviewer+board) | ~15 | complete + output 时创建下载权限 |
+| `notify.rs` | `notify_review_needed` + `notify_output` 接受 attachments | ~10 | 两个通知带附件 UUID |
 | `notify.rs` | `create_outbound` 传入 attachments_json | ~2 | mail_count 保护 |
 | `commands.rs` | `notify_assigned` 含父级产物 | ~10 | promote_children 时 |
 | `commands.rs` | `show`/`list` 返回 parent_summaries | ~15 | data 字段 |
