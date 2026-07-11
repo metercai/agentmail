@@ -132,7 +132,14 @@ DAG 通过 `parents` 数组表达，无需新字段或新动词。改动：
 
 两类区别仅在于是否调 `create_permission(board_address)`——产出物需要长期保留，临时文件仅靠通知邮件转发。
 
-### 9.2 Board 归档时权限回收
+### 9.2 Board 归档
 
-Board `completed` 后，清除该 board 所有附件的 `board_address` 下载权限——后续由 30 天自然生命周期管理。处理入口：`handle_confirm_output`（interceptor.rs）或 `handle_output` 成功后 Owner 确认时。
+Board → `Archived` 时触发（已有 `BoardStatus::Archived`）：
+
+1. 遍历所有 task 的 `summary.artifacts`
+2. 对有 `attachment_id` 的附件：
+   - 从 `{attach_dir}/{sender_hash16}/{uuid}.{ext}` 复制到 `a2a_board/{bid}/outputs/{tid}/item-{idx}-{filename}`
+   - 更新 summary JSON：`attachment_id` → 本地相对路径
+3. 删除 `board_address` 下载权限
+4. Board 目录可独立打包/导出——board.db + outputs/ 自包含
 
