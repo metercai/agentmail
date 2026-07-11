@@ -287,7 +287,148 @@ event-type: assigned, review-needed, approved, rejected,
   (none)
 ```
 
-## 4. 实施分阶段
+
+## 5. 并行执行模式
+
+### 5.1 总体 pipeline，局部 fan-out / fan-in
+
+Board 采用 DAG 任务图，支持三种局部模式组合：
+
+```
+        T1 (总设计)
+       /          \
+  T2 (前端)    T3 (后端)     ← fan-out: T1 完成后并行启动
+       \          /
+        T4 (集成)            ← fan-in:  T2+T3 都完成才启动
+          |
+        T5 (部署)
+```
+
+**实现方式：**
+
+`create` / `spawn` 时设置 `parents` 数组（已有字段 `parent_ids: Vec<String>`）：
+
+```json
+{
+  "tasks": [
+    {"title": "前端实现", "assignee": "dev@x.com",    "parents": ["T1"]},
+    {"title": "后端实现", "assignee": "be@x.com",     "parents": ["T1"]},
+    {"title": "集成测试", "assignee": "qa@x.com",      "parents": ["T2", "T3"]}
+  ]
+}
+```
+
+`promote_children` 已支持多父检查（现有代码 L701-705）：
+```
+all_done = child.parent_ids.iter().all(|pid| parent_done(pid))
+→ 全部 Done 才 promote Todo → Ready
+```
+
+### 5.2 `spawn` — 任务内部分解
+
+Worker 在任务执行中发现需要派生子任务时，发 `[A2A] spawn`：
+
+```
+[A2A] spawn T1
+{"tasks": [
+  {"title": "登录 API",      "assignee": "be@x.com"},
+  {"title": "数据库迁移",     "assignee": "dba@x.com"}
+]}
+```
+
+与 `create` 的区别：
+- `create` 是 orchestrator 全局创建，`parents` 显式声明
+- `spawn` 是 assignee 内部拆解，自动 `parents: [T1]`
+- `spawn` 要求 sender 是 task 的 assignee，且 task 是 Running
+
+### 5.3 模式组合规则
+
+| 规则 | 说明 |
+|------|------|
+| `parents` 数组不限制长度 | 任意 fan-in 深度 |
+| 同一 task 可被多个 children 引用 | fan-out 天然支持 |
+| children 可再 spawn | 嵌套分解 |
+| 循环依赖检测 | `create`/`spawn` 时拒绝 `parents` 形成环 |
+| 跨 batch parents | `parents` 可引用已有 task（不限于同 batch）|
+
+### 5.4 `verify_pipeline_integrity` 增强
+
+现有逻辑只检查 "是否有未完成 task"。增强后：
+
+```
+pipeline issues 检查项:
+  ✗ T3 未完成 (status=running)
+  ✗ T2 已 Done 但依赖 T2 的 T4 尚未 Ready (orphan promote)
+  ✗ T1→T3→T1 循环依赖
+```
+
+## 6. Worker 并发多任务处理
+
+### 6.1 当前行为
+
+同一 Worker 被分配多个任务时，每次收到独立的 `assigned` 邮件通知。Worker 按收到顺序逐个处理。
+
+### 6.2 增强
+
+| 工具 | 功能 |
+|------|------|
+| `[A2A] list` + `?assignee=dev@x.com` | Worker 查看自己的所有任务及状态 |
+| `[A2A] list` + `?assignee=dev@x.com&status=running` | 只看进行中 |
+| `[A2A] show T1` | 看单个任务 + 父级产出物 |
+
+Worker 自行决定执行顺序。收到通知后回复 `[A2A] heartbeat` 确认开始。
+
+### 6.3 多任务通知示例
+
+Worker dev@x.com 同时持有 T2 和 T5 的通知：
+
+```
+── A2A Board ──
+
+新任务分配
+  任务: T2 — 前端实现
+  看板: web-redesign
+
+── 上下文 ──
+  前序产出物:
+    T1 总设计 → https://figma.com/x
+
+── 操作 ──
+  开始执行后发 [A2A] heartbeat T2
+
+
+── A2A Board ──
+
+新任务分配
+  任务: T5 — 导航栏
+  看板: web-redesign
+
+── 上下文 ──
+  前序产出物: (无)
+
+── 操作 ──
+  开始执行后发 [A2A] heartbeat T5
+```
+
+### 6.4 新增 `spawn` 动词
+
+| 动词 | 权限 | 参数 | 说明 |
+|------|------|------|------|
+| `spawn` | assignee | `{"tasks": [{...}]}` | 正在 Running 的任务分解出子任务 |
+
+## 7. 实施分阶段（更新）
+
+| 阶段 | 内容 | 文件 |
+|------|------|:--:|
+| **P1** | `do_complete()` + summary 写入 | `commands.rs` |
+| **P2** | interceptor 附件保存 + 跨 batch parents | `interceptor.rs` |
+| **P3** | `promote_children` 通知含父级产物 | `commands.rs` + `notify.rs` |
+| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` |
+| **P5** | `spawn` 动词 (~50 行) | `commands.rs` + models |
+| **P6** | 循环依赖检测 | `db.rs` + `commands.rs` |
+| **P7** | 通知 Body 规范化 | `notify.rs` |
+| **P8** | 测试 + 文档同步 | `category-6` + `A2A-BOARD-GUIDE` |
+
 
 | 阶段 | 内容 | 文件 |
 |------|------|:--:|
