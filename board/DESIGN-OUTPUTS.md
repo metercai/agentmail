@@ -1,171 +1,138 @@
-# A2A Board 产出物传递 & 通知规范化方案
+# A2A Board 产出物传递方案
 
-## 架构前提
-
-Gateway 和 Agent 不在同一环境：
-- **Gateway**：接收 SMTP 邮件、执行 board 命令、转发 webhook
-- **Agent (Hermes)**：接收 webhook payload、运行 agentmail toolset、本地文件存储
-
-附件通过**邮件系统**自然传递——不需要 Gateway 另外存储。
+## 0. 架构关键
 
 ```
-Worker → SMTP complete (带附件)
-         ↓
-Gateway → interceptor: 从 payload 取附件名 → 写入 summary JSON
-         → do_complete(conn, task_id, sender, summary)
-         → webhook 转发完整邮件（含附件内容）给 Agent
-         ↓
-Agent   → webhook 收到附件 → 保存到本地 outputs/
-         → toolset board_task_show 查询 summary（获取 artifact 引用）
+Worker 发 complete（带附件）→ Board 地址 → Gateway SMTP
+  → interceptor 提取附件 metadata → 写入 task.summary
+  → notify 发送通知邮件（带附件）→ Agent 邮箱 → webhook
+  → Agent 从 webhook 接收附件（通用能力，不做二次存储）
+  → Toolset 通过 API 查询 summary（获取 artifact 元数据，核验附件是否收到）
 ```
+
+核心逻辑：
+- Gateway **不存储**文件——附件跟着邮件流走
+- Agent **不二次提取**——webhook 已保存附件到本地
+- 附件通过 notify 邮件链转发——`complete` 邮件附件 → 提取 metadata → notify 邮件带附件发出
 
 ## 1. 产出物传递
 
-### 1.1 传递方式
-
-| 方式 | 来源 | 谁处理 |
-|------|------|--------|
-| SMTP 附件 | `complete` 邮件附件 | Gateway：提取文件名写入 summary；Agent：从 webhook 保存文件 |
-| URL 引用 | complete JSON body 的 `artifacts[].url` | Gateway：直接写入 summary |
-| 混合 | 两者同时 | 各自处理 |
-
-### 1.2 存储（Agent 侧）
+### 1.1 完整链路
 
 ```
-~/.agentmail/{system_id}/board/{board_id}/
-├── board.db (只读——来自 gateway 数据库)
-└── outputs/
-    └── {task_id}/
-        ├── item-0-login_api.rs
-        └── item-1-api_doc.md
+Worker
+  ↓ SMTP complete T1 + login_api.rs（附件）
+Gateway SMTP Receiver
+  ↓ interceptor: 解析 MIME → 提取附件名/类型/大小 → 暂存附件内容（内存 or /tmp）
+  ↓ do_complete(task_id, sender, summary_json)
+  ↓ notify_review_needed(&task) — 构造邮件：Subject + Body + 附件
+Gateway SMTP Sender
+  ↓ 发送通知邮件给 reviewer
+Agent（reviewer）
+  ↓ webhook 收到通知邮件（通用入口）→ 附件自动保存
+  ↓ 用 toolset 查询 task.summary 核验 artifact 列表
 ```
+
+### 1.2 Gateway 改动
+
+**interceptor.rs**（当前 L367-373 仅解析 subject+body）：
+
+```
+handle_board_email():
+  if verb == "complete":
+    // 已有：解析 verb + task_id + body JSON
+    // 新增：
+    1. 从 payload["attachments"] 取附件列表
+    2. 构造 artifact 条目：{name, size, content_type, type: "attachment"}
+    3. 合并 body JSON 中的 url 引用
+    4. 构造 summary JSON
+    5. 暂存附件内容（传给 notify 用）
+    6. 调用 do_complete(conn, task_id, sender, summary)
+    7. 构造通知邮件时携带附件
+```
+
+**notify.rs**（当前 `create_email` 只发文本）：
+
+```
+create_email() → create_email_with_attachments(recipient, subject, body, attachments)
+```
+
+**commands.rs**：提取 `do_complete()` 公共函数（P1，~30 行）。
 
 ### 1.3 summary JSON 结构
 
-Worker 在 complete 时描述产出物：
-
 ```json
 {
-  "description": "登录 API 完成",
+  "description": "登录 API 完成，REST 接口，JWT 认证",
   "artifacts": [
-    {
-      "name": "login_api.rs",
-      "path": "outputs/tid/item-0-login_api.rs",
-      "url": "https://github.com/x/pull/42",
-      "type": "code"
-    }
+    {"name": "login_api.rs", "size": 2048, "type": "attachment"},
+    {"name": "PR #42", "url": "https://github.com/x/pull/42", "type": "url"}
   ]
 }
 ```
 
-- `name`、`type` → 从邮件附件或 body JSON 提取
-- `path` → Agent 保存附件后填入
-- `url` → Worker 在 body 中提供
+### 1.4 Agent 侧
 
-### 1.4 Gateway 侧：`do_complete()`
+Agent 通过通用 webhook 接收通知邮件——附件已自动保存到本地（通用能力，非 board 专属）。Toolset 查询：
 
-**依据**：当前 `handle_complete`（commands.rs L129-146）不接收 summary，直接写状态。
-
-**改动**：提取 `do_complete(conn, task_id, sender, summary_json)` 公共函数——SMTP interceptor 和 Toolset handler 都调它。
-
-**SMTP 入口**（interceptor.rs L367-373）新增逻辑：
 ```
-从 payload 提取:
-  - body JSON 中的 artifacts[].url
-  - 附件列表中的文件名 → 构造 {name, type: "attachment"}
-合并 → 构造 summary JSON
-调用 do_complete(...)
+board_task_show(T1)
+→ {"status":"ok", "task":{..., "summary":{...}}}
 ```
 
-**Toolset 入口**：当前没有 `board_complete` 写操作工具——暂时不涉及。如需加，同一入口。
+Agent 用 `summary.artifacts[].name` 与 webhook 接收到的附件文件名核验一致性。
 
-### 1.5 Agent 侧：附件保存
+### 1.5 Toolset 可靠性验证
 
-Agent 收到 webhook payload 后：
-1. 解析 `payload["attachments"]` 数组
-2. 如果是 complete 通知 → 保存到 `outputs/{task_id}/item-{idx}-{name}`
-3. 更新 path 到本地缓存（可选——`board_task_show` 已返回 summary JSON 中的路径）
+Toolset 是纯查询入口（HTTP API），不传递文件。可靠性验证方式：
+
+| 方式 | 说明 |
+|------|------|
+| 附件名匹配 | `summary.artifacts[].name` vs webhook 接收的附件文件名 |
+| 数量匹配 | `summary.artifacts` 的 attachment 条目数 vs webhook 附件数 |
+| 大小校验 | `summary.artifacts[].size` vs webhook 附件的实际大小 |
+
+若不一致，Agent 可通过会话流反馈异常。
 
 ## 2. 父级产出物传递
 
-**现状**：`promote_children`（commands.rs L695-714）只做状态提升（Todo→Ready），不传递父级数据。`notify_assigned`（notify.rs L12-22）不含父级上下文。
+**现状**：`promote_children`（commands.rs L695-714）只做 Todo→Ready，`notify_assigned`（notify.rs L12-22）不含父级上下文。
 
-**目标**：子任务被 promote 时，通知携带父级产出物的文件名和 URL。
+**目标**：子任务 promote 时，通知携带父级 artifact 列表。
 
 ### 2.1 notify_assigned 参数扩展
 
-`notify.rs` 当前的 `notify_assigned(&self, task)` 只取 task 自身字段。增加 `parent_summaries: Option<&[(String, String, String)]>` 参数（父级 short_id、title、artifact 引用行）。
+增加 `parent_artifacts: Option<Vec<(&str, &str)>>` — 每项是 `(short_id, artifact_line)`：
 
-### 2.2 promote_children 调用点
+```
+前序产出物:
+  T1 登录 API
+    - login_api.rs (2KB, attachment)
+    - PR #42 (https://github.com/x/pull/42)
+```
 
-commands.rs L697-709 调 `notify_assigned` 时查父级 summaries 并传入。
+### 2.2 show 返回 parent_summaries
 
-### 2.3 show 返回 parent_summaries
-
-`handle_show`（L388-391）返回的 `CommandResponse.data` 附加父级摘要数组。
-
-`handle_get_task`（handlers.rs L89-101）同样附加。
+`handle_show`（L388-391）和 `handle_get_task`（handlers.rs L89-101）的 `CommandResponse.data` 附加父级摘要数组。
 
 ## 3. 通知格式规范
 
-**现状**：notify.rs 11 个函数各自拼写 Subject/Body，英文中文混用。
-
-**目标**：统一模板。
-
-### 3.1 Subject
-
-```
-[A2A] {event-type} {short_id}: {title}
-```
-
-### 3.2 Body
-
-```text
-── A2A Board ──
-
-{event_label}
-  任务: {short_id} — {title}
-  看板: {board_short_id}
-
-── 上下文 ──
-{context_fields}
-
-── 操作 ──
-{action_hint}
-```
-
-各事件字段基于现有 notify.rs 参数映射，不新增数据来源。
+统一 Subject + Body 模板（notify.rs 11 个函数）。格式同前版方案，以现有 notify.rs 参数映射为准。
 
 ## 4. 并行执行模式
 
-**现状**：
-- `parent_ids: Vec<String>` — fan-in 已支持
-- `promote_children` L701-705 — 所有 parent Done 才 promote
-- 多个 task 引用同一 parent — fan-out 已支持
-- `create` 限制 parents 在同 batch — 唯一约束
-
-**目标**：DAG 靠 `parents` 数组完全表达。需改动：
-
-| 需求 | 依据 | 改动 |
-|------|------|------|
-| 跨 batch parents | handle_create L489-490 父级校验只遍历当前 batch | 去掉同 batch 限制 |
-| 循环依赖检测 | create 时 DFS 检查 parents 无环 | db.rs ~20 行 |
-
-其余 fan-out/fan-in/混合模式无需改代码。
-
-### Worker 多任务
-
-收到多个 `assigned` 通知时按邮件顺序处理。`list` + assignee 过滤（API 已有，SMTP `list` params 已有）自行管理优先级。无需改动。
+无需新增功能——`parents` 数组 + `promote_children` 已覆盖 DAG。仅需：
+- 放开 create 的"同 batch" parents 限制（commands.rs ~5 行）
+- 循环依赖检测（db.rs ~20 行）
 
 ## 5. 实施分阶段
 
-| 阶段 | 内容 | 文件 | 行数 |
-|------|------|------|:--:|
-| **P1** | `do_complete()` + summary 参数 | `commands.rs` | ~30 |
-| **P2** | interceptor 附件名提取 + summary 构造 | `interceptor.rs` | ~30 |
-| **P3** | `notify_assigned` 含父级产物 | `notify.rs` + `commands.rs` | ~25 |
-| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` | ~35 |
-| **P5** | 跨 batch parents | `commands.rs` | ~5 |
-| **P6** | 循环依赖检测 | `db.rs` | ~20 |
-| **P7** | 通知 Body 规范化 | `notify.rs` | ~80 |
-| **P8** | 测试 + 文档 | `category-6` + GUIDE | |
+| 阶段 | 内容 | 文件 |
+|------|------|------|
+| **P1** | `do_complete()` + summary 参数 | `commands.rs` |
+| **P2** | interceptor 提取附件 metadata + 通知带附件 | `interceptor.rs` + `notify.rs` |
+| **P3** | `notify_assigned` 含父级产物 | `notify.rs` + `commands.rs` |
+| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` |
+| **P5** | 跨 batch parents + 循环检测 | `commands.rs` + `db.rs` |
+| **P6** | 通知 Body 规范化 | `notify.rs` |
+| **P7** | 测试 + 文档 | `category-6` + GUIDE |
