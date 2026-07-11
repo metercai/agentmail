@@ -26,6 +26,25 @@ Scheduler → 分发到拦截器链 → A2aInterceptor
 - 邮件记录的 `attachments_json` 字段含附件 UUID/文件名/大小
 - Gateway 已有附件下载 API（attachment_factory）
 
+
+### 0.1 附件生命周期
+
+**deliver.rs `cleanup_completed_email`（L150-324）：** 邮件交付完成后级联删除附件。保护条件：
+
+```rust
+if perm_count == 0 && mail_count <= 1 {
+    // 删除文件
+} // 有多个 mail 引用 → 保留
+```
+
+**当前漏洞：** notify 创建通知邮件时传给 `create_outbound` 的 `attachments_json` 是 `None`（notify.rs L54），未引用原附件 UUID → 原邮件 `mail_count=1` → 交付完成即删除。
+
+**修复（2 行）：**
+- `notify_review_needed(task, attachment_ids)` — 接受原邮件的 attachments_json
+- `interceptor` — 处理 complete 时传入 payload["attachments_json"]
+
+效果：通知邮件引用同一附件 UUID → `mail_count >= 2` → 附件存续到所有下游邮件交付完成。
+
 ## 1. 产出物传递
 
 ### 1.1 完整链路
