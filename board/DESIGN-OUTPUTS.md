@@ -118,3 +118,21 @@ Body:
 DAG 通过 `parents` 数组表达，无需新字段或新动词。改动：
 - 跨 batch parents（解除 create 中"同 batch"限制）
 - 循环依赖检测（create 时 DFS）
+
+## 9. 附件流转覆盖 & Board 归档
+
+### 9.1 Notifier 字段生效范围
+
+`Notifier` 加 `attachments_json` 后，所有 14 个 notify 函数自动携带附件——无需逐个改动。
+
+| 类别 | 动词 | count |
+|------|------|:--:|
+| 产出物（建 board 级权限） | `complete`, `output` | 2 |
+| 临时交流（不建 board 级权限） | `create`, `comment`, `review`, `approve`, `reject`, `reassign`, `block`, `unblock`, `cancel`, `reopen`, `arbitrate`, `refresh` | 12 |
+
+两类区别仅在于是否调 `create_permission(board_address)`——产出物需要长期保留，临时文件仅靠通知邮件转发。
+
+### 9.2 Board 归档时权限回收
+
+Board `completed` 后，清除该 board 所有附件的 `board_address` 下载权限——后续由 30 天自然生命周期管理。处理入口：`handle_confirm_output`（interceptor.rs）或 `handle_output` 成功后 Owner 确认时。
+
