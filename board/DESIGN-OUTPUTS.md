@@ -1,25 +1,39 @@
 # A2A Board 产出物传递 & 通知规范化方案
 
+## 架构前提
+
+Gateway 和 Agent 不在同一环境：
+- **Gateway**：接收 SMTP 邮件、执行 board 命令、转发 webhook
+- **Agent (Hermes)**：接收 webhook payload、运行 agentmail toolset、本地文件存储
+
+附件通过**邮件系统**自然传递——不需要 Gateway 另外存储。
+
+```
+Worker → SMTP complete (带附件)
+         ↓
+Gateway → interceptor: 从 payload 取附件名 → 写入 summary JSON
+         → do_complete(conn, task_id, sender, summary)
+         → webhook 转发完整邮件（含附件内容）给 Agent
+         ↓
+Agent   → webhook 收到附件 → 保存到本地 outputs/
+         → toolset board_task_show 查询 summary（获取 artifact 引用）
+```
+
 ## 1. 产出物传递
-
-**现状：** Task 有 `summary` 和 `metadata` 字段，但 `summary` 永远是空字符串，`metadata` 仅在 create 时设置后永不修改。`complete` 不支持描述产出物。SMTP 附件被拦截器忽略。
-
-**目标：** Worker 完成时可通过邮件附件和/或 URL 引用传递产出物，后续任务能获取。
 
 ### 1.1 传递方式
 
-| 方式 | 来源 | 存到哪里 |
-|------|------|---------|
-| SMTP 附件 | `complete` 邮件附件 | `outputs/{task_id}/item-{idx}-{filename}` |
-| URL 引用 | complete JSON body | summary JSON 中的 `artifacts[].url` |
-| 混合 | 两者同时 | path + url 都写入 |
+| 方式 | 来源 | 谁处理 |
+|------|------|--------|
+| SMTP 附件 | `complete` 邮件附件 | Gateway：提取文件名写入 summary；Agent：从 webhook 保存文件 |
+| URL 引用 | complete JSON body 的 `artifacts[].url` | Gateway：直接写入 summary |
+| 混合 | 两者同时 | 各自处理 |
 
-### 1.2 存储布局
+### 1.2 存储（Agent 侧）
 
 ```
 ~/.agentmail/{system_id}/board/{board_id}/
-├── board.db
-├── role_prompt/
+├── board.db (只读——来自 gateway 数据库)
 └── outputs/
     └── {task_id}/
         ├── item-0-login_api.rs
@@ -27,6 +41,8 @@
 ```
 
 ### 1.3 summary JSON 结构
+
+Worker 在 complete 时描述产出物：
 
 ```json
 {
@@ -42,119 +58,67 @@
 }
 ```
 
-### 1.4 统一入口
+- `name`、`type` → 从邮件附件或 body JSON 提取
+- `path` → Agent 保存附件后填入
+- `url` → Worker 在 body 中提供
 
-当前 `handle_complete` 的逻辑内嵌在 handler 中，SMTP 和 Toolset 都各走各的。提取为 `do_complete(conn, task_id, sender, summary)` 公共函数：
+### 1.4 Gateway 侧：`do_complete()`
 
+**依据**：当前 `handle_complete`（commands.rs L129-146）不接收 summary，直接写状态。
+
+**改动**：提取 `do_complete(conn, task_id, sender, summary_json)` 公共函数——SMTP interceptor 和 Toolset handler 都调它。
+
+**SMTP 入口**（interceptor.rs L367-373）新增逻辑：
 ```
-SMTP 入口:
-  interceptor: 解析附件 → 保存到 outputs/ → 构造 summary JSON
-              ↓
-         do_complete(conn, task_id, sender, summary)
-              ↓
-Toolset/API 入口:
-  handler: 直接从请求体取 summary JSON
-              ↓
-         do_complete(conn, task_id, sender, summary)
-```
-
-`do_complete` 内部：
-1. 写入 `task.summary`
-2. `insert_event("completed", summary)`
-3. 有 reviewer → `notify_review_needed`
-4. 无 reviewer → `promote_children` + `notify_approved`
-
-### 1.5 当前代码依据
-
-**commands.rs L129-146:** `handle_complete` 不接收 summary，写入状态后调 notifier。
-
-```rust
-// L129-145 现状
-fn handle_complete(conn, notifier, cmd, sender) {
-    let task_id = extract_task_id(cmd)?;  // 从 cmd.task_id 取
-    let mut task = db::get_task(conn, &task_id)?;
-    require_assignee(&task, sender)?;
-    // 无 summary 写入
-    if task.reviewer.is_some() {
-        task.status = TaskStatus::Reviewing;
-    } else {
-        task.status = TaskStatus::Done;
-    }
-    db::update_task(conn, &task)?;
-    // ...
-}
+从 payload 提取:
+  - body JSON 中的 artifacts[].url
+  - 附件列表中的文件名 → 构造 {name, type: "attachment"}
+合并 → 构造 summary JSON
+调用 do_complete(...)
 ```
 
-**interceptor.rs L367-373:** 对 SMTP 入口调用 execute_command 时，只传递 subject 解析出的 verb+task_id+params，忽略附件。
+**Toolset 入口**：当前没有 `board_complete` 写操作工具——暂时不涉及。如需加，同一入口。
 
-```rust
-// L367-373 现状
-let cmd = A2aCommand { verb, task_id, params };  // params = body JSON
-match commands::execute_command(&conn, &notifier, &cmd, &sender) {
-```
+### 1.5 Agent 侧：附件保存
+
+Agent 收到 webhook payload 后：
+1. 解析 `payload["attachments"]` 数组
+2. 如果是 complete 通知 → 保存到 `outputs/{task_id}/item-{idx}-{name}`
+3. 更新 path 到本地缓存（可选——`board_task_show` 已返回 summary JSON 中的路径）
 
 ## 2. 父级产出物传递
 
-**现状：** `promote_children`（commands.rs L695-714）只在父任务全部 Done 时将子任务从 Todo→Ready，不发父级产出物信息。`notify_assigned`（notify.rs）通知不含父级上下文。
+**现状**：`promote_children`（commands.rs L695-714）只做状态提升（Todo→Ready），不传递父级数据。`notify_assigned`（notify.rs L12-22）不含父级上下文。
 
-**目标：** 子任务被 promote 时，通知中包含父级产出物摘要（文件名/URL）。
+**目标**：子任务被 promote 时，通知携带父级产出物的文件名和 URL。
 
-### 2.1 notify_assigned 增强
+### 2.1 notify_assigned 参数扩展
 
-notify.rs L12-22 现状：
+`notify.rs` 当前的 `notify_assigned(&self, task)` 只取 task 自身字段。增加 `parent_summaries: Option<&[(String, String, String)]>` 参数（父级 short_id、title、artifact 引用行）。
 
-```rust
-pub fn notify_assigned(&self, task: &Task) {
-    let subject = format!("[A2A] assigned {}: {}", task.short_id, task.title);
-    let body = format!(
-        "task_id: {}\nboard: {}\n标题: {}\n描述: {}\n审阅者: {}\n创建人: {}",
-        task.id, task.board_id, task.title, task.body,
-        task.reviewer.as_deref().unwrap_or("(无)"),
-        task.created_by,
-    );
-    self.create_email(&task.assignee, &subject, &body);
-}
-```
+### 2.2 promote_children 调用点
 
-改为接受 `parent_summaries: Option<Vec<ParentArtifact>>` 参数，有父级时补充：
+commands.rs L697-709 调 `notify_assigned` 时查父级 summaries 并传入。
 
-```
-前序产出物:
-  T1 登录 API → outputs/{tid}/item-0-login_api.rs
-  T2 UI 设计稿 → https://figma.com/x
-```
+### 2.3 show 返回 parent_summaries
 
-### 2.2 show 返回 parent_summaries
+`handle_show`（L388-391）返回的 `CommandResponse.data` 附加父级摘要数组。
 
-`handle_show`（commands.rs L388-391）现状只返回 task 本身。增强：
-
-```json
-{
-  "status": "ok",
-  "task": { ... },
-  "data": {
-    "parent_summaries": [
-      {"short_id": "T1", "title": "登录 API", "summary": {...}}
-    ]
-  }
-}
-```
+`handle_get_task`（handlers.rs L89-101）同样附加。
 
 ## 3. 通知格式规范
 
-**现状：** 11 个 notifier 函数各自拼接 Subject 和 Body，格式不一致，部分用英文，部分用中文。
+**现状**：notify.rs 11 个函数各自拼写 Subject/Body，英文中文混用。
 
-**目标：** 统一模板，减少 Agent 理解歧义。
+**目标**：统一模板。
 
-### 3.1 Subject 统一
-
-现有 Subject 格式各异（`"Board {} initialized"`, `"[A2A] notice: ..."`, `"[A2A] output: ..."`）。统一为：
+### 3.1 Subject
 
 ```
 [A2A] {event-type} {short_id}: {title}
 ```
 
-### 3.2 Body 统一
+### 3.2 Body
 
 ```text
 ── A2A Board ──
@@ -170,40 +134,38 @@ pub fn notify_assigned(&self, task: &Task) {
 {action_hint}
 ```
 
-各事件字段基于现有 notify.rs 参数映射，不新增数据源。详情见 notifier 各函数签名。
+各事件字段基于现有 notify.rs 参数映射，不新增数据来源。
 
 ## 4. 并行执行模式
 
-**现状：**
-- `parent_ids: Vec<String>` — 已支持多父 fan-in
-- `promote_children` L701-705 — 已检查所有 parent Done
+**现状**：
+- `parent_ids: Vec<String>` — fan-in 已支持
+- `promote_children` L701-705 — 所有 parent Done 才 promote
 - 多个 task 引用同一 parent — fan-out 已支持
-- `create` 时 `parents` 参数限制在同 batch 内 — 唯一限制
+- `create` 限制 parents 在同 batch — 唯一约束
 
-**目标：** DAG 模式全由 `create` + `parents` 表达，无需新动词或新字段。
-
-### 4.1 需要改的
+**目标**：DAG 靠 `parents` 数组完全表达。需改动：
 
 | 需求 | 依据 | 改动 |
 |------|------|------|
-| 跨 batch parents | `handle_create` L489-490 只遍历当前 batch 做父级校验 | 去掉"同 batch"限制 |
-| 循环依赖检测 | create 时检查 parents 不形成环（新） | `db.rs` 加 DFS |
+| 跨 batch parents | handle_create L489-490 父级校验只遍历当前 batch | 去掉同 batch 限制 |
+| 循环依赖检测 | create 时 DFS 检查 parents 无环 | db.rs ~20 行 |
 
 其余 fan-out/fan-in/混合模式无需改代码。
 
-### 4.2 Worker 多任务
+### Worker 多任务
 
-现状：Worker 收到多个 `assigned` 邮件，按收件顺序处理。`list` + assignee 过滤通过 API 可用，SMTP 通过 `list` params 可用。无需特殊机制——Worker 自行决定优先级。
+收到多个 `assigned` 通知时按邮件顺序处理。`list` + assignee 过滤（API 已有，SMTP `list` params 已有）自行管理优先级。无需改动。
 
 ## 5. 实施分阶段
 
-| 阶段 | 内容 | 文件 | 改动量 |
+| 阶段 | 内容 | 文件 | 行数 |
 |------|------|------|:--:|
-| **P1** | `do_complete()` + summary 参数 | `commands.rs` | ~30 行 |
-| **P2** | interceptor 附件保存 + summary 合并 | `interceptor.rs` | ~40 行 |
-| **P3** | `notify_assigned` 含父级产物 | `notify.rs` + `commands.rs` | ~20 行 |
-| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` | ~30 行 |
-| **P5** | 跨 batch parents 解除限制 | `commands.rs` | ~5 行 |
-| **P6** | 循环依赖检测 | `db.rs` | ~20 行 |
-| **P7** | 通知 Body 规范化 | `notify.rs` | ~80 行 |
+| **P1** | `do_complete()` + summary 参数 | `commands.rs` | ~30 |
+| **P2** | interceptor 附件名提取 + summary 构造 | `interceptor.rs` | ~30 |
+| **P3** | `notify_assigned` 含父级产物 | `notify.rs` + `commands.rs` | ~25 |
+| **P4** | `show`/`list` 返回 parent_summaries | `commands.rs` + `handlers.rs` | ~35 |
+| **P5** | 跨 batch parents | `commands.rs` | ~5 |
+| **P6** | 循环依赖检测 | `db.rs` | ~20 |
+| **P7** | 通知 Body 规范化 | `notify.rs` | ~80 |
 | **P8** | 测试 + 文档 | `category-6` + GUIDE | |
