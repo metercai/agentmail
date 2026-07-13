@@ -32,7 +32,8 @@ Identity from key, scoped to self.
 | `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists` | GET/POST | List/create whitelist (agent: own; agent_admin: scoped) | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist (agent: own only; admin: any) | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist by id | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists` | PUT/DELETE | Update/delete whitelist by composite key (?domain_addr=&value=) | `tools/agentmail_tools.py` |
 
 ## Admin
 
