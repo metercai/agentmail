@@ -267,13 +267,25 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 | `commands.rs` | `handle_complete`: 不改——仍 Reviewing/Done | 0 |
 | `commands.rs` | `handle_archive` (新): Done→Archived | ~15 |
 
+
+### 10.4 Heartbeat 有效性规则
+
+| 检查 | 条件 | 不满足返回 |
+|------|------|---------|
+| 归属 | `sender == task.assignee` | `Forbidden("only assignee can heartbeat")` |
+| 状态 | `task.status == Ready \|\| task.status == Running` | `BadRequest("heartbeat invalid for task status: {status}")` |
+| 转移 | `Ready` → `Running` | 首次 heartbeat 触发状态转移 |
+| 续存 | `Running` → 更新 `updated_at` | 仅更新时间戳 |
+
+过滤后 heartbeat 成为 Worker 的唯一存活信号——非 assignee 无法冒名、Done 后自动停止、Sweeper 精确扫描 `Running + updated_at > 4h`。
+
 ## 11. Gateway Scheduler
 
 ### 11.1 触发事件
 
 | 事件 | 扫描频率 | 触发条件 | 处理 |
 |------|:--:|------|------|
-| 僵死心跳 | 15 min | `Running` + `updated_at > 4h` | `block(reason)` → `notify_blocked`(assignee) + `notify`(orchestrator) |
+| 僵死心跳 | 15 min | `Running` + `updated_at > 4h`（heartbeat 已经过滤到只有 assignee 能发）| `block(reason)` → `notify_blocked`(assignee) + `notify`(orchestrator) |
 | 僵死审阅 | 6 h | `Reviewing` + 状态持续 > 3d | `notify_review_needed`(reminder) |
 | Owner 超时 | 24 h | `AwaitingOwner` + > 3d | `notify_output`(reminder) |
 | 自动归档 | 24 h | `Completed` + > 30d | `Board → Archived` + 附件复制 |
