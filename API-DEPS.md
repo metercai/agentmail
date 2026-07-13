@@ -17,7 +17,7 @@
 
 ## Agent（agent scope）
 
-身份从 key 的 `email_address` 自动获取，只能操作自己。
+身份从 key 的 `email_address` 自动获取，数据范围限定自身。
 
 | 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
@@ -32,7 +32,7 @@
 | `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist（agent 限自己，admin 不限） | `tools/agentmail_tools.py` |
 
 ## Admin（agent_admin / system / platform）
 
@@ -62,7 +62,9 @@
 
 ## Board
 
-Auth: `Authorization: Bearer *** 端点 | Method | Purpose | Callers |
+Auth: `Authorization: Bearer <board_token>`（来自 `notify_invite`）。
+
+| 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/board/:id/tasks` | GET | List board tasks | `tools/agentmail_board.py` |
 | `/api/v1/board/:id/task/:tid` | GET | Get task details | `tools/agentmail_board.py` |
