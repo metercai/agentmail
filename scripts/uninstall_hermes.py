@@ -224,7 +224,7 @@ def unpatch_webhook(fp: Path):
 
 PROFILES_HOOK = """    # ── Fire integration hooks (AmailGateway) ──
     try:
-        from tools.agentmail_tools import trigger_profile_hooks
+        from tools.agentmail_base import trigger_profile_hooks
         trigger_profile_hooks(\"profile_created\", canon, str(profile_dir))
     except ImportError:
         pass  # AmailGateway tools not installed
@@ -233,7 +233,7 @@ PROFILES_HOOK = """    # ── Fire integration hooks (AmailGateway) ──
 
 PROFILES_HOOK_DEL = """    # ── Fire integration hooks (AmailGateway) ──
     try:
-        from tools.agentmail_tools import trigger_profile_hooks
+        from tools.agentmail_base import trigger_profile_hooks
         trigger_profile_hooks(\"profile_deleted\", canon, str(profile_dir))
     except ImportError:
         pass  # AmailGateway tools not installed

@@ -22,7 +22,7 @@ def register_emails():
         return
 
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools"))
-    from agentmail_tools import _agentmail_system_dir, _auto_register_email
+    from agentmail_base import _agentmail_system_dir, _auto_register_email
 
     gw = config.get("gateway_url", "")
     system_id = config.get("system_id", "")
