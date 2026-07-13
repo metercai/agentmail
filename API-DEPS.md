@@ -25,6 +25,7 @@
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
 | `/api/v1/pending` | GET | Pull own pending emails | `tools/agentmail_tools.py`（待实现） |
 | `/api/v1/stats/agent/me` | GET | Self statistics | `scripts/send_welcome.py`（待实现） |
+| `/api/v1/api-keys/:id` | PUT | Rotate own key（agent 只能旋转自己的） | `tools/agentmail_tools.py` |
 | `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage | `tools/agentmail_tools.py` |
 | `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
 | `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
@@ -44,7 +45,7 @@
 | `/api/v1/admin/whitelists/:id` | PUT/DELETE | 管理 whitelist 更新/删除 | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
-| `/api/v1/api-keys/:id` | PUT/DELETE | Update/rotate/delete API key | `tools/agentmail_tools.py` |
+| `/api/v1/api-keys/:id` | PUT/DELETE | Admin disable/delete any key | `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/:sid/domains` | GET/POST | System domain CRUD | `scripts/list_domains.py`, `integrate.sh`, `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/:sid/addresses` | POST | Register agent email address | `tools/agentmail_tools.py` |
 | `/api/v1/admin/system-domains/:id` | PUT | Update domain settings | `tools/agentmail_tools.py` |
