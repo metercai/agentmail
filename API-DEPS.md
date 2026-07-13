@@ -207,47 +207,50 @@ Read email thread summary.
 
 ### A2A Board APIs
 
+Authenticated via `Authorization: Bearer bdt_...` (board token from `notify_invite`).
+First call to `heartbeat` transitions task Ready→Running.
+
 ### GET /api/v1/board/:id/tasks
 List board tasks.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_task_list()` |
+| `tools/agentmail_board.py` | `board_task_list()` |
 
 ### GET /api/v1/board/:id/task/:tid
 Get task details.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_task_show()` |
+| `tools/agentmail_board.py` | `board_task_show()` |
 
 ### GET /api/v1/board/:id/members
 List board members.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_members()` |
+| `tools/agentmail_board.py` | `board_members()` |
 
 ### GET /api/v1/board/:id/roles
 List role permissions.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_roles()` |
+| `tools/agentmail_board.py` | `board_roles()` |
 
 ### GET /api/v1/board/:id/status
 Board pipeline overview with dependencies.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_status()` |
+| `tools/agentmail_board.py` | `board_status()` |
 
 ### POST /api/v1/board/:id/task/:tid/heartbeat
 Update task heartbeat.
 
 | Caller | Purpose |
 |--------|---------|
-| `tools/agentmail_tools.py` | `board_heartbeat()` |
+| `tools/agentmail_board.py` | `board_heartbeat()` |
 
 ---
 
