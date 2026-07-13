@@ -254,3 +254,17 @@ a2a_board 的 webhook 架构不支持 Agent 侧自动心跳。改为：
 - 计划离线超过 heartbeat_stale：提前 block 自己或告知 orchestrator
 - 不及时 heartbeat 的后果：Sweeper 判定僵死，task 被 block
 ```
+
+## 13. 长任务配置建议
+
+Worker profile 的 `config.yaml`：
+
+```yaml
+agent:
+  max_turns: 500                     # 默认 90
+  gateway_timeout: 14400             # 默认 3600（1h）
+```
+
+不更改时不支持长任务——10 轮后 session 终止。
+
+长任务心跳由 LLM 通过 toolset `board_heartbeat` 手动触发。Worker SOUL 建议周期性调用。
