@@ -267,106 +267,32 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 | `commands.rs` | `handle_complete`: 不改——仍 Reviewing/Done | 0 |
 | `commands.rs` | `handle_archive` (新): Done→Archived | ~15 |
 
-## 11. Gateway Scheduler — 最小化主动管理
+## 11. Gateway Scheduler
 
-### 11.1 原则
+### 11.1 触发事件
 
-Scheduler 只做现有 notify 事件流**做不到**的事——补漏，不重复。
+| 事件 | 扫描频率 | 触发条件 | 处理 |
+|------|:--:|------|------|
+| 僵死心跳 | 15 min | `Running` + `updated_at > 4h` | `block(reason)` → `notify_blocked`(assignee) + `notify`(orchestrator) |
+| 僵死审阅 | 6 h | `Reviewing` + 状态持续 > 3d | `notify_review_needed`(reminder) |
+| Owner 超时 | 24 h | `AwaitingOwner` + > 3d | `notify_output`(reminder) |
+| 自动归档 | 24 h | `Completed` + > 30d | `Board → Archived` + 附件复制 |
 
-| 事件流覆盖的场景 | Scheduler 补漏（事件流覆盖不到） |
-|----------------|-------------------------------|
-| complete → notify_review_needed（审阅通知已发） | 审阅 > 3d 无回应 → 再次提醒 |
-| `[A2A] heartbeat` 发心跳 → updated_at 更新 | Running > 4h 无心跳 → block + 通知 → orchestrator 重启 |
-| output → Board AwaitingOwner（待 Owner 确认） | Owner > 3d 不确认 → 提醒 |
-| approve → promote_children（依赖满足即 promote） |（无需补——promote 是瞬时的）|
-| block → notify_blocked（阻塞通知已发） |（已覆盖） |
-| Board → Completed（手动或自动） | Completed > 30d → 自动归档 |
+### 11.2 重启动
 
-### 11.2 僵死检测与重启动
-
-发现 `Running` 任务 4h+ 无心跳后，执行三段操作：
+僵死心跳触发 block 后，orchestrator 收到通知自行决策：
 
 ```
-1. block(reason="worker silence, last heartbeat: {date}")
-   → 防止任务继续被当作 active，停止下游等待
-
-2. notify_blocked → assignee + orchestrator
-   → 通知两端：Worker 知道自己为何被停，orchestrator 知道需要介入
-
-3. Orchestrator 收到通知后决定：
-   [A2A] reassign T1 {"assignee":"new-worker@x.com"} → unblock → 新 Worker 接手
-   [A2A] cancel T1 → 终止任务
-   [A2A] unblock T1 → 原 Worker 再试一次（适合网络抖动恢复）
+[A2A] reassign T1 {"assignee":"new-worker"} → unblock → 新 Worker 接手
+[A2A] unblock T1 → 原 Worker 再试
+[A2A] cancel T1 → 终止
 ```
 
-### 11.3 扫描周期
+### 11.3 改动
 
-```
-Gateway Scheduler (每 tick)
-  ├─ BoardSweeper (每 15 min)
-  │    ├─ scan_stale_heartbeats()
-  │    │    Running + updated_at > 4h → block + notify_blocked + notify (orchestrator)
-  │    │    → orchestrator 决策: reassign/unblock/cancel
-  │    │
-  │    └─ scan_stale_reviews()
-  │         Reviewing + status 持续 > 3d → remind reviewer via notify_review_needed
-  │
-  └─ BoardSweeper (每 24 h)
-       ├─ scan_awaiting_owner()
-       │    Board AwaitingOwner + > 3d → notify_output(reminder) to verifier
-       │
-       └─ scan_completed_boards()
-            Board Completed + > 30d → auto archive (→ Archived)
-```
+| 文件 | 内容 | 行数 |
+|------|------|:--:|
+| `src/board/sweeper.rs` (新) | 只读扫描 + 写状态 + 发通知 | ~60 |
+| `src/server.rs` | 启动时 spawn sweeper | ~5 |
 
-### 12.3 实现
-
-```rust
-// server.rs 或 scheduler 目录新增 board_sweeper.rs
-pub async fn run_board_sweeper(
-    storage_path: &str,
-    email_factory: &EmailFactory,
-    attachment_factory: &AttachmentFactory,
-) {
-    loop {
-        tokio::time::sleep(Duration::from_secs(900)).await; // 15 min
-        // 1. Stale heartbeats
-        let boards = list_active_boards(storage_path);
-        for board in boards {
-            let tasks = list_tasks(&conn, &board.id, Some("running"), None);
-            for task in tasks {
-                let elapsed = now - task.updated_at;
-                if elapsed > 4 * 3600 {
-                    // block task + notify
-                }
-            }
-        }
-        // 2. Stale reviews (every 6h)
-        if (tick_count % 24 == 0) {
-            // scan reviewing tasks + notify
-        }
-        // Daily: scan AwaitingOwner + auto-archive
-    }
-}
-```
-
-### 11.4 改动
-
-| 文件 | 改动 | 说明 |
-|------|------|------|
-| `src/board/sweeper.rs` (新) | ~80 行 | 扫描逻辑 |
-| `src/server.rs` | 启动时 spawn sweeper | ~5 行 |
-
-不改现有任何 handler 和 notify。sweeper 独立运行，只读扫描 + 写状态 + 发通知。
-
-### 11.5 与事件流的关系
-
-```
-主动事件流 (已有):
-  邮件到达 → interceptor → execute_command → notify → 邮件发出
-
-Sweeper (新增/补漏):
-  定时扫描 → 发现僵死/超时 → notify → 邮件发出
-```
-
-两者永不重叠——Sweeper 只处理**长时间无新事件**的情况。一旦 Agent 有新邮件发来，事件流自然接手。
+不改现有 handler 和 notify。sweeper 独立运行。
