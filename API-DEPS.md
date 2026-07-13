@@ -2,7 +2,7 @@
 
 ## Open
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/health` | GET | Health check | `integrate.sh`, `scripts/check_status.py`, `scripts/hermes_gateway.sh` |
 | `/api/v1/activate-system` | POST | Product code activation | `scripts/activate_system.py`, `tools/agentmail_tools.py` |
@@ -10,39 +10,39 @@
 
 ## Shared
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
-| `/api/v1/api-keys/rotate` | POST | Rotate own key | `tools/agentmail_tools.py` |
+| `/api/v1/key/rotate` | POST | Rotate own key | `tools/agentmail_tools.py` |
 
-## Agent（agent scope）
+## Agent
 
-身份从 key 的 `email_address` 自动获取，数据范围限定自身。
+Identity from key, scoped to self.
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/send` | POST | Send email | `tools/agentmail_tools.py` |
 | `/api/v1/upload` | POST | Upload attachment | `tools/agentmail_tools.py` |
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
-| `/api/v1/pending` | GET | Pull own pending emails | `tools/agentmail_tools.py`（待实现） |
-| `/api/v1/stats/agent/me` | GET | Self statistics | `scripts/send_welcome.py`（待实现） |
+| `/api/v1/pending` | GET | Pull own pending emails | `tools/agentmail_tools.py` (planned) |
+| `/api/v1/stats/agent/me` | GET | Self statistics | `scripts/send_welcome.py` (planned) |
 | `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage | `tools/agentmail_tools.py` |
 | `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
 | `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
 | `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist（agent 限自己，admin 不限） | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist (agent: own only; admin: any) | `tools/agentmail_tools.py` |
 
-## Admin（agent_admin / system / platform）
+## Admin
 
-操作对象非自身时需传 email，由 `require_domain_match` / `require_agent_match` 校验管理范围。
+Pass target email when operating on others. Scope checked via `require_domain_match`.
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
-| `/api/v1/admin/whitelists` | GET/POST | 管理 whitelist（按域/系统范围） | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists/check?...` | GET | 管理 whitelist 检查 | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists/:id` | PUT/DELETE | 管理 whitelist 更新/删除 | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists` | GET/POST | Manage whitelist（agent_admin scope，带参数） | `tools/agentmail_tools.py` |
+
+
 | `/api/v1/admin/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/admin/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/admin/api-keys/:id` | DELETE | Delete any key | `tools/agentmail_tools.py` |
@@ -56,7 +56,7 @@
 
 ## Bridge
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/routes` | POST | Register agent inbound route | `scripts/hermes_gateway.sh` |
 
@@ -64,7 +64,7 @@
 
 Auth: `Authorization: Bearer <board_token>`（来自 `notify_invite`）。
 
-| 端点 | Method | Purpose | Callers |
+| Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/board/:id/tasks` | GET | List board tasks | `tools/agentmail_board.py` |
 | `/api/v1/board/:id/task/:tid` | GET | Get task details | `tools/agentmail_board.py` |

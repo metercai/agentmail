@@ -261,16 +261,16 @@ _TOOLSET = "agentmail"
         return self._request("PUT", f"/api/v1/admin/system-domains/{domain_id}", body=body)
 
     def get_api_key_by_email(self, email: str) -> dict:
-        """GET /api/v1/api-keys?email= — lookup API key by email."""
-        result = self._request("GET", f"/api/v1/api-keys?email={email}")
+        """GET /api/v1/admin/api-keys?email= — lookup API key by email."""
+        result = self._request("GET", f"/api/v1/admin/api-keys?email={email}")
         entries = result.get("entries", result.get("data", []))
         if isinstance(entries, list) and entries:
             return entries[0]
         return {}
 
     def delete_api_key(self, key_id: int) -> dict:
-        """DELETE /api/v1/api-keys/:id — delete an API key."""
-        return self._request("DELETE", f"/api/v1/api-keys/{key_id}")
+        """DELETE /api/v1/admin/api-keys/:id — delete an API key."""
+        return self._request("DELETE", f"/api/v1/admin/api-keys/{key_id}")
 
     def register_email(
         self,
