@@ -229,3 +229,52 @@ Advanced 提供 `AdvancedBoardQuota` 实现，读 `max_active_boards` 和 `archi
 | Board 归档 | Completed→Archived + 附件复制 |
 | 配额 | max_active_boards 超限拒绝 |
 
+
+## 13. Agent 自动心跳
+
+### 13.1 原则
+
+- 首跳由 LLM 发起：Agent toolset 调 board_heartbeat，Gateway 侧 Ready>Running
+- Agent 运行时检测到 task 进入 Running 后启动自动心跳
+- LLM 调 complete 后 task 变 Done，Agent 运行时停止自动心跳
+- 自动心跳仅维持存活，不改变 task 状态
+
+### 13.2 Agent 侧实现
+
+```
+# agentmail_tools.py
+
+# --- Toolset: first heartbeat ---
+def board_heartbeat(board_id: str, task_id: str, note: str = "") -> dict:
+    """LLM calls this -> Gateway heartbeat -> Ready->Running (if first)"""
+    resp = _post(f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?...")
+    if resp.get("task", {}).get("status") == "running":
+        _mark_active(task_id)   # start auto-heartbeat
+    return resp
+
+def board_complete(board_id: str, task_id: str, summary: str = "") -> dict:
+    resp = _post(f"/api/v1/board/{board_id}/task/{task_id}/complete?...")
+    _unmark_active(task_id)    # stop auto-heartbeat
+    return resp
+
+# --- Runtime: auto heartbeat (called between LLM turns) ---
+def auto_heartbeat_loop():
+    for task_id in _active_tasks.copy():
+        if _should_heartbeat(task_id, interval=900):
+            _post(f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?...")
+```
+
+### 13.3 Gateway 侧
+
+Sweeper 只扫描 Running + updated_at > heartbeat_stale。LLM 首跳前 task 是 Ready，不会被扫。complete 后 task 变 Done，也不会被扫。
+
+### 13.4 Worker SOUL 补充
+
+```
+执行任务时：
+- 非自己 assignee 的 task 不发 heartbeat
+- 开工时通过 toolset 发 [A2A] heartbeat T1
+- 超 15min 无 heartbeat：Gateway Sweeper 判定僵死，task 被 block
+- 计划离线超 heartbeat_stale：提前告知 orchestrator
+```
+
