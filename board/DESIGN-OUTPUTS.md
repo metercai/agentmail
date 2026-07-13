@@ -273,13 +273,14 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 
 Scheduler 只做现有 notify 事件流**做不到**的事——补漏，不重复。
 
-| 现有事件流已覆盖 | Scheduler 补漏 |
-|----------------|--------------|
-| complete → notify_review_needed | 审阅者 N 天不回：提醒 reviewer |
-| approve → promote_children → notify_assigned | 任务 N 天没心跳：block + 通知 |
-| output → Board AwaitingOwner | Owner N 天不确认：提醒 |
-| block → notify_blocked | (已覆盖) |
-| (被动) | Board Completed N 天未归档：自动归档 |
+| 事件流覆盖的场景 | Scheduler 补漏（事件流覆盖不到） |
+|----------------|-------------------------------|
+| complete → notify_review_needed（审阅通知已发） | 审阅 > 3d 无回应 → 再次提醒 |
+| `[A2A] heartbeat` 发心跳 → updated_at 更新 | Running > 4h 无心跳 → block + 通知 → orchestrator 重启 |
+| output → Board AwaitingOwner（待 Owner 确认） | Owner > 3d 不确认 → 提醒 |
+| approve → promote_children（依赖满足即 promote） |（无需补——promote 是瞬时的）|
+| block → notify_blocked（阻塞通知已发） |（已覆盖） |
+| Board → Completed（手动或自动） | Completed > 30d → 自动归档 |
 
 ### 11.2 僵死检测与重启动
 
