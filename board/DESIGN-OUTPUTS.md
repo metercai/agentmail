@@ -70,7 +70,7 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 | Reviewing | complete (有 reviewer) | approve→Done / reject→Running |
 | Done | approve | archive→Archived |
 | Blocked | block | unblock→Running |
-| Cancelled | cancel | archive→Archived |
+| Cancelled | cancel（orchestrator，任一状态均可）| 终态——不可 reactivate。需重新 create |
 | Archived | archive | (终态) |
 
 ### 4.2 Heartbeat 规则
@@ -179,12 +179,6 @@ max_active_boards = 10
 archive_retention_days = 365
 ```
 
-| 参数 | 环境变量 |
-|------|---------|
-| heartbeat_stale_seconds | AMAILGW_BOARD_HEARTBEAT_STALE_SECONDS |
-| task_timeout_seconds | AMAILGW_BOARD_TASK_TIMEOUT_SECONDS |
-| sweeper_interval_seconds | AMAILGW_BOARD_SWEEPER_INTERVAL_SECONDS |
-
 ## 11. 配额 (Advanced)
 
 Core 预置 trait + 检测点：
@@ -220,3 +214,18 @@ Advanced 提供 `AdvancedBoardQuota` 实现，读 `max_active_boards` 和 `archi
 | **P12** | 测试 + 文档 | category-6 + GUIDE | — |
 
 **总计 ~370 行 Core + ~35 行 Advanced。**
+
+### 测试覆盖
+
+| 功能 | 测试用例 |
+|------|---------|
+| Triage 创建 | create 不设 assignee → Triage + edit→Todo |
+| Heartbeat 过滤 | 非 assignee 拒绝、Done 拒绝、Ready→Running |
+| 僵死心跳 | Sweeper: Running+4h→block, notify to assignee+orch |
+| 附件 summary | complete 带附件 → task.summary 含 artifact |
+| 附件通知 | notify_review_needed 含附件 UUID |
+| 父级传递 | promote_children → notify_assigned 含 parent_summaries |
+| 跨 batch parents | create T3 parents=["T1","T2"] → 两个父级 Done 后 promote |
+| Board 归档 | Completed→Archived + 附件复制 |
+| 配额 | max_active_boards 超限拒绝 |
+
