@@ -27,7 +27,7 @@ def create_api_key(gw: str, ak: str, system_id: str, email: str,
         "system_id": system_id, "email_address": email,
         "scopes": scopes, "category": category,
     }).encode()
-    req = urllib.request.Request(f"{gw}/api/v1/api-keys", data=data,
+    req = urllib.request.Request(f"{gw}/api/v1/admin/api-keys", data=data,
         headers={"X-Api-Key": ak, "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
