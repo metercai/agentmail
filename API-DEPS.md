@@ -13,6 +13,7 @@
 | 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
+| `/api/v1/api-keys/:id` | PUT | Rotate own key | `tools/agentmail_tools.py` |
 
 ## Agent（agent scope）
 
@@ -25,7 +26,6 @@
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
 | `/api/v1/pending` | GET | Pull own pending emails | `tools/agentmail_tools.py`（待实现） |
 | `/api/v1/stats/agent/me` | GET | Self statistics | `scripts/send_welcome.py`（待实现） |
-| `/api/v1/api-keys/:id` | PUT | Rotate own key（agent 只能旋转自己的） | `tools/agentmail_tools.py` |
 | `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage | `tools/agentmail_tools.py` |
 | `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
 | `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
