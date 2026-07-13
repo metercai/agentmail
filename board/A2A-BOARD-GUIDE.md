@@ -152,10 +152,16 @@ Subject: [WHOAMI]
 |------|--------------|
 | **orchestrator** | create, assign, review, block, unblock, cancel, reassign, edit, deadline, notify, members, roles, config, arbitrate, comment, list, show, status, heartbeat |
 | **verifier** | verify, approve, reject, output, comment, list, show, roles, members, status, heartbeat |
-| **worker** | complete, commit, block, heartbeat, comment, list, show, roles, members, status |
+| **worker** | complete, commit, block, heartbeat, continue, comment, list, show, roles, members, status |
 | **owner** | create, unblock, reassign, comment, list, show, status, members, roles |
 
 New roles: declare in members + define verbs in role_permissions + optionally create `~/.agentmail/{system_id}/board/role_prompt/{role}.md`.
+
+### 4.3 Notes
+
+- **heartbeat**：assignee 专有，首次调用 Ready→Running。非 assignee 或非 Ready/Running 状态拒绝。
+- **cancel**：仅用于 Blocked 状态。block→cancel 彻底放弃任务。
+- **continue**：assignee 保持 task Running 并触发新的 assigned 通知，用于跨 session 长任务。
 
 ### 4.4 Instruction Flow Verbs
 
@@ -195,6 +201,10 @@ Members email each other + CC Board. FROM and TO must be board members.
 | `[Review] {board} {target} {task}` | Worker | Peer review |
 
 ### 4.6 Notification Flow
+
+| 通知 | 场景 | 内容 |
+|------|------|------|
+| `notify_invite` | board 创建，邀请 member | Subject: `[A2A] invite: {board}`，Body 含 API URL + 个人 Token |
 
 System notifications from Board. Subject prefixed with `[A2A]`.
 
