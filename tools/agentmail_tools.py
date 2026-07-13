@@ -260,11 +260,13 @@ _TOOLSET = "agentmail"
             body["webhook_secret"] = webhook_secret
         return self._request("PUT", f"/api/v1/admin/system-domains/{domain_id}", body=body)
 
-    def list_api_keys(self) -> list:
-        """GET /api/v1/api-keys — list all API keys."""
-        result = self._request("GET", "/api/v1/api-keys")
+    def get_api_key_by_email(self, email: str) -> dict:
+        """GET /api/v1/api-keys?email= — lookup API key by email."""
+        result = self._request("GET", f"/api/v1/api-keys?email={email}")
         entries = result.get("entries", result.get("data", []))
-        return entries if isinstance(entries, list) else []
+        if isinstance(entries, list) and entries:
+            return entries[0]
+        return {}
 
     def delete_api_key(self, key_id: int) -> dict:
         """DELETE /api/v1/api-keys/:id — delete an API key."""

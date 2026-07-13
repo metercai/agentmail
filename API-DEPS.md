@@ -11,7 +11,7 @@ All API calls from integration scripts and agentmail_tools.py to amail-gateway /
 | `/api/v1/activate-address` | POST | Activation code to API key | `tools/agentmail_tools.py` |
 
 ## 2. Admin API Key
-| `/api/v1/api-keys` | GET | List API keys | `tools/agentmail_tools.py` |
+| `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/api-keys/{id}` | DELETE | Delete API key | `tools/agentmail_tools.py` |
 | `/api/v1/stats/agent/me?email=` | GET | Agent self statistics | `scripts/send_welcome.py` |
