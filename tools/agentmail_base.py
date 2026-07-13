@@ -542,6 +542,7 @@ def _extract_board_gateway(payload: dict):
         return
 
     import re
+    token_match = re.search(r'Token:\s*(bdt_\S+)', body)
     gw_match = re.search(r'API:\s*(https?://\S+)', body)
     if not gw_match:
         return
@@ -558,6 +559,9 @@ def _extract_board_gateway(payload: dict):
     domain = gw_domain.group(1) if gw_domain else ""
     board_id = sha256(f"{board_short_id}:{domain}".encode()).hexdigest()[:20]
     _register_board_gateway(board_id, gateway_url)
+    if token_match:
+        token = token_match.group(1).rstrip()
+        _store_board_credential(board_id, gateway_url, token)
 
 def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     """Preprocess agentmail webhook payload before prompt rendering.
@@ -1269,6 +1273,19 @@ def _register_board_gateway(board_id: str, gateway_url: str):
     with _board_gateways_lock:
         _board_gateways[board_id] = gateway_url
 
+def _store_board_credential(board_id: str, gateway_url: str, token: str):
+    """Persist board credential to file for subprocess access."""
+    try:
+        import json as _json
+        creds_path = Path.home() / ".agentmail" / "board_creds.json"
+        creds = {}
+        if creds_path.exists():
+            creds = _json.loads(creds_path.read_text())
+        creds[board_id] = {"url": gateway_url, "token": token}
+        creds_path.write_text(_json.dumps(creds, indent=2))
+    except Exception:
+        pass
+
 def _extract_board_gateway(payload: dict):
     """Extract board_id and gateway_url from board notification emails."""
     subject = payload.get("subject", "")
@@ -1276,6 +1293,7 @@ def _extract_board_gateway(payload: dict):
     from_addr = payload.get("from", "")
     if ".a2a@" not in from_addr and not subject.startswith("[A2A]"):
         return
+    token_match = re.search(r'Token:\s*(bdt_\S+)', body)
     gw_match = re.search(r'API:\s*(https?://\S+)', body)
     if not gw_match:
         return
@@ -1288,3 +1306,6 @@ def _extract_board_gateway(payload: dict):
     domain = gw_domain.group(1) if gw_domain else ""
     board_id = hashlib.sha256(f"{board_short_id}:{domain}".encode()).hexdigest()[:20]
     _register_board_gateway(board_id, gateway_url)
+    if token_match:
+        token = token_match.group(1).rstrip()
+        _store_board_credential(board_id, gateway_url, token)

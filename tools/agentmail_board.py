@@ -90,6 +90,18 @@ def _resolve_gateway_url(task_id: str) -> str:
         gateway_url = cfg.get("gateway_url", "")
     return gateway_url
 
+def _get_board_token(board_id: str) -> Optional[str]:
+    """Get board token from persisted creds file."""
+    try:
+        import json as _json
+        creds_path = Path.home() / ".agentmail" / "board_creds.json"
+        if creds_path.exists():
+            creds = _json.loads(creds_path.read_text())
+            return creds.get(board_id, {}).get("token")
+    except Exception:
+        pass
+    return None
+
 
 def board_task_show(task_id: str) -> str:
     """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
@@ -98,7 +110,11 @@ def board_task_show(task_id: str) -> str:
     if not cfg:
         return "{\"error\": \"no profile config\"}"
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
@@ -116,7 +132,11 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     if not cfg:
         return "{\"error\": \"no profile config\"}"
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     params = {}
     if status:
         params["status"] = status
@@ -137,7 +157,11 @@ def board_members(board_id: str, email: str = "") -> str:
     if not cfg:
         return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         path = f"/api/v1/board/{board_id}/members"
         if email:
@@ -153,7 +177,11 @@ def board_roles(board_id: str, role: str = "") -> str:
     if not cfg:
         return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         path = f"/api/v1/board/{board_id}/roles"
         if role:
@@ -168,7 +196,11 @@ def board_status(board_id: str) -> str:
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         return json.dumps(client._request("GET", f"/api/v1/board/{board_id}/status"), indent=2)
     except Exception as e:
@@ -181,7 +213,11 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
     if not cfg:
         return "{\"error\": \"no profile config\"}"
     gateway_url = _resolve_gateway_url(task_id)
-    client = _GatewayClient(gateway_url, cfg["api_key"])
+    token = _get_board_token(board_id) if board_id else None
+    if token:
+        client = _GatewayClient(gateway_url, token)
+    else:
+        client = _GatewayClient(gateway_url, cfg["api_key"])
     board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
