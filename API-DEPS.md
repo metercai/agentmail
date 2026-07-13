@@ -14,18 +14,13 @@
 |----------|--------|---------|---------|
 | `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
 
-## 3. Agent — agent scope
+## 3. Agent — agent scope（部分允许 admin 管理）
 
 | Endpoint | Method | Purpose | Callers |
 |----------|--------|---------|---------|
 | `/api/v1/send` | POST | Send email | `tools/agentmail_tools.py` |
 | `/api/v1/upload` | POST | Upload attachment | `tools/agentmail_tools.py` |
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
-
-## 4. Admin — system / platform scope
-
-| Endpoint | Method | Purpose | Callers |
-|----------|--------|---------|---------|
 | `/api/v1/admin/agent-state/{key}` | GET/PUT | Read/write agent KV storage | `tools/agentmail_tools.py` |
 | `/api/v1/admin/contacts/{address}` | GET/PUT | Read/write contact profile | `tools/agentmail_tools.py` |
 | `/api/v1/admin/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
@@ -33,6 +28,11 @@
 | `/api/v1/admin/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
 | `/api/v1/admin/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
 | `/api/v1/admin/whitelists?...` | PUT/DELETE | Update/delete whitelist | `tools/agentmail_tools.py` |
+
+## 4. Admin — system / platform scope
+
+| Endpoint | Method | Purpose | Callers |
+|----------|--------|---------|---------|
 | `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/api-keys/{id}` | DELETE | Delete API key | `tools/agentmail_tools.py` |
