@@ -226,3 +226,158 @@ Board → `Archived`（已有 `BoardStatus::Archived`）时：
 | `handlers.rs` | `handle_get_task` 附加 parent_summaries | API 查询 |
 | `handlers.rs` | `handle_post_heartbeat` 调 `do_heartbeat()` | API 复用 |
 | `agentmail_tools.py` | heartbeat 传 actor=toolset | 调用统一 |
+
+
+## 10. Task 状态机增强
+
+### 10.1 当前状态
+
+```
+Ready → Running → Reviewing → Done
+         ↕ Blocked
+         → Cancelled
+  Todo (定义存在但从不创建)
+```
+
+### 10.2 目标状态
+
+```
+Triage → Todo → Ready → Running → Reviewing → Done → Archived
+                  ↑ (promote_children 拉起)
+                  ↕ Blocked
+                  → Cancelled
+```
+
+新增/修复状态转移：
+
+| 状态 | 进入条件 | 来源 | 退出条件 |
+|------|---------|------|---------|
+| `Triage` | `create` 不设 `assignee`（纯想法） | orchestrator 随手记 | `edit` 设 assignee → Todo |
+| `Todo` | `create` 设 `assignee` + `parents` 未满足 | Triage 转化 | parents 全部 Done → Ready |
+| `Ready` | `create` 无 parents 或 parents 已满足 | Todo promote | assignee `heartbeat` → Running |
+| `Archived` (新) | `[A2A] archive T1` | Done/Cancelled | Board 数据导出后删除 |
+
+### 10.3 改动清单
+
+| 文件 | 改动 | 行数 |
+|------|------|:--:|
+| `models.rs` | `TaskStatus` 加 `Triage`, `Archived` | ~4 |
+| `commands.rs` | `handle_create`: 无 assignee → Triage，有 parents → Todo (不改 Ready) | ~10 |
+| `commands.rs` | `handle_edit`: 支持 `{"status":"todo"}` Triage→Todo | ~5 |
+| `commands.rs` | `handle_complete`: 不改——仍 Reviewing/Done | 0 |
+| `commands.rs` | `handle_archive` (新): Done→Archived | ~15 |
+
+## 11. Kanban Claim 机制分析
+
+### 11.1 机制
+
+kanban 的 claim 是所有权锁——任务被声明后只有声明的 Worker 能操作：
+
+```
+Dispatcher tick:
+  1. release_stale_claims(): 扫描 claim_expires < now 的 Running 任务
+  2. detect_crashed_workers(): 扫描 PID 不存活的任务
+  3. promote_ready_tasks(): Todo→Ready (parents done)
+  4. atomic_claim(): 声明 Ready 任务 → Running (设 claim_lock=profile + claim_expires=now+15min)
+
+Worker 存活:
+  kanban_heartbeat() → 延长 claim_expires ("我还活着")
+
+Worker 僵死:
+  PID 不存在 → detect_crashed_workers → reclaim→Ready
+  claim_expires 过期 → release_stale_claims → reclaim→Ready
+  heartbeat 过期 (>1h) → 即使 PID 存活也 reclaim→Ready
+```
+
+### 11.2 a2a_board 差异
+
+a2a 没有进程管理——Worker 是独立 Agent，Gateway 不跟踪 PID。`do_heartbeat` 仅调用 `touch_task` 更新时间戳 + 写入事件记录，不延长任何锁。
+
+### 11.3 可复用部分
+
+`heartbeat` 记录在 `task.updated_at` + `TaskEvent` 已足够做存活判定。Gateway Scheduler 扫到 Running + `updated_at > N hours ago` → 判定僵死。
+
+## 12. Gateway Scheduler — 最小化主动管理
+
+### 12.1 原则
+
+Scheduler 只做现有 notify 事件流**做不到**的事——补漏，不重复。
+
+| 现有事件流已覆盖 | Scheduler 补漏 |
+|----------------|--------------|
+| complete → notify_review_needed | 审阅者 N 天不回：提醒 reviewer |
+| approve → promote_children → notify_assigned | 任务 N 天没心跳：block + 通知 |
+| output → Board AwaitingOwner | Owner N 天不确认：提醒 |
+| block → notify_blocked | (已覆盖) |
+| (被动) | Board Completed N 天未归档：自动归档 |
+
+### 12.2 扫描周期
+
+```
+Gateway Scheduler (每 tick)
+  ├─ BoardSweeper (每 15 min)
+  │    ├─ scan_stale_heartbeats()
+  │    │    Running + updated_at > 4h → block(reason="worker silence") + notify_blocked
+  │    │
+  │    └─ scan_stale_reviews()
+  │         Reviewing + status 持续 > 3d → remind reviewer via notify_review_needed
+  │
+  └─ BoardSweeper (每 24 h)
+       ├─ scan_awaiting_owner()
+       │    Board AwaitingOwner + > 3d → notify_output(reminder) to verifier
+       │
+       └─ scan_completed_boards()
+            Board Completed + > 30d → auto archive (→ Archived)
+```
+
+### 12.3 实现
+
+```rust
+// server.rs 或 scheduler 目录新增 board_sweeper.rs
+pub async fn run_board_sweeper(
+    storage_path: &str,
+    email_factory: &EmailFactory,
+    attachment_factory: &AttachmentFactory,
+) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(900)).await; // 15 min
+        // 1. Stale heartbeats
+        let boards = list_active_boards(storage_path);
+        for board in boards {
+            let tasks = list_tasks(&conn, &board.id, Some("running"), None);
+            for task in tasks {
+                let elapsed = now - task.updated_at;
+                if elapsed > 4 * 3600 {
+                    // block task + notify
+                }
+            }
+        }
+        // 2. Stale reviews (every 6h)
+        if (tick_count % 24 == 0) {
+            // scan reviewing tasks + notify
+        }
+        // Daily: scan AwaitingOwner + auto-archive
+    }
+}
+```
+
+### 12.4 改动
+
+| 文件 | 改动 | 说明 |
+|------|------|------|
+| `src/board/sweeper.rs` (新) | ~80 行 | 扫描逻辑 |
+| `src/server.rs` | 启动时 spawn sweeper | ~5 行 |
+
+不改现有任何 handler 和 notify。sweeper 独立运行，只读扫描 + 写状态 + 发通知。
+
+### 12.5 与事件流的关系
+
+```
+主动事件流 (已有):
+  邮件到达 → interceptor → execute_command → notify → 邮件发出
+
+Sweeper (新增/补漏):
+  定时扫描 → 发现僵死/超时 → notify → 邮件发出
+```
+
+两者永不重叠——Sweeper 只处理**长时间无新事件**的情况。一旦 Agent 有新邮件发来，事件流自然接手。
