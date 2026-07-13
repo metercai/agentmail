@@ -49,7 +49,6 @@ Pass target email when operating on others. Scope checked via `require_domain_ma
 | `/api/v1/admin/domains/check?domain=` | GET | Check domain uniqueness | `scripts/helpers.sh` |
 | `/api/v1/admin/agent-meta/:email` | PUT | Update agent metadata | Gateway admin |
 | `/api/v1/admin/pending` | POST | Bridge push pending emails | `scripts/check_status.py` |
-| `/api/v1/admin/probe-webhook` | POST | Probe webhook reachability | `integrate.sh` |
 
 ## Bridge
 
