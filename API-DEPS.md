@@ -30,7 +30,7 @@ Identity from key, scoped to self.
 | `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
 | `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
 | `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists` | GET/POST | List/create whitelist (agent: own; agent_admin: scoped) | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
 | `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist (agent: own only; admin: any) | `tools/agentmail_tools.py` |
 
@@ -40,7 +40,6 @@ Pass target email when operating on others. Scope checked via `require_domain_ma
 
 | Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
-| `/api/v1/whitelists` | GET/POST | Manage whitelist (agent_admin scope, with email param) | `tools/agentmail_tools.py` |
 | `/api/v1/admin/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/admin/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/admin/api-keys/:id` | DELETE | Delete any key | `tools/agentmail_tools.py` |
