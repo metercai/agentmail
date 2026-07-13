@@ -268,3 +268,49 @@ agent:
 不更改时不支持长任务——10 轮后 session 终止。
 
 长任务心跳由 LLM 通过 toolset `board_heartbeat` 手动触发。Worker SOUL 建议周期性调用。
+
+## 14. 长任务跨 Session 延续
+
+### 14.1 方案：continue 指令
+
+Worker 在 session 结束前（near max_turns 或自觉无法一次完成），调用 `[A2A] continue` 续期：
+
+```
+[A2A] continue T1 {"progress":"60%","note":"need 2 more sessions"}
+```
+
+Gateway 处理：
+1. require_assignee → 确认是任务执行者
+2. 更新 task.summary 为进度描述
+3. 保持 task.status = Running（不完成、不 review）
+4. insert_event("continue_request")
+5. notify_assigned → 发给 assignee（即 Worker 自己）
+6. Worker 收到新的 assigned 通知 → webhook 启动新 session → 读取 task context 继续
+
+### 14.2 Session 链
+
+```
+Session 1:  work 60% → board_continue_request → session 结束
+Session 2:  assigned 通知 → webhook → read task.summary="60%" → 继续
+            work 100% → complete → Done
+```
+
+每次续期自动发 heartbeat（notify_assigned 携带上下文），orchestrator 在 CC 中可见进度。
+
+### 14.3 改动
+
+| 文件 | 内容 | 行数 |
+|------|------|:--:|
+| commands.rs | handle_continue | ~20 |
+| commands.rs | 动词表添加 "continue" | ~1 |
+| notify.rs | notify_assigned 复用 | 0 |
+| agentmail_tools.py | board_continue_request | ~15 |
+
+### 14.4 Worker 行为
+
+Worker 在每次 session 中：
+1. 开头调 `board_task_show` 读取 task.summary（前序进度）
+2. 工作中定期调 `board_heartbeat`（维持存活）
+3. 估计无法一次完成：`board_continue_request(board_id, task_id, progress, note)`
+4. 完成：`board_complete(summary=...)`
+
