@@ -94,7 +94,9 @@ def _get_board_token(board_id: str) -> Optional[str]:
     """Get board token from persisted creds file."""
     try:
         import json as _json
-        creds_path = Path.home() / ".agentmail" / "board_creds.json"
+        cfg = _load_profile_config()
+        sid = cfg.get("system_id", "default") if cfg else "default"
+        creds_path = Path.home() / ".agentmail" / sid / "board_creds.json"
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())
             return creds.get(board_id, {}).get("token")

@@ -1277,7 +1277,8 @@ def _store_board_credential(board_id: str, gateway_url: str, token: str):
     """Persist board credential to file for subprocess access."""
     try:
         import json as _json
-        creds_path = Path.home() / ".agentmail" / "board_creds.json"
+        sid = _load_profile_config().get("system_id", "default") if _load_profile_config() else "default"
+        creds_path = Path.home() / ".agentmail" / sid / "board_creds.json"
         creds = {}
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())
