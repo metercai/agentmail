@@ -11,10 +11,6 @@ All API calls from integration scripts and agentmail_tools.py to amail-gateway /
 | `/api/v1/activate-address` | POST | Activation code to API key | `tools/agentmail_tools.py` |
 
 ## 2. Admin API Key
-
-| Endpoint | Method | Purpose | Callers |
-|----------|--------|---------|---------|
-| `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
 | `/api/v1/api-keys` | GET | List API keys | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/api-keys/{id}` | DELETE | Delete API key | `tools/agentmail_tools.py` |
@@ -30,6 +26,7 @@ All API calls from integration scripts and agentmail_tools.py to amail-gateway /
 
 | Endpoint | Method | Purpose | Callers |
 |----------|--------|---------|---------|
+| `/api/v1/whoami` | GET | Verify API key identity & scopes (any key) | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
 | `/api/v1/send` | POST | Send email | `tools/agentmail_tools.py` |
 | `/api/v1/upload` | POST | Upload attachment | `tools/agentmail_tools.py` |
 | `/api/v1/admin/agent-state/{key}` | GET | Read agent KV storage | `tools/agentmail_tools.py` |
