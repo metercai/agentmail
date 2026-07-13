@@ -314,3 +314,16 @@ Worker 在每次 session 中：
 3. 估计无法一次完成：`board_continue_request(board_id, task_id, progress, note)`
 4. 完成：`board_complete(summary=...)`
 
+
+## 15. 隐式心跳
+
+Gateway API 层自动维持心跳——Worker 无需显式调用 `board_heartbeat`。
+
+任何 board API 读操作（show、list、members、roles、status）对 Running 任务自动调用 `touch_task`，刷新 `updated_at`。
+
+效果：
+- Worker 调用 `board_task_show` 读取任务 → 心跳刷新
+- Worker 调用 `board_task_list` 查看看板 → 所有 Running 任务心跳刷新
+- Sweeper 看到的任务永远是最新一次 API 访问的时间
+
+LLM 无需手动心跳。Agent 的正常工作（读取任务、查询看板）自然维持心跳。
