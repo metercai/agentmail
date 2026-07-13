@@ -327,3 +327,15 @@ Gateway API 层自动维持心跳——Worker 无需显式调用 `board_heartbea
 - Sweeper 看到的任务永远是最新一次 API 访问的时间
 
 LLM 无需手动心跳。Agent 的正常工作（读取任务、查询看板）自然维持心跳。
+
+## 15. Toolset 隐式心跳
+
+`board_task_show` 每次调用自动发送 heartbeat（后台线程，不阻塞返回值）。
+
+LLM 调用 `board_task_show` 读取任务详情时，Gateway 侧自动 `touch_task` 刷新时间戳。效果：
+
+- LLM 不需要记住调 `board_heartbeat`
+- 只要 LLM 在活跃地查询任务（读取状态、检查评论），心跳就自动维持
+- Sweeper 扫描 `Running + updated_at > heartbeat_stale` 不会误杀活跃任务
+
+开销：每次 `show` 额外一个 fire-and-forget HTTP POST，不阻塞主流程。
