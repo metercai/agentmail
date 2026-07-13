@@ -40,9 +40,7 @@ Pass target email when operating on others. Scope checked via `require_domain_ma
 
 | Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
-| `/api/v1/whitelists` | GET/POST | Manage whitelist（agent_admin scope，带参数） | `tools/agentmail_tools.py` |
-
-
+| `/api/v1/whitelists` | GET/POST | Manage whitelist (agent_admin scope, with email param) | `tools/agentmail_tools.py` |
 | `/api/v1/admin/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/admin/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/admin/api-keys/:id` | DELETE | Delete any key | `tools/agentmail_tools.py` |
@@ -62,7 +60,7 @@ Pass target email when operating on others. Scope checked via `require_domain_ma
 
 ## Board
 
-Auth: `Authorization: Bearer <board_token>`（来自 `notify_invite`）。
+Auth: `Authorization: Bearer <board_token>`（来自 `notify_invite`).
 
 | Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
@@ -71,4 +69,4 @@ Auth: `Authorization: Bearer <board_token>`（来自 `notify_invite`）。
 | `/api/v1/board/:id/members` | GET | List board members | `tools/agentmail_board.py` |
 | `/api/v1/board/:id/roles` | GET | List role permissions | `tools/agentmail_board.py` |
 | `/api/v1/board/:id/status` | GET | Board pipeline + dependencies | `tools/agentmail_board.py` |
-| `/api/v1/board/:id/task/:tid/heartbeat` | POST | Task heartbeat（Ready→Running） | `tools/agentmail_board.py` |
+| `/api/v1/board/:id/task/:tid/heartbeat` | POST | Task heartbeat (Ready→Running) | `tools/agentmail_board.py` |
