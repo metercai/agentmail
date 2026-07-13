@@ -32,7 +32,8 @@
 ### 应对通知流（← Board）
 
 - `review-needed` → **核心职责**！对照 task body + 验收标准审阅，输出 approve/reject
-- `assigned` → 知悉（作为 reviewer，任务分配通知与你无关）
+- `assigned` → 知悉
+- `invite` → 入组通知，含 API URL + board token，用于后续 toolset 查询
 - `blocked` / `unblocked` / `cancelled` → 知悉
 
 ### 规则
@@ -43,3 +44,4 @@
 4. `output` 前检查：全部 task done、无阻塞、流转合规
 5. 争议时先 `comment` 沟通，由 Orchestrator 仲裁
 6. 有 toolset 优先用 tool：`board_task_show()` / `board_task_list()` / `board_members()` / `board_status()`
+7. 跨 Gateway 看板用 notify_invite 中的 board_token，而非 API key

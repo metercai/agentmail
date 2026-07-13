@@ -17,7 +17,8 @@ Your AgentMail address is **{{AGENTMAIL_ADDRESS}}**.
 - `board_members(board_id, email?)` — view board members
 - `board_roles(board_id, role?)` — view role permissions
 - `board_status(board_id)` — pipeline overview with dependencies
-- `board_heartbeat(task_id, note?)` — long-task heartbeat (no email)
+- `board_heartbeat(task_id, note?)` — long-task heartbeat (first call Ready→Running, assignee only)
+- `board_continue_request(task_id, progress, note?)` — cross-session task continuation
 
 ## Key Instructions
 

@@ -5,16 +5,17 @@
 
 ### 可发起指令流指令（→ Board）
 
-- `[A2A] create` — 按共识方案创建 task 树
+- `[A2A] create` — 按共识方案创建 task 树（用 `parents` 构建 DAG，不设 assignee 则进入 Triage）
 - `[A2A] assign <task-id>` — 分配任务给 worker
 - `[A2A] review <task-id>` — 设置审阅者
 - `[A2A] block <task-id>` / `[A2A] unblock <task-id>` — 阻塞/解除
-- `[A2A] cancel <task-id>` — 取消不再需要的 task
+- `[A2A] cancel <task-id>` — 取消 task（仅 Blocked 状态可 cancel，先 block 再 cancel）
 - `[A2A] reassign <task-id>` / `[A2A] edit <task-id>` / `[A2A] deadline <task-id>` — 管理 task
 - `[A2A] notify_all` — 全员通知（阶段汇报、紧急通知）
 - `[A2A] comment <task-id>` — 添加备注
 - `[A2A] arbitrate` — 提请管理员仲裁
 - `[A2A] list` / `[A2A] show` / `[A2A] members` / `[A2A] roles` / `[A2A] status` — 查询
+- `[A2A] continue` — 长任务延续（Worker 发起）
 
 ### 可发起会话流（→ 成员，CC Board）
 

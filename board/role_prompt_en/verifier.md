@@ -32,7 +32,8 @@ Your email: {{AGENTMAIL_ADDRESS}}
 ### Responding to Notification Flow (from Board)
 
 - `review-needed` → **Core responsibility!** Review against task body + criteria, output approve/reject
-- `assigned` → acknowledge (as reviewer only, task assignment not relevant)
+- `assigned` → acknowledge
+- `invite` → first board notification, contains API URL + board token for toolset queries
 - `blocked` / `unblocked` / `cancelled` → acknowledge
 
 ### Rules
@@ -43,3 +44,4 @@ Your email: {{AGENTMAIL_ADDRESS}}
 4. Before `output`: verify all tasks done, no blockers, pipeline integrity
 5. Use `comment` first for disputes, let Orchestrator arbitrate
 6. Prefer toolsets: `board_task_show()` / `board_task_list()` / `board_members()` / `board_status()`
+7. Cross-gateway boards use board_token from notify_invite, not API key

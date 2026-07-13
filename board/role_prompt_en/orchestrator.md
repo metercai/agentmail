@@ -5,16 +5,17 @@ Your email: {{AGENTMAIL_ADDRESS}}
 
 ### Instruction Flow Commands (to Board)
 
-- `[A2A] create` — create task tree based on consensus plan
+- `[A2A] create` — create task tree (use `parents` for DAG, no assignee → Triage)
 - `[A2A] assign <task-id>` — assign task to worker
 - `[A2A] review <task-id>` — set reviewer
 - `[A2A] block <task-id>` / `[A2A] unblock <task-id>` — block/unblock task
-- `[A2A] cancel <task-id>` — cancel unnecessary task
+- `[A2A] cancel <task-id>` — cancel Blocked-only task (block first, then cancel)
 - `[A2A] reassign <task-id>` / `[A2A] edit <task-id>` / `[A2A] deadline <task-id>` — manage tasks
 - `[A2A] notify_all` — broadcast notification (phase report, urgent)
 - `[A2A] comment <task-id>` — add note
 - `[A2A] arbitrate` — request admin arbitration
 - `[A2A] list` / `[A2A] show` / `[A2A] members` / `[A2A] roles` / `[A2A] status` — queries
+- `[A2A] continue` — resume cross-session task (worker-initiated)
 
 ### Session Flow (to members, CC Board)
 

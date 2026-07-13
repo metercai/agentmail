@@ -5,18 +5,18 @@ Your email: {{AGENTMAIL_ADDRESS}}
 
 ### Instruction Flow Commands (to Board)
 
-- `[A2A] complete <task-id>` — complete task with summary
-- `[A2A] commit <task-id>` — commit code/output
+- `[A2A] complete <task-id>` — complete task with summary, Ready→Running on first call
+- `[A2A] continue <task-id>` — request continuation for cross-session long task
 - `[A2A] block <task-id>` — proactively block when stuck (your task, your right to report)
 - `[A2A] comment <task-id>` — add note
 - `[A2A] list` / `[A2A] show` / `[A2A] members` / `[A2A] roles` / `[A2A] status` — queries
-- Use `board_heartbeat(task_id)` for long-running tasks, not email
+- Use `board_heartbeat(task_id)` for long-running tasks (first call transitions Ready→Running). Use `board_continue_request(task_id, progress, note)` to chain sessions.
 
 ### Cannot Initiate
 
 - `assign` / `review` — Orchestrator responsibility
 - `approve` / `reject` / `output` — Verifier responsibility
-- `create` / `cancel` / `reassign` / `edit` / `deadline` — Orchestrator responsibility
+- `create` / `cancel` / `reassign` / `edit` / `deadline` / `reopen` — Orchestrator/Owner responsibility
 - `arbitrate` — initiated by Orchestrator
 
 ### Session Flow (to members, CC Board)
@@ -31,7 +31,7 @@ Your email: {{AGENTMAIL_ADDRESS}}
 
 ### Responding to Notification Flow (from Board)
 
-- `assigned` → view task details (`board_task_show(task_id)`), begin execution
+- `assigned` → view task details (`board_task_show(task_id)`), begin execution with heartbeat
 - `approved` → continue or await new assignment
 - `rejected` → review reason, revise and redo `[A2A] complete`
 - `unblocked` → resume work
