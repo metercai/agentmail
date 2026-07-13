@@ -1185,10 +1185,42 @@ def set_contact_profile(address: str, profile: str) -> dict:
 # Gateway Preprocessor — inbound mail payload transformation
 # ═══════════════════════════════════════════════════════════════
 
+def _extract_board_gateway(payload: dict):
+    """Extract board_id and gateway_url from board notification emails.
+    ONLY triggers for board emails (sender contains .a2a@ or subject starts with [A2A]).
+    Does NOT affect non-board toolset gateway_url."""
+    subject = payload.get("subject", "")
+    body = payload.get("body", "")
+    from_addr = payload.get("from", "")
+
+    # Guard: only board emails
+    if ".a2a@" not in from_addr and not subject.startswith("[A2A]"):
+        return
+
+    import re
+    gw_match = re.search(r'API:\s*(https?://\S+)', body)
+    if not gw_match:
+        return
+    gateway_url = gw_match.group(1).rstrip()
+
+    # Extract board short_id from sender: "shortid <shortid.a2a@domain>"
+    from_match = re.search(r'(\S+)\.a2a@', from_addr)
+    if not from_match:
+        return
+    board_short_id = from_match.group(1)
+
+    from hashlib import sha256
+    gw_domain = re.search(r'://([^/]+)', gateway_url)
+    domain = gw_domain.group(1) if gw_domain else ""
+    board_id = sha256(f"{board_short_id}:{domain}".encode()).hexdigest()[:20]
+    _register_board_gateway(board_id, gateway_url)
+
 def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     """Preprocess agentmail webhook payload before prompt rendering.
 
     Rust backend already handles text cleaning. Python side handles:
+
+    _extract_board_gateway(payload)  # board gateway URL registry
     - Persona extraction from 'to' address (persona.profile@domain format)
     - Persona validation against configured personalities
     - direct_message / mentioned (persona-aware matching)
