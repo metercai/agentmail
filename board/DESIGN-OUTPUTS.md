@@ -1,40 +1,30 @@
-# A2A Board 指令附件流转和产出物传递方案
+# A2A Board 指令附件流转与产出物传递方案
 
-## 1. 目标
+## 1. 概述
 
-Board 任务执行过程中，Worker 产出的附件（代码、文档、设计稿等）需要：
-- 通过邮件通知链传递给下游 Reviewer 和后续 Worker
-- 持久保存到 Board 归档，供离线 Agent 通过 Toolset 查询下载
-- 通知格式统一规范，减少多 Agent 理解歧义
+A2A Board 是多 Agent 邮件协作看板。本方案解决两个核心问题：
+- Worker 产出的附件如何传递到下游 Reviewer 和后续 Worker
+- 长期运行中如何检测僵死任务、自动提醒和归档
+
+方案覆盖：附件流转、通知规范、Task 状态机、Board 配额。
 
 ## 2. 架构
 
 ```
 Worker SMTP (带附件) → Gateway receiver.rs
-  data_end():
-    ├─ save_attachment → 文件落地 + attachments_meta 表
-    ├─ create_permission → RCPT TO 收件人权限
-    └─ trigger_tx → Scheduler
-                       ↓
-Scheduler → A2aInterceptor
-  intercept():
-    ├─ 从 payload 提取 attachments_json → 注入 cmd.params + Notifier
-    ├─ execute_command → handler → do_complete/do_output
-    │    ├─ 构造 summary JSON → 写入 task.summary
-    │    ├─ insert_event
-    │    ├─ create_permission (assignee + reviewer + board_address)
-    │    └─ notify_* → create_email
-    │              ↓
-    │         create_outbound(attachments = attachments_json)
-    │              ↓
-    │         mail_count ≥ 2 → 附件文件受保护
-    │
-    ├─ Scheduler → deliver_smtp/deliver_webhook
-    │    └─ load_attachment_data → 读文件 → MIME 附件
-    │
-Agent ←── SMTP/Webhook ←── 通知邮件 (含附件实体)
-  ├─ 在线：webhook 自动保存附件到本地
-  └─ 离线：toolset board_task_show → summary JSON → API download
+  ├─ save_attachment → 文件落地 + attachments_meta + 下载权限
+  └─ trigger_tx → Scheduler
+                   ↓
+A2aInterceptor → execute_command
+  ├─ 读 attachments_json → 构造 summary → 写 task.summary
+  ├─ create_permission (assignee + reviewer + board 地址)
+  └─ notify → create_outbound (attachments = attachments_json)
+                   ↓
+              mail_count ≥ 2 → 附件受保护
+                   ↓
+Agent ←── SMTP/Webhook ←── 通知邮件 (含附件)
+  ├─ 在线: webhook 自动保存
+  └─ 离线: toolset → summary JSON → API download
 ```
 
 ## 3. 数据模型
@@ -42,137 +32,97 @@ Agent ←── SMTP/Webhook ←── 通知邮件 (含附件实体)
 ### Task 字段
 
 ```rust
-pub summary: String,  // JSON
+pub summary: String;    // JSON: 产出物描述
 ```
 
-### summary JSON 结构
+### summary JSON
 
-与邮件记录 `attachments_json` 字段对齐：
+与邮件记录的 `attachments_json` 对齐：
 
 ```json
 {
   "description": "登录 API 完成",
   "artifacts": [
-    {"attachment_id": "abc123", "filename": "login_api.rs", "content_type": "text/plain", "size": 2048},
-    {"filename": "PR #42", "url": "https://github.com/x/pull/42", "type": "url"}
+    {"attachment_id":"abc123", "filename":"login_api.rs", "content_type":"text/plain", "size":2048},
+    {"filename":"PR #42", "url":"https://github.com/x/pull/42", "type":"url"}
   ]
 }
 ```
 
-附件条目复用 `attachment_id` / `filename` / `content_type` / `size` 四字段（与 `receiver.rs` L708-713 一致）。URL 引用加 `url` + `type: "url"` 区分。
+## 4. Task 状态机
 
-## 4. 附件生命周期保护
+### 4.1 状态流转
 
-三条保护线，确保附件在 Board 活跃期间不被删除：
-
-| 保护线 | 机制 | 生效范围 |
-|--------|------|---------|
-| `mail_count` | notify create_outbound 传入 attachments_json → 多封邮件引用同一 UUID | 通知邮件投递前 |
-| `board_address perm` | interceptor create_permission(board_address) → perm_count ≥ 1 → 永不过期 | Board 全生命周期 |
-| `assignee+reviewer perm` | interceptor create_permission(assignee, reviewer) → 一次性下载 | Agent 首次下载 |
-
-### 4.1 30 天过期保护
-
-`process_expired_attachments`（flows.rs L315）定时扫描 720h 前创建的附件。保护条件：
-
-```rust
-if perm_count == 0 && mail_count <= 1 {
-    // 删除文件
-}
+```
+Triage → Todo → Ready → Running → Reviewing → Done → Archived
+           ↑       ↓         ↕ Blocked      ↕
+           └─ promote_children    └─ block/unblock
+                                       ↓
+                                   Cancelled
 ```
 
-`board_address` 权限保持 `perm_count ≥ 1` → 永不触发删除。通知邮件投递完成后 `mail_count` 回落，但权限仍在。直到 Board 归档时主动回收。
-
-### 4.2 附件转发覆盖
-
-所有 14 个 notify 函数通过 `Notifier.attachments_json` 字段统一携带附件，无需逐个改动：
-
-#### 附件通知规则
-
-"入站有附件 → 出站通知带附件" 不是无条件适用。按指令场景分类：
-
-**A 类：传递附件（入站有附件，出站通知携带）**
-
-| 动词 | 场景 | 附件含义 | 出站通知 |
-|------|------|---------|---------|
-| `complete` | worker 提交产出物 | 任务交付物 | notify_review_needed ✅ |
-| `output` | verifier 提交最终产出 | 最终交付物 | notify_output ✅ |
-| `comment` | 任何人评论 | 讨论文件（截图、参考文档）| notify_comment ✅ |
-| `create` | orch 创建任务 | 设计规格、模板 | notify_assigned ✅ |
-| `arbitrate` | 请求仲裁 | 争议证据 | notify_arbitrate ✅ |
-| `refresh`/`init` | owner 初始化/更新 board | 看板配置 | notify_all ✅ |
-
-**B 类：不传递附件（纯状态变更，入站附件忽略）**
-
-| 动词 | 场景 | 原因 |
+| 状态 | 进入 | 退出 |
 |------|------|------|
-| `approve` | 审阅通过 | 无新工作产物 |
-| `reject` | 审阅退回 | 无新工作产物 |
-| `reassign` | 重新分配 | 管理操作 |
-| `block`/`unblock` | 阻塞/解除 | 状态信号 |
-| `cancel` | 取消任务 | 管理操作 |
-| `edit`/`deadline` | 编辑/设截止 | 无通知 |
-| `review` | 设审阅者 | reviewer 已有 task 上下文 |
-| `reopen` | 驳回产出 | 状态信号 |
+| Triage | create 不设 assignee | edit status→todo |
+| Todo | create + parents 不满足 | promote_children→Ready |
+| Ready | create + parents 满足 / promote | heartbeat→Running |
+| Running | heartbeat (assignee 首次) | complete→Reviewing |
+| Reviewing | complete (有 reviewer) | approve→Done / reject→Running |
+| Done | approve | archive→Archived |
+| Blocked | block | unblock→Running |
+| Cancelled | cancel | archive→Archived |
+| Archived | archive | (终态) |
 
-**C 类：Board 级下载权限（产出物长期保留）**
+### 4.2 Heartbeat 规则
 
-仅 A 类中的 `complete` 和 `output`——只有这两个指令的附件是项目交付物，需要建 `board_address` 下载权限保护到归档。其余 A 类指令的附件为临时交流，仅靠通知邮件转发。
+| 检查 | 条件 | 不满足 |
+|------|------|--------|
+| 归属 | sender == assignee | Forbidden |
+| 状态 | Ready 或 Running | BadRequest |
+| 转移 | Ready → Running | 首次 = 开工 |
+| 续存 | Running → updated_at | 仅时间戳 |
 
-## 5. 产出物传递
+只有 assignee 能 heartbeat、Done 后自动拒绝。Sweeper 精确扫描 `Running + updated_at > N`。
 
-### 5.1 同级传递（reviewer）
+## 5. 附件流转
 
-```
-Worker → complete T1 (带附件)
-  → notify_review_needed (带附件) → Reviewer 收到
-```
+### 5.1 附件通知规则
 
-### 5.2 父级传递（下游 Worker）
+| 类别 | 动词 | 规则 |
+|------|------|------|
+| A-传递 | complete, output, comment, create, arbitrate, refresh | 入站附件 → 出站通知携带 |
+| B-不传递 | approve, reject, reassign, block, unblock, cancel, edit, deadline, review, reopen | 纯状态变更 |
+| C-长期权限 | complete, output | 建 board 地址下载权限 |
 
-```
-T1 approve → promote_children
-  → notify_assigned (含父级 artifact 列表) → 下游 Worker 收到
-```
-
-`notify_assigned` 通知 Body 包含父级产物摘要：
-
-```
-── 上下文 ──
-  前序产出物:
-    T1 登录 API
-      - login_api.rs (2KB, application/octet-stream)
-      - PR #42 (https://github.com/x/pull/42)
-```
-
-### 5.3 Toolset 查询
+### 5.2 保护机制
 
 ```
-board_task_show(T3)
-→ {
-    "status": "ok",
-    "task": {...},
-    "data": {
-      "parent_summaries": [
-        {"short_id":"T1","title":"登录 API","summary":{...}},
-        {"short_id":"T2","title":"UI 设计稿","summary":{...}}
-      ]
-    }
-  }
+mail_count ≥ 2: notify create_outbound 引用原附件 UUID
+perm_count ≥ 1: board 地址下载权限永不过期
+30天过期: process_expired_attachments 不删有 perm 的附件
 ```
 
-### 5.4 Agent 获取附件
+### 5.3 传递路径
 
 | 场景 | 路径 |
 |------|------|
-| 在线 | webhook 收通知邮件 → 附件自动保存 → toolset 查询核验 metadata |
-| 离线 | toolset board_task_show → 拿 attachment_id → API download → 一次性下载 |
+| 同级 | complete → notify_review_needed (带附件) |
+| 父级 | approve → promote_children → notify_assigned (含父级产物) |
+| Toolset | board_task_show → summary JSON → API download |
+| 外转 | deliver_smtp → load_attachment_data → MIME 附件 |
 
-外转 SMTP（Agent 在另一 Gateway）确认有效：`deliver_smtp` → `load_attachment_data` 读文件 → `send_email` 封装 MIME 附件。
+### 5.4 Agent 获取附件
 
-## 6. 通知格式规范
+- 在线：webhook 接收通知邮件 → 附件自动保存
+- 离线：board_task_show 拿 uuid → API download (一次性)
 
-所有 notify 函数统一 Subject + Body 模板：
+### 5.5 父级产出物查询
+
+`show` / `list` 返回 `parent_summaries` 数组。`notify_assigned` 通知含父级 artifact 列表。
+
+## 6. 通知格式
+
+所有 notify 统一 Subject/Body：
 
 ```
 Subject: [A2A] {event-type} {short_id}: {title}
@@ -191,216 +141,82 @@ Body:
 {action_hint}
 ```
 
-## 7. 并行执行
+## 7. Gateway Sweeper
 
-DAG 通过 `parents` 数组表达，`promote_children` 已支持 fan-out/fan-in。需改动：
-- 跨 batch parents（解除 create 中"同 batch"限制）
-- 循环依赖检测（create 时 DFS）
+事件流之外的主动补漏。
 
-## 8. Board 归档
-
-Board → `Archived`（已有 `BoardStatus::Archived`）时：
-
-1. 遍历所有 task 的 `summary.artifacts`
-2. 有 `attachment_id` 的附件复制到 `a2a_board/{board_id}/outputs/{task_id}/`
-3. 更新 summary JSON：引用改为本地路径
-4. 删除 `board_address` 下载权限——原文件走 30 天自然回收
-5. Board 目录自包含——board.db + outputs/ 可直接打包导出
-
-## 9. 改动清单
-
-| 文件 | 改动 | 说明 |
-|------|------|------|
-| `models.rs` | `CommandResponse` 加 `data: Option<Value>` | 统一返回结构 |
-| `commands.rs` | `do_complete()` + `data_response()` | 统一入口 + summary 写入 |
-| `commands.rs` | `do_heartbeat()` / `do_roles()` | API/SMTP 共享核心逻辑 |
-| `commands.rs` | `handle_show`/`handle_list` 返回 parent_summaries | 父级产物查询 |
-| `commands.rs` | 跨 batch parents + 循环检测 | DAG 支持 |
-| `interceptor.rs` | 读 attachments_json → 注入 cmd.params + Notifier | 附件入口 |
-| `interceptor.rs` | `create_permission` (assignee+reviewer+board) | 下载权限 |
-| `notify.rs` | `Notifier` 加 `attachments_json` 字段 | 所有通知自动携带 |
-| `notify.rs` | `create_email` 传入 attachments_json | mail_count 保护 |
-| `notify.rs` | `notify_assigned` 含父级产物 | 下游上下文 |
-| `notify.rs` | 全部 11 个函数 Body 模板统一 | 通知规范 |
-| `handlers.rs` | `handle_list_roles` 调 `do_roles()` | API 复用 |
-| `handlers.rs` | `handle_get_task` 附加 parent_summaries | API 查询 |
-| `handlers.rs` | `handle_post_heartbeat` 调 `do_heartbeat()` | API 复用 |
-| `agentmail_tools.py` | heartbeat 传 actor=toolset | 调用统一 |
-
-
-## 10. Task 状态机增强
-
-### 10.1 当前状态
-
-```
-Ready → Running → Reviewing → Done
-         ↕ Blocked
-         → Cancelled
-  Todo (定义存在但从不创建)
-```
-
-### 10.2 目标状态
-
-```
-Triage → Todo → Ready → Running → Reviewing → Done → Archived
-                  ↑ (promote_children 拉起)
-                  ↕ Blocked
-                  → Cancelled
-```
-
-新增/修复状态转移：
-
-| 状态 | 进入条件 | 来源 | 退出条件 |
-|------|---------|------|---------|
-| `Triage` | `create` 不设 `assignee`（纯想法） | orchestrator 随手记 | `edit` 设 assignee → Todo |
-| `Todo` | `create` 设 `assignee` + `parents` 未满足 | Triage 转化 | parents 全部 Done → Ready |
-| `Ready` | `create` 无 parents 或 parents 已满足 | Todo promote | assignee `heartbeat` → Running |
-| `Archived` (新) | `[A2A] archive T1` | Done/Cancelled | Board 数据导出后删除 |
-
-### 10.3 改动清单
-
-| 文件 | 改动 | 行数 |
-|------|------|:--:|
-| `models.rs` | `TaskStatus` 加 `Triage`, `Archived` | ~4 |
-| `commands.rs` | `handle_create`: 无 assignee → Triage，有 parents → Todo (不改 Ready) | ~10 |
-| `commands.rs` | `handle_edit`: 支持 `{"status":"todo"}` Triage→Todo | ~5 |
-| `commands.rs` | `handle_complete`: 不改——仍 Reviewing/Done | 0 |
-| `commands.rs` | `handle_archive` (新): Done→Archived | ~15 |
-
-
-### 10.4 Heartbeat 有效性规则
-
-| 检查 | 条件 | 不满足返回 |
-|------|------|---------|
-| 归属 | `sender == task.assignee` | `Forbidden("only assignee can heartbeat")` |
-| 状态 | `task.status == Ready \|\| task.status == Running` | `BadRequest("heartbeat invalid for task status: {status}")` |
-| 转移 | `Ready` → `Running` | 首次 heartbeat 触发状态转移 |
-| 续存 | `Running` → 更新 `updated_at` | 仅更新时间戳 |
-
-过滤后 heartbeat 成为 Worker 的唯一存活信号——非 assignee 无法冒名、Done 后自动停止、Sweeper 精确扫描 `Running + updated_at > 4h`。
-
-## 11. Gateway Scheduler
-
-### 11.1 触发事件
-
-| 事件 | 扫描频率 | 触发条件 | 处理 |
+| 事件 | 频率 | 触发 | 处理 |
 |------|:--:|------|------|
-| 僵死心跳 | 15 min | `Running` + `updated_at > 4h`（heartbeat 已经过滤到只有 assignee 能发）| `block(reason)` → `notify_blocked`(assignee) + `notify`(orchestrator) |
-| 僵死审阅 | 6 h | `Reviewing` + 状态持续 > 3d | `notify_review_needed`(reminder) |
-| Owner 超时 | 24 h | `AwaitingOwner` + > 3d | `notify_output`(reminder) |
-| 自动归档 | 24 h | `Completed` + > 30d | `Board → Archived` + 附件复制 |
+| 僵死心跳 | 15min | Running + updated_at > heartbeat_stale | block + notify(assignee+orch) |
+| 任务超时 | 6h | Reviewing/AwaitingOwner + 状态持续 > task_timeout | 再次提醒 |
+| 自动归档 | 24h | Completed + > task_timeout | Board→Archived + 附件复制 |
 
-### 11.2 重启动
+僵死心跳后 orchestrator 自行决定：reassign→unblock / unblock→重试 / cancel→终止。
 
-僵死心跳触发 block 后，orchestrator 收到通知自行决策：
+## 8. 并行执行
 
-```
-[A2A] reassign T1 {"assignee":"new-worker"} → unblock → 新 Worker 接手
-[A2A] unblock T1 → 原 Worker 再试
-[A2A] cancel T1 → 终止
-```
+DAG 通过 `parents` 数组表达。`promote_children` 已支持 fan-out/fan-in。
+- 跨 batch parents
+- 循环依赖检测 (create 时 DFS)
 
-### 11.3 改动
+## 9. Board 归档
 
-| 文件 | 内容 | 行数 |
-|------|------|:--:|
-| `src/board/sweeper.rs` (新) | 只读扫描 + 写状态 + 发通知 | ~60 |
-| `src/server.rs` | 启动时 spawn sweeper | ~5 |
+Board→Archived 时：
+1. 附件从 Gateway 存储复制到 `a2a_board/{bid}/outputs/{tid}/`
+2. 删除 board 地址下载权限
+3. Board 目录自包含：board.db + outputs/
 
-不改现有 handler 和 notify。sweeper 独立运行。
-
-## 12. 可配置项
+## 10. 可配置项
 
 ```toml
 [board]
 heartbeat_stale_seconds = 14400   # 僵死心跳 (4h)
-task_timeout_seconds = 259200     # 任务超时提醒 (3d)：审阅/Owner/归档共用
+task_timeout_seconds = 259200     # 任务超时 (3d)
 sweeper_interval_seconds = 900    # 扫描间隔 (15min)
+
+# Advanced only
+max_active_boards = 10
+archive_retention_days = 365
 ```
 
-| 参数 | 默认 | 环境变量 | 说明 |
-|------|------|---------|------|
-| `heartbeat_stale_seconds` | 14400 | `AMAILGW_BOARD_HEARTBEAT_STALE_SECONDS` | Running 无心跳超过此值→block |
-| `task_timeout_seconds` | 259200 | `AMAILGW_BOARD_TASK_TIMEOUT_SECONDS` | 审阅/Owner/归档超时共用阈值 |
-| `sweeper_interval_seconds` | 900 | `AMAILGW_BOARD_SWEEPER_INTERVAL_SECONDS` | 扫描频率 |
-
-### Sweeper 触发对照
-
-| 事件 | 阈值来源 |
+| 参数 | 环境变量 |
 |------|---------|
-| 僵死心跳 | `heartbeat_stale_seconds` |
-| 僵死审阅 | `task_timeout_seconds` |
-| Owner 超时 | `task_timeout_seconds` |
-| 自动归档 | `task_timeout_seconds` |
+| heartbeat_stale_seconds | AMAILGW_BOARD_HEARTBEAT_STALE_SECONDS |
+| task_timeout_seconds | AMAILGW_BOARD_TASK_TIMEOUT_SECONDS |
+| sweeper_interval_seconds | AMAILGW_BOARD_SWEEPER_INTERVAL_SECONDS |
 
-## 13. 配额限制
+## 11. 配额 (Advanced)
 
-### 13.1 Core 预置（trait + 检测点）
-
-`src/core/board/quota.rs`：
+Core 预置 trait + 检测点：
 
 ```rust
-/// Board 配额接口。Core 定义 trait + 检测点；Advanced 提供具体实现。
-pub trait BoardQuotaChecker: Send + Sync {
-    /// 检查是否可以创建新 Board。返回 Ok(()) 或 Err(配额描述)。
+pub trait BoardQuotaChecker {
     fn check_active_boards(&self, system_id: &str) -> AppResult<()>;
 }
-
-/// 默认实现：无限制。
-pub struct NoopBoardQuota;
-
-impl BoardQuotaChecker for NoopBoardQuota {
-    fn check_active_boards(&self, _system_id: &str) -> AppResult<()> {
-        Ok(())
-    }
-}
 ```
 
-检测点（Core 内）：
+| 检测点 | 位置 |
+|--------|------|
+| Board 创建 | handle_init |
+| 归档清理 | sweeper auto-archive |
 
-| 检测点 | 位置 | 调什么 |
-|--------|------|--------|
-| Board 创建 | `handle_init` L488 | `quota.check_active_boards(system_id)` |
-| Board 归档 | `sweeper.rs` auto-archive | `quota.check_archive_retention(board)` |
+Advanced 提供 `AdvancedBoardQuota` 实现，读 `max_active_boards` 和 `archive_retention_days`。
 
-### 13.2 Advanced 实现
+## 12. 实施阶段
 
-`advanced/board_quota.rs`：
+| 阶段 | 内容 | 文件 | 行数 |
+|------|------|------|:--:|
+| **P1** | Task 状态: Triage/Archived, Todo 创建, heartbeat 过滤+Ready→Running | commands.rs | ~40 |
+| **P2** | do_complete() + summary 写入 | commands.rs | ~30 |
+| **P3** | interceptor 附件: attachments_json→summary, create_permission | interceptor.rs | ~25 |
+| **P4** | Notifier 附件字段 + create_outbound | notify.rs | ~10 |
+| **P5** | notify_assigned 父级产物 + Body 模板 | notify.rs | ~50 |
+| **P6** | show/list parent_summaries + data 字段 | commands.rs + handlers.rs | ~30 |
+| **P7** | 跨 batch parents + 循环检测 | commands.rs + db.rs | ~25 |
+| **P8** | Gateway Sweeper + BoardConfig | sweeper.rs + config.rs | ~70 |
+| **P9** | Board 归档 (附件复制 + 清理) | commands.rs + sweeper.rs | ~30 |
+| **P10** | Quota trait + 检测点 (core) | quota.rs | ~15 |
+| **P11** | Advanced Quota 实现 | advanced/ | ~35 |
+| **P12** | 测试 + 文档 | category-6 + GUIDE | — |
 
-```rust
-pub struct AdvancedBoardQuota {
-    pub db: Arc<Database>,
-    pub config: BoardConfig,
-}
-
-impl BoardQuotaChecker for AdvancedBoardQuota {
-    fn check_active_boards(&self, system_id: &str) -> AppResult<()> {
-        let count = self.db.count_active_boards(system_id)?;
-        if let Some(max) = self.config.max_active_boards {
-            if count >= max {
-                return Err(QuotaExceeded(format!("{} active boards (max {})", count, max)));
-            }
-        }
-        Ok(())
-    }
-}
-```
-
-配置：
-
-```toml
-[board]
-max_active_boards = 10            # Advanced only
-archive_retention_days = 365      # Advanced only
-```
-
-### 13.3 改动
-
-| 层 | 文件 | 内容 | 行数 |
-|----|------|------|:--:|
-| Core | `src/core/board/quota.rs` (新) | trait + Noop | ~15 |
-| Core | `src/core/config.rs` | `BoardConfig` 加 `max_active_boards`, `archive_retention_days` | ~5 |
-| Core | `commands.rs` | `handle_init` 调 quota | ~3 |
-| Core | `sweeper.rs` | 归档清理调 quota | ~3 |
-| Advanced | `src/advanced/board_quota.rs` (新) | AdvancedBoardQuota impl | ~30 |
-| Advanced | `src/server.rs` | 注入 AdvancedBoardQuota | ~5 |
+**总计 ~370 行 Core + ~35 行 Advanced。**
