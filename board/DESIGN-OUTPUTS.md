@@ -308,3 +308,99 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 | `src/server.rs` | 启动时 spawn sweeper | ~5 |
 
 不改现有 handler 和 notify。sweeper 独立运行。
+
+## 12. 可配置项
+
+### 12.1 BoardConfig
+
+`config.toml` 新增 `[board]` 段：
+
+```toml
+[board]
+heartbeat_stale_seconds = 14400      # 僵死心跳阈值 (4h)
+review_stale_seconds = 259200        # 僵死审阅阈值 (3d)
+owner_awaiting_seconds = 259200      # Owner 超时阈值 (3d)
+auto_archive_seconds = 2592000       # 自动归档 (30d)
+sweeper_interval_seconds = 900       # Sweeper 扫描间隔 (15min)
+```
+
+Rust 结构：
+
+```rust
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoardConfig {
+    #[serde(default = "default_heartbeat_stale")]
+    pub heartbeat_stale_seconds: u64,
+    #[serde(default = "default_review_stale")]
+    pub review_stale_seconds: u64,
+    #[serde(default = "default_owner_awaiting")]
+    pub owner_awaiting_seconds: u64,
+    #[serde(default = "default_auto_archive")]
+    pub auto_archive_seconds: u64,
+    #[serde(default = "default_sweeper_interval")]
+    pub sweeper_interval_seconds: u64,
+    // Advanced
+    pub max_active_boards: Option<usize>,
+    pub archive_retention_days: Option<u64>,
+}
+```
+
+### 12.2 Sweeper 可配置覆盖
+
+| 参数 | 默认 | 环境变量 |
+|------|------|---------|
+| 僵死心跳 | 4h | `AMAILGW_BOARD_HEARTBEAT_STALE_SECONDS` |
+| 僵死审阅 | 3d | `AMAILGW_BOARD_REVIEW_STALE_SECONDS` |
+| Owner 超时 | 3d | `AMAILGW_BOARD_OWNER_AWAITING_SECONDS` |
+| 自动归档 | 30d | `AMAILGW_BOARD_AUTO_ARCHIVE_SECONDS` |
+| 扫描间隔 | 15min | `AMAILGW_BOARD_SWEEPER_INTERVAL_SECONDS` |
+
+## 13. 配额限制（Advanced Edition）
+
+### 13.1 配额点
+
+| 配额 | 检查点 | 超限处理 |
+|------|--------|---------|
+| 同时活跃 Board 数 | `refresh`/`init` 时 `count_active_boards(system_id)` | 拒绝创建：`429 Too Many Boards` |
+| 归档保留期限 | `auto_archive` 时 `board.completed_at + retention_days < now` | 物理删除 board.db + outputs/ |
+
+### 13.2 活跃 Board 定义
+
+```
+active: status ∈ {Active, AwaitingOwner}
+完成但不归档: Completed
+已归档: Archived
+
+count_active_boards(system_id):
+  SELECT COUNT(*) FROM boards WHERE status IN ('active','awaiting_owner')
+```
+
+### 13.3 配额配置
+
+```toml
+[board]
+max_active_boards = 10               # Advanced only
+archive_retention_days = 365         # Advanced only: 归档后保留 365 天
+```
+
+### 13.4 归档清理流程
+
+```
+auto_archive (Sweeper 每日):
+  1. 找到所有 Completed + >30d 的 Board
+  2. 触发归档: Board→Archived + 附件复制到 outputs/
+  3. 检查 archive_retention_days:
+     if board.archived_at + retention_days < now:
+       rm -rf a2a_board/{board_id}/
+       delete board_address permissions
+  4. 记录: quota log
+```
+
+### 13.5 改动
+
+| 文件 | 内容 | 行数 |
+|------|------|:--:|
+| `config.rs` | 加 `BoardConfig` 结构 + 默认值 | ~30 |
+| `commands.rs` | `handle_init` 加 `count_active_boards` 检查 | ~10 |
+| `sweeper.rs` | 归档清理 + 保留期限检查 | ~15 |
+| `db.rs` | `count_active_boards()` 查询 | ~10 |
