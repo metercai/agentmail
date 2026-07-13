@@ -2637,19 +2637,6 @@ def _resolve_board(task_id: str) -> str:
     return ""
 
 
-def _auto_heartbeat(task_id: str):
-    """Fire-and-forget heartbeat on toolset call. Non-blocking, ignores errors."""
-    try:
-        import threading
-        def _hb():
-            try:
-                board_heartbeat(task_id=task_id, note="auto")
-            except Exception:
-                pass
-        threading.Thread(target=_hb, daemon=True).start()
-    except Exception:
-        pass
-
 def board_task_show(task_id: str) -> str:
     """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
     import json
