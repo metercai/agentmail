@@ -5,7 +5,6 @@
 | Endpoint | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/health` | GET | Health check | `integrate.sh`, `scripts/check_status.py`, `scripts/hermes_gateway.sh` |
-| `/api/v1/activate-system` | POST | Product code activation | `scripts/activate_system.py`, `tools/agentmail_tools.py` |
 | `/api/v1/activate-address` | POST | Activation code → API key | `tools/agentmail_tools.py` |
 
 ## Shared
