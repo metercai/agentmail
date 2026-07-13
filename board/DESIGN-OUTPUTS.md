@@ -70,7 +70,7 @@ Triage → Todo → Ready → Running → Reviewing → Done → Archived
 | Reviewing | complete (有 reviewer) | approve→Done / reject→Running |
 | Done | approve | archive→Archived |
 | Blocked | block | unblock→Running |
-| Cancelled | cancel（orchestrator，任一状态均可）| 终态——不可 reactivate。需重新 create |
+| Cancelled | cancel（仅 Blocked）| 终态——block 后放弃任务。Blocked 的两个出口：unblock→Running / cancel→Cancelled |
 | Archived | archive | (终态) |
 
 ### 4.2 Heartbeat 规则
