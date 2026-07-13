@@ -25,6 +25,7 @@ Identity from key, scoped to self.
 | `/api/v1/upload` | POST | Upload attachment | `tools/agentmail_tools.py` |
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
 | `/api/v1/inbox` | GET | Pull own pending deliveries | `tools/agentmail_tools.py` |
+| `/api/v1/inbox/ack` | POST | Acknowledge delivery receipt | `tools/agentmail_tools.py` |
 | `/api/v1/stats/agent/me` | GET | Self statistics | `scripts/send_welcome.py` |
 | `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage | `tools/agentmail_tools.py` |
 | `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
