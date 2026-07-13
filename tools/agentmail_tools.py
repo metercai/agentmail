@@ -19,25 +19,6 @@ _TOOLSET = "agentmail"
 
 
 
-def _get_board_gateway_url(board_id: str, profile_cfg: dict) -> str:
-    """Return gateway URL for board_id, falling back to profile config."""
-    with _board_gateways_lock:
-        return _board_gateways.get(board_id, profile_cfg.get("gateway_url", ""))
-
-def _register_board_gateway(board_id: str, gateway_url: str):
-    """Store gateway URL for a board (called from notification preprocessing)."""
-    with _board_gateways_lock:
-        _board_gateways[board_id] = gateway_url
-
-
-# ═══════════════════════════════════════════════════════════════
-# _GatewayClient -- HTTP client for agentmail API
-# ═══════════════════════════════════════════════════════════════
-
-class _GatewayClient:
-    """Thin HTTP wrapper around agentmail REST API.
-    No process-level side effects. Safe to instantiate anywhere."""
-
     def __init__(self, gateway_url: str, api_key: str, timeout: int = 30):
         self.gateway_url = gateway_url.rstrip("/")
         self.api_key = api_key

@@ -167,7 +167,7 @@ hook_deleted = '''            # ── Fire integration hooks (AmailGateway) ─
 content = re.sub(
     r'    # ── Fire integration hooks \(AmailGateway\) ──\n'
     r'    try:\n'
-    r'        from tools\.amail_tools import trigger_profile_hooks\n'
+    r'        
     r'        trigger_profile_hooks\("profile_created".*?'
     r'    except ImportError:\n'
     r'        pass  # AmailGateway tools not installed\n',
@@ -194,7 +194,7 @@ else:
 content = re.sub(
     r'    # ── Fire integration hooks \(AmailGateway\) ──\n'
     r'    try:\n'
-    r'        from tools\.amail_tools import trigger_profile_hooks\n'
+    r'        
     r'        trigger_profile_hooks\("profile_deleted".*?'
     r'    except ImportError:\n'
     r'        pass  # AmailGateway tools not installed\n',
