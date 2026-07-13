@@ -230,51 +230,27 @@ Advanced 提供 `AdvancedBoardQuota` 实现，读 `max_active_boards` 和 `archi
 | 配额 | max_active_boards 超限拒绝 |
 
 
-## 13. Agent 自动心跳
+## 13. 心跳机制（修正）
 
-### 13.1 原则
+代码验证结论：
+- `board_heartbeat` toolset 已存在（agentmail_tools.py:2718）
+- Webhook session 默认 max_turns=10，无法维持长进程
+- Kanban 的自动心跳依赖 Dispatcher 设置环境变量 + 长进程
 
-- 首跳由 LLM 发起：Agent toolset 调 board_heartbeat，Gateway 侧 Ready>Running
-- Agent 运行时检测到 task 进入 Running 后启动自动心跳
-- LLM 调 complete 后 task 变 Done，Agent 运行时停止自动心跳
-- 自动心跳仅维持存活，不改变 task 状态
+a2a_board 的 webhook 架构不支持 Agent 侧自动心跳。改为：
 
-### 13.2 Agent 侧实现
+### 实际方案
 
-```
-# agentmail_tools.py
+- **LLM 触发**：Worker 通过 toolset `board_heartbeat` 手动发心跳
+- **首次心跳 = 开工**：Gateway `do_heartbeat` 检测 Ready→Running 转移
+- **长任务建议**：Worker 在 SOUL 中被告知心跳超时风险，自行周期性调 toolset
+- **僵死检测**：Gateway Sweeper 独立运行——不依赖 Agent 侧
 
-# --- Toolset: first heartbeat ---
-def board_heartbeat(board_id: str, task_id: str, note: str = "") -> dict:
-    """LLM calls this -> Gateway heartbeat -> Ready->Running (if first)"""
-    resp = _post(f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?...")
-    if resp.get("task", {}).get("status") == "running":
-        _mark_active(task_id)   # start auto-heartbeat
-    return resp
-
-def board_complete(board_id: str, task_id: str, summary: str = "") -> dict:
-    resp = _post(f"/api/v1/board/{board_id}/task/{task_id}/complete?...")
-    _unmark_active(task_id)    # stop auto-heartbeat
-    return resp
-
-# --- Runtime: auto heartbeat (called between LLM turns) ---
-def auto_heartbeat_loop():
-    for task_id in _active_tasks.copy():
-        if _should_heartbeat(task_id, interval=900):
-            _post(f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?...")
-```
-
-### 13.3 Gateway 侧
-
-Sweeper 只扫描 Running + updated_at > heartbeat_stale。LLM 首跳前 task 是 Ready，不会被扫。complete 后 task 变 Done，也不会被扫。
-
-### 13.4 Worker SOUL 补充
+### Worker SOUL 补充
 
 ```
-执行任务时：
-- 非自己 assignee 的 task 不发 heartbeat
-- 开工时通过 toolset 发 [A2A] heartbeat T1
-- 超 15min 无 heartbeat：Gateway Sweeper 判定僵死，task 被 block
-- 计划离线超 heartbeat_stale：提前告知 orchestrator
+长任务（>15min）：
+- 定期通过 toolset 调 board_heartbeat，保持存活
+- 计划离线超过 heartbeat_stale：提前 block 自己或告知 orchestrator
+- 不及时 heartbeat 的后果：Sweeper 判定僵死，task 被 block
 ```
-
