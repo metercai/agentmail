@@ -14,9 +14,9 @@
 |------|--------|---------|---------|
 | `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
 
-## Agent（含 agent_admin）
+## Agent（agent scope）
 
-身份从 key 的 `email_address` 自动获取，无需传参。
+身份从 key 的 `email_address` 自动获取，只能操作自己。
 
 | 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
@@ -25,19 +25,28 @@
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
 | `/api/v1/pending` | GET | Agent pull own pending emails | `tools/agentmail_tools.py`（待实现） |
 | `/api/v1/stats/agent/me` | GET | Agent self statistics | `scripts/send_welcome.py`（待实现） |
-| `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage | `tools/agentmail_tools.py`（public_whoami, msg metadata） |
-| `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
-| `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
-| `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py`（auto-whitelist, manage_contacts） |
-| `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
-| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist | `tools/agentmail_tools.py` |
 
-## Admin（system / platform）
+## Admin（agent_admin / system / platform）
+
+### Agent 数据管理（agent_admin scope + 管理范畴校验）
+
+agent_admin 需传操作对象的 email，由 `require_domain_match` / `require_agent_match` 校验管理范围（system_id / domain_addr）。
 
 | 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
-| `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py`（deregister cleanup） |
+| `/api/v1/agent-state/:key` | GET/PUT | Agent KV storage（需传 agent email） | `tools/agentmail_tools.py` |
+| `/api/v1/contacts/:address` | GET/PUT | Contact profile CRUD | `tools/agentmail_tools.py` |
+| `/api/v1/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
+| `/api/v1/thread-summary/:message_id` | GET/PUT | Email thread summary | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
+| `/api/v1/whitelists/:id` | PUT/DELETE | Update/delete whitelist | `tools/agentmail_tools.py` |
+
+### 系统管理（system / platform scope）
+
+| 端点 | Method | Purpose | Callers |
+|------|--------|---------|---------|
+| `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py`（deregister） |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/api-keys/:id` | PUT/DELETE | Update/rotate/delete API key | `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/:sid/domains` | GET/POST | System domain CRUD | `scripts/list_domains.py`, `integrate.sh`, `tools/agentmail_tools.py` |
@@ -46,7 +55,7 @@
 | `/api/v1/admin/domains/check?domain=` | GET | Check domain uniqueness | `scripts/helpers.sh` |
 | `/api/v1/admin/agent-meta/:email` | PUT | Update agent metadata | Gateway admin |
 | `/api/v1/admin/pending` | POST | Bridge push pending emails | `scripts/check_status.py` |
-| `/api/v1/admin/probe-webhook` | POST | Probe webhook reachability | `integrate.sh` bridge mode detection |
+| `/api/v1/admin/probe-webhook` | POST | Probe webhook reachability | `integrate.sh` |
 
 ## Bridge
 
