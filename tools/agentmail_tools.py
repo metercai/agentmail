@@ -120,6 +120,22 @@ def build_ctx(payload: dict, headers: dict) -> dict:
 
 _TOOLSET = "agentmail"
 
+# ── Board gateway URL registry ──
+# Maps board_id -> gateway_url. Populated from assigned notification emails.
+import threading, json as _json
+_board_gateways: dict = {}
+_board_gateways_lock = threading.Lock()
+
+def _get_board_gateway_url(board_id: str, profile_cfg: dict) -> str:
+    """Return gateway URL for board_id, falling back to profile config."""
+    with _board_gateways_lock:
+        return _board_gateways.get(board_id, profile_cfg.get("gateway_url", ""))
+
+def _register_board_gateway(board_id: str, gateway_url: str):
+    """Store gateway URL for a board (called from notification preprocessing)."""
+    with _board_gateways_lock:
+        _board_gateways[board_id] = gateway_url
+
 
 # ═══════════════════════════════════════════════════════════════
 # _GatewayClient -- HTTP client for agentmail API
@@ -2624,8 +2640,7 @@ registry.register(
 # ═══════════════════════════════════════════════════════════════
 
 def _resolve_board(task_id: str) -> str:
-    """Extract board_id from task_id or config."""
-    # task_id format: t_<board_id>_<short_id> or board:<board_id>:<task_id>
+    """Extract board_id from task_id."""
     if task_id.startswith("t_"):
         parts = task_id.split("_", 2)
         if len(parts) >= 2:
@@ -2636,6 +2651,17 @@ def _resolve_board(task_id: str) -> str:
             return parts[1]
     return ""
 
+def _resolve_gateway_url(task_id: str) -> str:
+    """Return gateway URL for the board of this task."""
+    board_id = _resolve_board(task_id)
+    cfg = _load_profile_config()
+    if not cfg or not board_id:
+        return cfg.get("gateway_url", "") if cfg else ""
+    gateway_url = _board_gateways.get(board_id, "")
+    if not gateway_url:
+        gateway_url = cfg.get("gateway_url", "")
+    return gateway_url
+
 
 def board_task_show(task_id: str) -> str:
     """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
@@ -2643,7 +2669,8 @@ def board_task_show(task_id: str) -> str:
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
@@ -2660,7 +2687,8 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     params = {}
     if status:
         params["status"] = status
@@ -2680,7 +2708,8 @@ def board_members(board_id: str, email: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return json.dumps({"error": "no profile config"})
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         path = f"/api/v1/board/{board_id}/members"
         if email:
@@ -2695,7 +2724,8 @@ def board_roles(board_id: str, role: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return json.dumps({"error": "no profile config"})
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         path = f"/api/v1/board/{board_id}/roles"
         if role:
@@ -2709,7 +2739,8 @@ def board_status(board_id: str) -> str:
     import json
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         return json.dumps(client._request("GET", f"/api/v1/board/{board_id}/status"), indent=2)
     except Exception as e:
@@ -2721,7 +2752,8 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     board_id = _resolve_board(task_id)
     if not board_id:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
@@ -2884,7 +2916,8 @@ def set_public_whoami(text: str) -> str:
     import json
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
-    client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
+    gateway_url = _resolve_gateway_url(task_id)
+    client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
         r = client.agent_state_put("public_whoami", text)
         return json.dumps({"status": "ok"})
