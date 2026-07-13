@@ -43,9 +43,9 @@
 | `/api/v1/admin/whitelists` | GET/POST | 管理 whitelist（按域/系统范围） | `tools/agentmail_tools.py` |
 | `/api/v1/admin/whitelists/check?...` | GET | 管理 whitelist 检查 | `tools/agentmail_tools.py` |
 | `/api/v1/admin/whitelists/:id` | PUT/DELETE | 管理 whitelist 更新/删除 | `tools/agentmail_tools.py` |
-| `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
-| `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
-| `/api/v1/api-keys/:id` | PUT/DELETE | Admin disable/delete any key | `tools/agentmail_tools.py` |
+| `/api/v1/admin/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
+| `/api/v1/admin/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
+| `/api/v1/admin/api-keys/:id` | DELETE | Delete any key | `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/:sid/domains` | GET/POST | System domain CRUD | `scripts/list_domains.py`, `integrate.sh`, `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/:sid/addresses` | POST | Register agent email address | `tools/agentmail_tools.py` |
 | `/api/v1/admin/system-domains/:id` | PUT | Update domain settings | `tools/agentmail_tools.py` |
