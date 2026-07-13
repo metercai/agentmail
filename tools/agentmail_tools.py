@@ -156,7 +156,7 @@ _TOOLSET = "agentmail"
     ) -> dict:
         return self._request(
             "POST",
-            "/api/v1/admin/whitelists",
+            "/api/v1/whitelists",
             body={
                 "system_id": system_id,
                 "domain_addr": domain_addr,
@@ -167,77 +167,77 @@ _TOOLSET = "agentmail"
         )
 
     def check_whitelist_value(self, domain_addr: str, value: str, direction: str = "to") -> dict:
-        """GET /api/v1/admin/whitelists/check — check if a value is whitelisted.
+        """GET /api/v1/whitelists/check — check if a value is whitelisted.
 
         Returns {"in_contacts": True/False, "direction": "..."} — no info leakage
         beyond the single queried address.
         """
         result = self._request(
             "GET",
-            f"/api/v1/admin/whitelists/check?domain_addr={domain_addr}&value={value}&direction={direction}",
+            f"/api/v1/whitelists/check?domain_addr={domain_addr}&value={value}&direction={direction}",
         )
         whitelisted = result.get("status") == 200 and result.get("whitelisted", False)
         entry_direction = result.get("direction", direction) if whitelisted else direction
         return {"in_contacts": whitelisted, "direction": entry_direction}
 
     def update_whitelist_by_value(self, domain_addr: str, value: str, direction: str) -> dict:
-        """PUT /api/v1/admin/whitelists?domain_addr=&value= — update direction by composite key.
+        """PUT /api/v1/whitelists?domain_addr=&value= — update direction by composite key.
 
         Unlike update_whitelist_entry which requires a DB entry_id, this uses
         the same composite-key lookup as delete_whitelist_by_value — no
         information leakage from listing all entries.
         """
         return self._request("PUT",
-            f"/api/v1/admin/whitelists?domain_addr={domain_addr}&value={value}",
+            f"/api/v1/whitelists?domain_addr={domain_addr}&value={value}",
             body={"direction": direction})
 
     def delete_whitelist_by_value(self, domain_addr: str, value: str) -> dict:
-        """DELETE /api/v1/admin/whitelists?domain_addr=&value= — delete by composite key."""
+        """DELETE /api/v1/whitelists?domain_addr=&value= — delete by composite key."""
         return self._request("DELETE",
-            f"/api/v1/admin/whitelists?domain_addr={domain_addr}&value={value}")
+            f"/api/v1/whitelists?domain_addr={domain_addr}&value={value}")
 
     # ── Agent State API (per-agent KV store) ─────────────────────
 
     def agent_state_get(self, key: str) -> Optional[str]:
-        """GET /api/v1/admin/agent-state/:key - returns value string or None."""
-        result = self._request("GET", f"/api/v1/admin/agent-state/{key}")
+        """GET /api/v1/agent-state/:key - returns value string or None."""
+        result = self._request("GET", f"/api/v1/agent-state/{key}")
         if result.get("status") == 200:
             return result.get("value")
         return None
 
     def agent_state_put(self, key: str, value: str) -> dict:
-        """PUT /api/v1/admin/agent-state/:key - upsert a value."""
-        return self._request("PUT", f"/api/v1/admin/agent-state/{key}", body={"value": value})
+        """PUT /api/v1/agent-state/:key - upsert a value."""
+        return self._request("PUT", f"/api/v1/agent-state/{key}", body={"value": value})
 
     # ── Semantic endpoints ──────────────────────────────
 
     def put_contact(self, address: str, profile: str) -> dict:
-        """PUT /api/v1/admin/contacts/:address — atomic write + name index + merge."""
-        return self._request("PUT", f"/api/v1/admin/contacts/{address}",
+        """PUT /api/v1/contacts/:address — atomic write + name index + merge."""
+        return self._request("PUT", f"/api/v1/contacts/{address}",
                              body={"profile": profile})
 
     def get_contact(self, address: str) -> Optional[dict]:
-        """GET /api/v1/admin/contacts/:address — returns {address, profile} or None."""
-        result = self._request("GET", f"/api/v1/admin/contacts/{address}")
+        """GET /api/v1/contacts/:address — returns {address, profile} or None."""
+        result = self._request("GET", f"/api/v1/contacts/{address}")
         if result.get("status") == 200:
             return {"address": result.get("address"), "profile": result.get("profile")}
         return None
 
     def get_contacts_by_name(self, name: str) -> list:
-        """GET /api/v1/admin/contacts?name=... — returns [{"address":...,"profile":...}]."""
-        result = self._request("GET", f"/api/v1/admin/contacts?name={name}")
+        """GET /api/v1/contacts?name=... — returns [{"address":...,"profile":...}]."""
+        result = self._request("GET", f"/api/v1/contacts?name={name}")
         if result.get("status") == 200:
             return result.get("results", [])
         return []
 
     def put_thread_summary(self, message_id: str, summary: str) -> dict:
-        """PUT /api/v1/admin/thread-summary/:message_id — resolve thread_id + write."""
-        return self._request("PUT", f"/api/v1/admin/thread-summary/{message_id}",
+        """PUT /api/v1/thread-summary/:message_id — resolve thread_id + write."""
+        return self._request("PUT", f"/api/v1/thread-summary/{message_id}",
                              body={"summary": summary})
 
     def get_thread_summary(self, message_id: str) -> Optional[str]:
-        """GET /api/v1/admin/thread-summary/:message_id — resolve + read, returns summary str or None."""
-        result = self._request("GET", f"/api/v1/admin/thread-summary/{message_id}")
+        """GET /api/v1/thread-summary/:message_id — resolve + read, returns summary str or None."""
+        result = self._request("GET", f"/api/v1/thread-summary/{message_id}")
         if result.get("status") == 200:
             return result.get("summary")
         return None
@@ -623,8 +623,8 @@ def contact_profile(address: str = "", name: str = "") -> dict:
     """Look up a contact profile by address or name.
 
     At least one of address or name must be provided.
-    - address: exact lookup via GET /api/v1/admin/contacts/:address
-    - name: server-side search via GET /api/v1/admin/contacts?name=
+    - address: exact lookup via GET /api/v1/contacts/:address
+    - name: server-side search via GET /api/v1/contacts?name=
     """
     if not address and not name:
         return {"address": "", "profile": None, "error": "address or name required"}
