@@ -21,29 +21,24 @@
 | `/api/v1/send` | POST | Send email | `tools/agentmail_tools.py` |
 | `/api/v1/upload` | POST | Upload attachment | `tools/agentmail_tools.py` |
 | `/api/v1/attachments/:id` | GET | Download attachment | `tools/agentmail_tools.py` |
-| `/api/v1/admin/agent-state/{key}` | GET | Read agent KV storage | `tools/agentmail_tools.py` |
-| `/api/v1/admin/agent-state/{key}` | PUT | Write agent KV storage | `tools/agentmail_tools.py` |
-| `/api/v1/admin/contacts/{address}` | GET | Read contact profile | `tools/agentmail_tools.py` |
-| `/api/v1/admin/contacts/{address}` | PUT | Write contact profile | `tools/agentmail_tools.py` |
-| `/api/v1/admin/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
-| `/api/v1/admin/thread-summary/{message_id}` | GET | Read thread summary | `tools/agentmail_tools.py` |
-| `/api/v1/admin/thread-summary/{message_id}` | PUT | Update thread summary | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists` | POST | Create whitelist entry | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists?...` | PUT | Update whitelist | `tools/agentmail_tools.py` |
-| `/api/v1/admin/whitelists?...` | DELETE | Delete whitelist | `tools/agentmail_tools.py` |
 
-## 4. Admin — platform / system / agent_admin scope
+## 4. Admin — system / platform scope
 
 | Endpoint | Method | Purpose | Callers |
 |----------|--------|---------|---------|
+| `/api/v1/admin/agent-state/{key}` | GET/PUT | Read/write agent KV storage | `tools/agentmail_tools.py` |
+| `/api/v1/admin/contacts/{address}` | GET/PUT | Read/write contact profile | `tools/agentmail_tools.py` |
+| `/api/v1/admin/contacts?name=` | GET | Search contacts by name | `tools/agentmail_tools.py` |
+| `/api/v1/admin/thread-summary/{message_id}` | GET/PUT | Read/update thread summary | `tools/agentmail_tools.py` |
+| `/api/v1/admin/whitelists` | GET/POST | List/create whitelist | `tools/agentmail_tools.py` |
+| `/api/v1/admin/whitelists/check?...` | GET | Whitelist lookup | `tools/agentmail_tools.py` |
+| `/api/v1/admin/whitelists?...` | PUT/DELETE | Update/delete whitelist | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys?email=` | GET | Lookup API key by email | `tools/agentmail_tools.py` |
 | `/api/v1/api-keys` | POST | Create API key | `scripts/deploy_bridge.py` |
 | `/api/v1/api-keys/{id}` | DELETE | Delete API key | `tools/agentmail_tools.py` |
 | `/api/v1/stats/agent/me?email=` | GET | Agent self statistics | `scripts/send_welcome.py` |
 | `/api/v1/admin/pending` | POST | Bridge pulls pending emails | `scripts/check_status.py` |
-| `/api/v1/admin/systems/{sid}/domains` | GET | List system domains | `scripts/list_domains.py`, `integrate.sh`, `scripts/send_welcome.py`, `tools/agentmail_tools.py` |
-| `/api/v1/admin/systems/{sid}/domains` | POST | Create domain record | `integrate.sh` |
+| `/api/v1/admin/systems/{sid}/domains` | GET/POST | List/create system domains | `scripts/list_domains.py`, `integrate.sh`, `tools/agentmail_tools.py` |
 | `/api/v1/admin/systems/{sid}/addresses` | POST | Register agent email address | `tools/agentmail_tools.py` |
 | `/api/v1/admin/system-domains/{id}` | PUT | Update domain settings | `tools/agentmail_tools.py` |
 | `/api/v1/admin/domains/check?domain=` | GET | Check domain uniqueness | `scripts/helpers.sh` |
