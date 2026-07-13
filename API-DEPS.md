@@ -13,7 +13,7 @@
 | 端点 | Method | Purpose | Callers |
 |------|--------|---------|---------|
 | `/api/v1/whoami` | GET | Verify API key identity & scopes | `scripts/deploy_bridge.py`, `scripts/check_status.py`, `integrate.sh` |
-| `/api/v1/api-keys/:id` | PUT | Rotate own key | `tools/agentmail_tools.py` |
+| `/api/v1/api-keys/rotate` | POST | Rotate own key | `tools/agentmail_tools.py` |
 
 ## Agent（agent scope）
 
