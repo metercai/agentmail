@@ -17,13 +17,13 @@ pkill -f "hermes.*gateway.*run.*accept-hooks" 2>/dev/null || true
 sleep 2
 
 # ── 1. Patch webhook ────────────────────────────────────────────
-source "$SCRIPT_DIR/patch-webhook.sh"
+source "$SCRIPT_DIR/hermes/patch-webhook.sh"
 
 # ── 2. Patch profiles ───────────────────────────────────────────
-source "$SCRIPT_DIR/patch-profiles.sh"
+source "$SCRIPT_DIR/hermes/patch-profiles.sh"
 
 # ── 3. Register existing profiles ───────────────────────────────
-REG_OUTPUT=$(python3 "$SCRIPT_DIR/scripts/register_profiles.py")
+REG_OUTPUT=$(python3 "$SCRIPT_DIR/hermes/register_profiles.py")
 REG_COUNT=0
 while IFS= read -r line; do
     case "$line" in
@@ -39,4 +39,4 @@ else
 fi
 
 # ── 4. Ensure gateway running ──────────────────────────────────
-source "$SCRIPT_DIR/hermes_gateway.sh"
+source "$SCRIPT_DIR/hermes/gateway.sh"

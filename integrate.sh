@@ -96,7 +96,7 @@ fi
 
 # ═══════════════════════════════════════════════════════════════
 echo ""
-TITLE="$T_TITLE" python3 "$SCRIPT_DIR/scripts/print_banner.py"
+TITLE="$T_TITLE" python3 "$SCRIPT_DIR/hermes/print_banner.py"
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Step 1: Configure agentmail gateway                                         ║
@@ -271,7 +271,7 @@ if ! $USE_PRODUCT_CODE; then
 
         while true; do
             DOMAINS_JSON=$(curl -s --connect-timeout 10 --max-time 15 "$GATEWAY_URL/api/v1/admin/systems/$SYSTEM_ID/domains" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo "[]")
-            BARE_DOMAINS=$(python3 "$SCRIPT_DIR/scripts/list_domains.py" 2>/dev/null)
+            BARE_DOMAINS=$(python3 "$SCRIPT_DIR/hermes/list_domains.py" 2>/dev/null)
             DOMAIN_COUNT=$(echo "$BARE_DOMAINS" | sed '/^$/d' | wc -l)
 
         echo -e "  ${BOLD}$T_DOMAIN_EXISTING:${NC}"
@@ -532,12 +532,12 @@ fi
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Steps 5-8: tools, configure, diagnostics, test                            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
-source "$SCRIPT_DIR/install-tools.sh"
+source "$SCRIPT_DIR/hermes/install-tools.sh"
 
 # Step 6: Configure Hermes (patches + profiles + gateway)
 PATCH_STEP_PARENT=1
 step_begin "$T_WEBHOOK"
-source "$SCRIPT_DIR/configure_hermes.sh"
+source "$SCRIPT_DIR/hermes/configure.sh"
 unset PATCH_STEP_PARENT
 
 # Step 7: Full pipeline diagnostics + ping-pong test
@@ -551,7 +551,7 @@ if [ -n "$AMAIL_AGENT" ]; then
 else
     AGENT_FLAG=""
 fi
-python3 "$SCRIPT_DIR/scripts/check_status.py" $AGENT_FLAG
+python3 "$SCRIPT_DIR/hermes/check_status.py" $AGENT_FLAG
 STEP9_EXIT=$?
 set -e
 if [ $STEP9_EXIT -eq 0 ]; then
@@ -559,8 +559,8 @@ if [ $STEP9_EXIT -eq 0 ]; then
 else
     step_warn "$T_DIAG_PARTIAL"
 fi
-python3 "$SCRIPT_DIR/scripts/check_status.py" --ping $AGENT_FLAG
+python3 "$SCRIPT_DIR/hermes/check_status.py" --ping $AGENT_FLAG
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
-python3 "$SCRIPT_DIR/scripts/send_welcome.py"
+python3 "$SCRIPT_DIR/hermes/send_welcome.py"
