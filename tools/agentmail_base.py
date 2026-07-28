@@ -133,27 +133,7 @@ def build_ctx(payload: dict, headers: dict) -> dict:
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# Constants
-# ═══════════════════════════════════════════════════════════════
-
-
-
-        result = self._request("POST", "/api/v1/activate-address", body=body)
-        raw_key = result.get("raw_key", "")
-        if not raw_key:
-            return {"success": False, "error": f"activation failed: {result}"}
-        return {
-            "success": True,
-            "raw_key": raw_key,
-            "api_key_id": result.get("api_key_id", 0),
-            "email_address": result.get("email_address", ""),
-        }
-
-
-# ═══════════════════════════════════════════════════════════════
-# Config helpers
-# ═══════════════════════════════════════════════════════════════
+# ── Config helpers ──
 
 def _agentmail_system_dir(system_id: str = "") -> Path:
     """Return ~/.agentmail/{system_id}/ for config storage.

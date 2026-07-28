@@ -325,7 +325,9 @@ try:
                 "properties": {
                     "text": {"type": "string", "description": "Public identity text"}
                 },
-
+                "required": ["text"],
+            },
+        },
 
 def set_public_whoami(text: str) -> str:
     """Set Agent public WHOAMI card for stranger queries."""

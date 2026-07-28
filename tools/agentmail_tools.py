@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _TOOLSET = "agentmail"
 
 
-
+class _GatewayClient:
     def __init__(self, gateway_url: str, api_key: str, timeout: int = 30):
         self.gateway_url = gateway_url.rstrip("/")
         self.api_key = api_key
