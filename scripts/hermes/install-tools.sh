@@ -3,7 +3,7 @@
 step_begin "$T_TOOLS"
 
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
-TOOLS_DST="$HERMES_DIR/tools/hermes/agentmail_tools.py"
+TOOLS_DST="$HERMES_DIR/tools/agentmail_tools.py"
 
 # Check if reinstall is needed: compare checksums
 NEED_COPY=false

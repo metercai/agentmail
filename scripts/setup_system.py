@@ -6,7 +6,7 @@ Both library module and CLI entry point for integrate.sh Step 4.
 Called directly as `python3 lib/setup_system.py` or imported as `from setup_system import setup`.
 
 Depends on:
-  - tools/agentmail_tools.py for _GatewayClient, _gateway_config_path, _load_gateway_config
+  - tools/agentmail_tools.py for GatewayClient, gateway_config_path, load_gateway_config
 """
 import json
 import logging
@@ -15,12 +15,12 @@ import socket
 import sys
 from pathlib import Path
 
-_tools_dir = str(Path(__file__).resolve().parent.parent / "tools")
-if _tools_dir not in sys.path:
-    sys.path.insert(0, _tools_dir)
+# Ensure scripts/ dir is on path for gateway_api and local imports
+_script_dir = str(Path(__file__).resolve().parent)
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
 
-from tools.gateway import _GatewayClient, _gateway_config_path, _load_gateway_config
-from gateway_api import create_api_key
+from gateway_api import GatewayClient, create_api_key, gateway_config_path, load_gateway_config
 
 logger = logging.getLogger("amail_setup")
 
@@ -47,7 +47,7 @@ def _downgrade_to_agent_admin_key(
         return system_admin_key
 
     # Replace in config file
-    cfg_path = _gateway_config_path(system_id)
+    cfg_path = gateway_config_path(system_id)
     if cfg_path.is_file():
         with open(cfg_path) as f:
             cfg = json.load(f)
@@ -212,7 +212,7 @@ def _save_gateway_config(
     if webhook_host:
         cfg["webhook_host"] = webhook_host
 
-    gateway_path = _gateway_config_path(system_id)
+    gateway_path = gateway_config_path(system_id)
     gateway_path.parent.mkdir(parents=True, exist_ok=True)
     with open(gateway_path, "w") as f:
         json.dump(cfg, f, indent=2)
@@ -239,14 +239,14 @@ def init_system(
     system_admin API key.
     """
     if not gateway_url:
-        cfg = _load_gateway_config()
+        cfg = load_gateway_config()
         gateway_url = cfg.get("gateway_url", "") if cfg else ""
     if not gateway_url:
         return {"success": False, "error": "gateway_url is required"}
     if not product_code:
         return {"success": False, "error": "product_code is required"}
 
-    client = _GatewayClient(gateway_url, "")
+    client = GatewayClient(gateway_url, "")
     result = client.activate_system(
         code=product_code,
         system_name=system_name or None,
@@ -274,7 +274,7 @@ def init_system(
         manager_address=manager_address,
         webhook_host=webhook_host,
     )
-    logger.info("[amail_setup] Gateway config saved to %s", _gateway_config_path())
+    logger.info("[amail_setup] Gateway config saved to %s", gateway_config_path())
     # Downgrade to agent_admin key
     agent_key = _downgrade_to_agent_admin_key(
         gateway_url, admin_key, created_system_id, manager_address,

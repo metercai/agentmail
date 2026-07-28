@@ -41,7 +41,7 @@ fi
 source "$SCRIPT_DIR/i18n.sh"
 source "$SCRIPT_DIR/helpers.sh"
 
-TOOLS_PY="$SCRIPT_DIR/tools/hermes/agentmail_tools.py"
+TOOLS_PY="$SCRIPT_DIR/tools/agentmail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 
 # ═══════════════════════════════════════════════════════════════

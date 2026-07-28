@@ -106,7 +106,7 @@ WEBHOOK_BLOCK4 = """        # ── Ping-pong interception (end-to-end test) �
                     import json as _json, os as _os, sys as _sys
                     from datetime import datetime, timezone
                     _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "tools")
-                    _sys.path.insert(0, _os.path.abspath(_tools_dir) + "/hermes")
+                    _sys.path.insert(0, _os.path.abspath(_tools_dir))
                     from agentmail_tools import send_mail as _send_mail
                     pong_body = _json.dumps({
                         "ping_id": ping_id,
