@@ -195,16 +195,18 @@ def main():
     if not bridge_key:
         log_warn("bridge API key creation failed — bridge auth may not work")
 
-    # Read webhook secret from Hermes config
-    webhook_secret = ""
-    try:
-        import yaml
-        hermes_cfg_path = os.path.expanduser("~/.hermes/config.yaml")
-        with open(hermes_cfg_path) as f:
-            hc = yaml.safe_load(f)
-        webhook_secret = hc.get("platforms", {}).get("webhook", {}).get("extra", {}).get("secret", "")
-    except:
-        pass
+    # Read webhook secret from agent config (Hermes → env fallback)
+    webhook_secret = os.environ.get("AMAIL_WEBHOOK_SECRET", "")
+    if not webhook_secret:
+        try:
+            import yaml
+            hermes_cfg = os.path.expanduser("~/.hermes/config.yaml")
+            if os.path.isfile(hermes_cfg):
+                with open(hermes_cfg) as f:
+                    hc = yaml.safe_load(f)
+                webhook_secret = hc.get("platforms", {}).get("webhook", {}).get("extra", {}).get("secret", "")
+        except:
+            pass
 
     write_bridge_config(bridge_cfg, bridge_mode, wh_host or "127.0.0.1:38081",
                         gw, ak, sid, api_key=bridge_key,
