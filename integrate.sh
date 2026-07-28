@@ -279,7 +279,7 @@ print(f'    [{domain_count+1}] Enter a new domain')
     fi
     fi
 else
-    if echo "$PRODUCT_CODE" | grep -q "^system"; then
+    if echo "$PRODUCT_CODE" | grep -q "^shared-"; then
         step_begin "$T_ACTIVATE"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
