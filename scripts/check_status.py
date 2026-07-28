@@ -26,33 +26,24 @@ CHECK  = '\u2713'
 CROSS  = '\u2717'
 
 # ── Path constants ─────────────────────────────────────────────
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+AGENT_HOME = Path(os.environ.get("AGENT_HOME", str(Path.home() / ".hermes")))
 AGENTMAIL_HOME = Path.home() / ".agentmail"
 
 def _resolve_system_id(args: list[str] | None = None) -> str:
-    """Determine system_id: --system-id arg > HERMES_PROFILE_DIR/.agentmail > ~/.hermes/.agentmail > env var."""
+    """Determine system_id: --system-id arg > AGENT_HOME/.agentmail > env."""
     if args:
         for i, a in enumerate(args):
             if a == "--system-id" and i + 1 < len(args):
                 return args[i + 1]
-    pdir = os.environ.get("HERMES_PROFILE_DIR", "")
-    if pdir:
-        pointer = Path(pdir) / ".agentmail"
-        if pointer.is_file():
-            try:
-                return json.loads(pointer.read_text()).get("system_id", "")
-            except Exception:
-                pass
-    # Fallback: check ~/.hermes/.agentmail directly
-    default_pointer = Path.home() / ".hermes" / ".agentmail"
-    if default_pointer.is_file():
+    pointer = AGENT_HOME / ".agentmail"
+    if pointer.is_file():
         try:
-            return json.loads(default_pointer.read_text()).get("system_id", "")
+            return json.loads(pointer.read_text()).get("system_id", "")
         except Exception:
             pass
     return os.environ.get("SYSTEM_ID", "")
 
-def _gw_path(sid: str) -> Path:
+def _system_agent_path(sid: str) -> Path:
     return AGENTMAIL_HOME / sid / "agentmail_gateway.json"
 
 def _agent_path(sid: str) -> Path:
@@ -60,9 +51,9 @@ def _agent_path(sid: str) -> Path:
 BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
 BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
 BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
-HERMES_CFG  = HERMES_HOME / "config.yaml"
-SUBS_FILE   = HERMES_HOME / "webhook_subscriptions.json"
-PROFILES_DIR = HERMES_HOME / "profiles"
+AGENT_CFG   = AGENT_HOME / "config.yaml"
+SUBS_FILE   = AGENT_HOME / "webhook_subscriptions.json"
+PROFILES_DIR = AGENT_HOME / "profiles"
 ROUTES_FILE = AGENTMAIL_HOME / "amail_routes.toml"
 
 # Agent-scoped paths (require --agent argument for per-agent data)
@@ -178,7 +169,7 @@ def _read_gw_cfg(sid: str = "") -> dict | None:
     """Load ~/.agentmail/system-{sid}/agentmail_gateway.json, return None on failure."""
     if not sid:
         sid = _resolve_system_id(sys.argv)
-    p = _gw_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
+    p = _system_agent_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
     if not p.exists() or not p.is_file():
         return None
     try:
@@ -189,10 +180,10 @@ def _read_gw_cfg(sid: str = "") -> dict | None:
 
 def _get_webhook_port() -> int:
     """Read webhook port from config.yaml."""
-    if HERMES_CFG.exists():
+    if AGENT_CFG.exists():
         try:
             import yaml
-            with open(HERMES_CFG) as f:
+            with open(AGENT_CFG) as f:
                 hc = yaml.safe_load(f) or {}
             return int(hc.get("platforms", {}).get("webhook", {})
                       .get("extra", {}).get("port", 8644))
@@ -484,7 +475,7 @@ def check_agent_gateway(c: Check):
 
     # 3.3 PREPROCESS registration
     hermes_dir = Path(os.environ.get("HERMES_DIR",
-                                     str(HERMES_HOME / "hermes-agent")))
+                                     str(AGENT_HOME / "hermes-agent")))
     webhook_py = hermes_dir / "gateway" / "platforms" / "webhook.py"
     if webhook_py.exists():
         try:
@@ -795,7 +786,7 @@ def _run_ping_test() -> int:
         print("✗ agentmail_gateway.json not found")
         return 1
     sid = cfg0.get("system_id", "")
-    config_path = _gw_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
+    config_path = _system_agent_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
     if not config_path.exists():
         print("✗ agentmail_gateway.json not found")
         return 1

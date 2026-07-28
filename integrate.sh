@@ -551,7 +551,7 @@ if [ -n "$AMAIL_AGENT" ]; then
 else
     AGENT_FLAG=""
 fi
-python3 "$SCRIPT_DIR/hermes/check_status.py" $AGENT_FLAG
+python3 "$SCRIPT_DIR/check_status.py" $AGENT_FLAG
 STEP9_EXIT=$?
 set -e
 if [ $STEP9_EXIT -eq 0 ]; then
@@ -559,7 +559,7 @@ if [ $STEP9_EXIT -eq 0 ]; then
 else
     step_warn "$T_DIAG_PARTIAL"
 fi
-python3 "$SCRIPT_DIR/hermes/check_status.py" --ping $AGENT_FLAG
+python3 "$SCRIPT_DIR/check_status.py" --ping $AGENT_FLAG
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
