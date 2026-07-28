@@ -19,8 +19,7 @@ _tools_dir = str(Path(__file__).resolve().parent.parent / "tools")
 if _tools_dir not in sys.path:
     sys.path.insert(0, _tools_dir)
 
-from agentmail_tools import _GatewayClient
-from agentmail_base import _gateway_config_path, _load_gateway_config
+from tools.gateway import _GatewayClient, _gateway_config_path, _load_gateway_config
 from gateway_api import create_api_key
 
 logger = logging.getLogger("amail_setup")

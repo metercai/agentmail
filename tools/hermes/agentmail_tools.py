@@ -347,16 +347,6 @@ class _GatewayClient:
         body = {"code": code, "email_address": email_address, "scopes": scopes or ["agent"]}
 
 
-    tmp_path = subs_path.with_suffix(".tmp")
-    tmp_path.write_text(
-        json.dumps(subs, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    tmp_path.replace(subs_path)
-    logger.info("[agentmail_gateway] %s webhook route: %s %s",
-                "Updated" if existed else "Created", route_name, subs_path)
-    return not existed
-
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -662,8 +652,6 @@ def set_contact_profile(address: str, profile: str) -> dict:
     return client.put_contact(address, profile)
 
 # Register the hooks explicitly (not via decorator to avoid ordering issues)
-register_profile_hook("profile_created", _auto_register_email)
-register_profile_hook("profile_deleted", _auto_deregister_email)
 
 
 # ═══════════════════════════════════════════════════════════════

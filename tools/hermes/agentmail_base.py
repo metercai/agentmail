@@ -35,8 +35,6 @@ Hermes 运行时加载的模块，提供：
 Toolset: agentmail
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os
@@ -1306,3 +1304,7 @@ def _extract_board_gateway(payload: dict):
     if token_match:
         token = token_match.group(1).rstrip()
         _store_board_credential(board_id, gateway_url, token)
+
+
+register_profile_hook("profile_created", _auto_register_email)
+register_profile_hook("profile_deleted", _auto_deregister_email)
