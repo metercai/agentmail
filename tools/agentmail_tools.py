@@ -657,39 +657,9 @@ def set_contact_profile(address: str, profile: str) -> dict:
     """
     config = _load_profile_config()
     if not config:
-
-
-    except Exception:
-        return
-
-    profile_email = profile_config.get("email", "")
-    if not profile_email:
-        return
-
-    # Find and delete the API key by email address
-    client = _GatewayClient(gateway_url, admin_key)
-    entries = client.list_api_keys()
-    if isinstance(entries, list):
-        for entry in entries:
-            if entry.get("email_address") == profile_email:
-                api_key_id = entry.get("id")
-                if api_key_id:
-                    client.delete_api_key(api_key_id)
-                    logger.info("[agentmail_gateway] Deleted API key for %s (id=%s)", profile_email, api_key_id)
-                break
-
-    # Remove the centralized config files
-    config_path.unlink(missing_ok=True)
-    # Also clean up profiles sub-path if different from config_path
-    if system_id and name != "default":
-        alt = _agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json"
-        if alt.is_file() and str(alt) != str(config_path):
-            alt.unlink(missing_ok=True)
-    # Clean up .agentmail pointer
-    pointer = Path(profile_dir) / ".agentmail"
-    if pointer.is_file():
-        pointer.unlink(missing_ok=True)
-
+        return {"success": False, "error": "no profile config"}
+    client = _GatewayClient(config["gateway_url"], config["api_key"])
+    return client.put_contact(address, profile)
 
 # Register the hooks explicitly (not via decorator to avoid ordering issues)
 register_profile_hook("profile_created", _auto_register_email)

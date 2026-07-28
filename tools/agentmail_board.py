@@ -328,6 +328,12 @@ try:
                 "required": ["text"],
             },
         },
+        handler=set_public_whoami,
+        emoji="🆔",
+    )
+except Exception as _e:
+    logger.warning("[a2a_board] tool registration failed: %s", _e)
+
 
 def set_public_whoami(text: str) -> str:
     """Set Agent public WHOAMI card for stranger queries."""

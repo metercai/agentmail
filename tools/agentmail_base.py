@@ -416,10 +416,12 @@ def _ensure_profile_webhook(profile_dir: str) -> Optional[dict]:
         
         # Deep-merge with existing config
         platforms = dict(existing.get("platforms", {}))
+    except Exception:
+        pass
 
 
-    """
-    profile_dir = _resolve_profile_dir() or ""
+def _list_personas() -> dict:
+    """List configured personas from profile config."""
     if profile_dir:
         try:
             import yaml
@@ -493,6 +495,9 @@ def _ensure_webhook_route(
     subs_path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _put_contact_profile(address: str, profile: str) -> dict:
+    config = _load_profile_config()
+    if not config:
         return {"success": False, "error": "agentmail not configured for this profile"}
     client = _GatewayClient(config["gateway_url"], config["api_key"])
 
@@ -1248,6 +1253,8 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
 
     try:
         profile_config = json.loads(config_path.read_text())
+    except Exception:
+        pass
 
 
 # ── Board gateway URL registry ──
