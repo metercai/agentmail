@@ -21,8 +21,42 @@ if _tools_dir not in sys.path:
 
 from agentmail_tools import _GatewayClient
 from agentmail_base import _gateway_config_path, _load_gateway_config
+from gateway_api import create_api_key
 
 logger = logging.getLogger("amail_setup")
+
+
+# ── Agent admin key helper ──────────────────────────────────────
+
+def _downgrade_to_agent_admin_key(
+    gateway_url: str, system_admin_key: str, system_id: str,
+    manager_address: str,
+) -> str:
+    """Create agent_admin key and replace admin_key in gateway config.
+    Returns the agent_admin key on success, or the original key on failure.
+    """
+    result = create_api_key(
+        gateway_url, system_admin_key, system_id,
+        manager_address, ["agent_admin"], "agent_admin",
+    )
+    raw = result.get("raw_key", "")
+    if not raw:
+        logger.warning(
+            "[amail_setup] Failed to create agent_admin key: %s %s — keeping system key",
+            result.get("error", ""), result.get("detail", ""),
+        )
+        return system_admin_key
+
+    # Replace in config file
+    cfg_path = _gateway_config_path(system_id)
+    if cfg_path.is_file():
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        cfg["admin_key"] = raw
+        with open(cfg_path, "w") as f:
+            json.dump(cfg, f, indent=2)
+    logger.info("[amail_setup] agent_admin key created and saved")
+    return raw
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -242,11 +276,14 @@ def init_system(
         webhook_host=webhook_host,
     )
     logger.info("[amail_setup] Gateway config saved to %s", _gateway_config_path())
-
+    # Downgrade to agent_admin key
+    agent_key = _downgrade_to_agent_admin_key(
+        gateway_url, admin_key, created_system_id, manager_address,
+    )
     return {
         "success": True,
         "system_id": created_system_id,
-        "admin_key": admin_key,
+        "admin_key": agent_key,
         "gateway_url": gateway_url,
         "domain": created_domain,
         "system_name": system_name or result.get("system_name", ""),
@@ -293,7 +330,10 @@ def setup(
             save_raw_snapshots=save_raw_snapshots, manager_address=manager_address,
             webhook_host=webhook_host,
         )
-        return {"success": True, "system_id": system_id, "path": "admin_key"}
+        agent_key = _downgrade_to_agent_admin_key(
+            gateway_url, admin_key, system_id, manager_address,
+        )
+        return {"success": True, "system_id": system_id, "path": "admin_key", "admin_key": agent_key}
 
     # Path B: product_code provided (new system activation)
     if product_code:

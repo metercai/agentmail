@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Deploy amail-bridge: domain key, bridge config, startup."""
+"""Deploy amail-bridge: bridge config, startup."""
 import sys, os, json, subprocess, socket, time
 import urllib.request, urllib.error, re
+from gateway_api import create_api_key
 
 def log_step(msg: str):
     print(f"  {msg}")
@@ -11,35 +12,6 @@ def log_ok(msg: str):
 
 def log_warn(msg: str):
     print(f"  ⚠ {msg}")
-
-def whoami(gw: str, ak: str) -> dict:
-    req = urllib.request.Request(f"{gw}/api/v1/whoami", headers={"X-Api-Key": ak})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return json.loads(r.read())
-    except:
-        return {}
-
-def create_api_key(gw: str, ak: str, system_id: str, email: str,
-                   scopes: list, category: str) -> dict:
-    """Create API key. Returns {raw_key, error, status}."""
-    data = json.dumps({
-        "system_id": system_id, "email_address": email,
-        "scopes": scopes, "category": category,
-    }).encode()
-    req = urllib.request.Request(f"{gw}/api/v1/admin/api-keys", data=data,
-        headers={"X-Api-Key": ak, "Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        try:
-            body = json.loads(e.read())
-            return {"raw_key": "", "error": body.get("error", ""), "detail": body.get("detail", ""), "status": e.code}
-        except:
-            return {"raw_key": "", "error": f"HTTP {e.code}", "status": e.code}
-    except Exception as e:
-        return {"raw_key": "", "error": str(e)}
 
 def detect_ip() -> str:
     """Detect best public IP. Returns IPv4 or IPv6 or 127.0.0.1."""
@@ -153,61 +125,6 @@ def main():
         log_warn("Required vars missing: GATEWAY_URL, ADMIN_KEY, SYSTEM_ID, AMAIL_DOMAIN")
         return 1
 
-    # ── agent_admin key (replaces old domain key) ──────────────
-    info = whoami(gw, ak)
-    admin_email = info.get("email", "")
-    admin_scope = info.get("scope", "")
-    admin_cat = info.get("category", "")
-
-    # Read manager_address for key binding
-    mgr_addr = os.environ.get("AMAIL_MANAGER_ADDRESS", "")
-    if not mgr_addr:
-        mgr_cfg = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
-        if os.path.isfile(mgr_cfg):
-            with open(mgr_cfg) as f:
-                mgr_addr = json.load(f).get("manager_address", "")
-
-    domain_key = ""
-    if admin_cat == "agent_admin" and admin_email == mgr_addr:
-        domain_key = ak
-        log_ok(f"agent_admin key already bound to {mgr_addr}")
-    elif admin_cat == "agent_admin":
-        # Existing agent_admin key with different manager_address — keep using it
-        domain_key = ak
-        log_ok(f"using existing agent_admin key (bound to {admin_email})")
-    elif not admin_email or admin_email == domain or "platform" in (admin_scope or ""):
-        result = create_api_key(gw, ak, sid, mgr_addr, ["agent_admin"], "agent_admin")
-        raw = result.get("raw_key", "")
-        if raw:
-            domain_key = raw
-            log_ok(f"agent_admin key created (bound to {mgr_addr})")
-        elif "exists" in str(result.get("error", "")).lower() or "duplicate" in str(result.get("detail", "")).lower():
-            log_warn(f"manager_address '{mgr_addr}' already has an API key")
-            log_warn("Options:")
-            log_warn(f"  [1] Set AMAIL_ADMIN_KEY=<that key> and re-run integrate.sh")
-            log_warn( "  [2] Set a different AMAIL_MANAGER_ADDRESS and re-run")
-            return 1
-        else:
-            log_warn(f"agent_admin key creation failed: {result.get('error','')} {result.get('detail','')}")
-            log_warn("continuing with system admin key")
-    else:
-        log_warn("key creation failed — continuing with system admin key")
-
-    # Save domain key
-    if domain_key:
-        # Find agentmail_gateway.json directly by system_id
-        cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
-        if not os.path.isfile(cfg_path):
-            log_warn("agentmail_gateway.json not found — cannot update admin_key")
-        else:
-            with open(cfg_path) as f:
-                cfg = json.load(f)
-            if cfg.get("admin_key") != domain_key:
-                cfg["admin_key"] = domain_key
-                with open(cfg_path, 'w') as f:
-                    json.dump(cfg, f, indent=2)
-                ak = domain_key
-
     # ── Bridge deployment ────────────────────────────────────
     bridge_dir = os.path.expanduser("~/.agentmail/bin")
     bridge_bin = os.path.join(bridge_dir, "amail-bridge")
@@ -271,9 +188,10 @@ def main():
                 system_key = f.read().strip()
         except Exception:
             pass
-    bridge_ak = system_key or ak  # prefer system key, fallback to domain key
+    bridge_ak = system_key or ak  # prefer system key, fallback to agent key
     bridge_domain = f"bridge-{uuid.uuid4().hex[:8]}"
-    bridge_key = create_api_key(gw, bridge_ak, sid, bridge_domain, ["bridge"], "bridge")
+    bridge_result = create_api_key(gw, bridge_ak, sid, bridge_domain, ["bridge"], "bridge")
+    bridge_key = bridge_result.get("raw_key", "") if isinstance(bridge_result, dict) else ""
     if not bridge_key:
         log_warn("bridge API key creation failed — bridge auth may not work")
 
