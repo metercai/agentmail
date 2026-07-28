@@ -158,7 +158,7 @@ def main():
         domain_key = ak
         log_ok(f"domain admin key already in use ({domain})")
     elif not admin_email or admin_email == domain or "platform" in (admin_scope or ""):
-        raw = create_api_key(gw, ak, sid, domain, ["system"], "domain")
+        raw = create_api_key(gw, ak, sid, "", ["agent_admin"], "agent_admin")
         if raw:
             domain_key = raw
             log_ok("domain admin key created")

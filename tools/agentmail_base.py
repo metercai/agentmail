@@ -715,12 +715,21 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     attachments = result.get("attachments")
 
     if attachments and isinstance(attachments, list) and len(attachments) > 0:
+        # Use profile api_key (agent scope) instead of admin_key for
+        # download_attachment — the admin_key may have agent_admin scope
+        # which does not include agent-level attachment access.
+        profile = _load_profile_config()
+        agent_key = (profile or {}).get("api_key", "")
+        if not agent_key:
+            logger.warning("[agentmail_gateway] Cannot download attachments: no agent api_key in profile")
+            return result
+
         config = _load_gateway_config()
         if not config:
             logger.warning("[agentmail_gateway] Cannot download attachments: no gateway config")
             return result
 
-        client = _GatewayClient(config["gateway_url"], config["admin_key"])
+        client = _GatewayClient(config["gateway_url"], agent_key)
         local_paths = []
         for att in attachments:
             if not isinstance(att, dict):
