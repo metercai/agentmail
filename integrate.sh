@@ -44,6 +44,45 @@ source "$SCRIPT_DIR/helpers.sh"
 TOOLS_PY="$SCRIPT_DIR/tools/agentmail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 
+# ═══════════════════════════════════════════════════════════════
+# Step 0: Agent system detection
+# ═══════════════════════════════════════════════════════════════
+AGENT_SYSTEM="${AMAIL_AGENT_SYSTEM:-}"
+AGENT_HOME=""
+if [ -z "$AGENT_SYSTEM" ]; then
+    echo ""
+    echo -e "${BOLD}${YELLOW}Select agent system / 选择 Agent 系统:${NC}"
+    AGENTS_JSON=$(python3 "$SCRIPT_DIR/scripts/detect_agents.py" 2>/dev/null || echo '[]')
+    AGENT_COUNT=$(echo "$AGENTS_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+    if [ "$AGENT_COUNT" = "0" ]; then
+        echo -e "  ${YELLOW}No agent system detected. Hermes Agent and OpenClaw are supported.${NC}"
+        echo -n "  Manually enter agent home dir [~/.hermes]: "
+        read -r _MANUAL_HOME
+        AGENT_HOME="${_MANUAL_HOME:-$HOME/.hermes}"
+        AGENT_SYSTEM="hermes"
+    else
+        IDX=1
+        echo "$AGENTS_JSON" | python3 -c "
+import sys,json
+for a in json.load(sys.stdin):
+    profiles = [p['name'] for p in a.get('profiles',[])][:3]
+    extra = f' +{len(a[\"profiles\"])-3} more' if len(a.get('profiles',[])) > 3 else ''
+    plist = ', '.join(profiles) + extra
+    print(f'  [{IDX}] {a[\"product\"]} v{a[\"version\"]} ({len(a[\"profiles\"])} profiles: {plist})')
+" IDX="$IDX" 2>/dev/null
+        echo -n "  Choice [1]: "; read -r AGENT_CHOICE
+        AGENT_CHOICE="${AGENT_CHOICE:-1}"
+        # Map choice to product name
+        AGENT_SYSTEM=$(echo "$AGENTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[$AGENT_CHOICE-1]['product'].split()[0].lower() if $AGENT_CHOICE <= len(d) else 'hermes')" 2>/dev/null || echo "hermes")
+    fi
+fi
+case "$AGENT_SYSTEM" in
+    hermes|Hermes*) AGENT_HOME="${AGENT_HOME:-$HOME/.hermes}" ;;
+    openclaw|OpenClaw*) AGENT_HOME="${AGENT_HOME:-$HOME/.openclaw}" ;;
+    *) AGENT_HOME="$HOME/.hermes" ;;
+esac
+export AGENT_SYSTEM AGENT_HOME
+
 # ── Load .env file ──────────────────────────────────────────────
 ENV_FILE="$SCRIPT_DIR/.env"
 if [ -f "$ENV_FILE" ]; then
@@ -166,16 +205,19 @@ if $USE_PRODUCT_CODE; then
 elif $REUSED_KEY; then
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
+    CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
+    AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
     step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
 else
     [ -z "$ADMIN_KEY" ] && step_fail "admin_key cannot be empty"
     echo -n "  $T_VERIFY "
-    WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo '{}')
+    WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: *** 2>/dev/null || echo '{}')
     SCOPE=$(echo "$WHOAMI" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scope','') or ','.join(d.get('scopes',[])))" 2>/dev/null || echo "")
     CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
+    AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
-    if echo "$SCOPE" | grep -qE "platform|system"; then
+    if echo "$SCOPE" | grep -qE "platform|system|agent_admin"; then
         echo -e "${GREEN}$T_OK${NC}"
         step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
     else
@@ -184,10 +226,28 @@ else
     fi
 fi
 
+# ── Mode detection (after whoami) ──────────────────────────────
+AGENT_ADMIN_MODE=false
+SHARED_DOMAIN_MODE=false
+if [ "$CATEGORY" = "agent_admin" ]; then
+    AGENT_ADMIN_MODE=true
+    if echo "$SYSTEM_ID" | grep -q "^shared-"; then
+        SHARED_DOMAIN_MODE=true
+    fi
+fi
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Step 2: Domain selection / shared-domain activation                       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 if ! $USE_PRODUCT_CODE; then
+    # ── Mode-aware domain handling ──
+    if $AGENT_ADMIN_MODE && $SHARED_DOMAIN_MODE; then
+        # Shared domain + agent_admin: domain is fixed, skip Step 2
+        AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
+        [ -z "$AMAIL_DOMAIN" ] && AMAIL_DOMAIN=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
+        DOMAIN_OK_COUNT=1
+        step_ok "shared domain = $AMAIL_DOMAIN (from config)"
+    else
     step_begin "$T_DOMAIN"
     AMAIL_DOMAIN="${AMAIL_DOMAIN:-}"
     # Recompute _GW_CFG now that SYSTEM_ID is confirmed
@@ -227,6 +287,12 @@ print(f'    [{domain_count+1}] Enter a new domain')
         echo ""
         echo -n "  $T_DOMAIN_SELECT"; read -r DOMAIN_CHOICE
         DOMAIN_CHOICE="${DOMAIN_CHOICE:-1}"
+
+        # agent_admin users cannot create new domains
+        if $AGENT_ADMIN_MODE && [ "$DOMAIN_CHOICE" = "$((DOMAIN_COUNT+1))" ]; then
+            echo -e "  ${YELLOW}agent_admin key cannot create domains — select an existing one${NC}"
+            continue
+        fi
 
         # Check if adding new domain
         if [ "$DOMAIN_CHOICE" = "$((DOMAIN_COUNT+1))" ]; then
@@ -277,7 +343,8 @@ print(f'    [{domain_count+1}] Enter a new domain')
     if [ -n "$AMAIL_DOMAIN" ]; then
         step_ok "domains: $SELECTED_DOMAINS ($DOMAIN_OK_COUNT OK)"
     fi
-    fi
+    fi    # domain selection else
+    fi    # mode-aware domain handling
 else
     if echo "$PRODUCT_CODE" | grep -q "^shared-"; then
         step_begin "$T_ACTIVATE"
@@ -348,7 +415,14 @@ case "$_SAVE_INPUT" in
     *) SAVE_SNAPSHOTS="false" ;;
 esac
 unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
-MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "")
+# agent_admin mode: prefill manager_address from whoami email_address
+_MGR_DEFAULT=""
+if $AGENT_ADMIN_MODE && [ -n "$AGENT_ADMIN_EMAIL" ]; then
+    _MGR_DEFAULT="$AGENT_ADMIN_EMAIL"
+elif [ "$(read_config "manager_address")" != "" ]; then
+    _MGR_DEFAULT="$(read_config "manager_address")"
+fi
+MANAGER_ADDRESS=$(ask_param "$T_MANAGER_PROMPT" "AMAIL_MANAGER_ADDRESS" "manager_address" "$_MGR_DEFAULT")
 
 WEBHOOK_MODE="${AMAIL_WEBHOOK_MODE:-bridge}"
 WEBHOOK_HOST="${AMAIL_WEBHOOK_HOST:-}"
