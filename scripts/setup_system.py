@@ -6,7 +6,7 @@ Both library module and CLI entry point for integrate.sh Step 4.
 Called directly as `python3 lib/setup_system.py` or imported as `from setup_system import setup`.
 
 Depends on:
-  - tools/agentmail_tools.py for GatewayClient, gateway_config_path, load_gateway_config
+  - scripts/gateway_api.py for GatewayClient, create_api_key, config
 """
 import json
 import logging
