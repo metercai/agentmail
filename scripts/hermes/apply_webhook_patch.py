@@ -377,6 +377,28 @@ if _p6_target in content:
 else:
     print("WARNING: could not find session_chat_id assignment — patch 6 skipped", file=sys.stderr)
 
+# ── Patch 7: import Hermes adapter (agentmail_hermes) — injects platform
+#    implementations into shared core and registers preprocessor/registry/lifecycle
+_p7_block = '''
+# ── AmailGateway Hermes adapter (shared core injection + registration) ──
+try:
+    from tools.hermes import agentmail_hermes  # noqa: F401
+except Exception:
+    pass
+
+'''
+if "agentmail_hermes" not in content:
+    # Insert after the PREPROCESS_REGISTRY definition block (after register_preprocessor)
+    _p7_target = "PREPROCESS_REGISTRY[name] = fn"
+    if _p7_target in content:
+        content = content.replace(_p7_target + "\n", _p7_target + "\n" + _p7_block, 1)
+        patched = True
+        print("Patch 7: agentmail_hermes adapter import added", file=sys.stderr)
+    else:
+        print("WARNING: could not find PREPROCESS_REGISTRY block — patch 7 skipped", file=sys.stderr)
+else:
+    print("Patch 7: agentmail_hermes already present", file=sys.stderr)
+
 if patched:
     with open(target, "w") as f:
         f.write(content)

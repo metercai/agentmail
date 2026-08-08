@@ -22,7 +22,6 @@ BOLD='\033[1m'
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export SCRIPT_DIR
-SCRIPT_DIR="$SCRIPT_DIR/lib"
 
 # ── Language selection ──────────────────────────────────────────
 LANG_CHOICE="${AMAIL_LANG:-}"
@@ -38,10 +37,10 @@ if [ -z "$LANG_CHOICE" ]; then
 fi
 
 # ── Load language strings and helpers ───────────────────────────
-source "$SCRIPT_DIR/i18n.sh"
-source "$SCRIPT_DIR/helpers.sh"
+source "$SCRIPT_DIR/scripts/i18n.sh"
+source "$SCRIPT_DIR/scripts/helpers.sh"
 
-TOOLS_PY="$SCRIPT_DIR/tools/hermes/agentmail_tools.py"
+TOOLS_PY="$SCRIPT_DIR/tools/agentmail_tools.py"
 HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 
 # ═══════════════════════════════════════════════════════════════
@@ -96,7 +95,7 @@ fi
 
 # ═══════════════════════════════════════════════════════════════
 echo ""
-TITLE="$T_TITLE" python3 "$SCRIPT_DIR/print_banner.py"
+TITLE="$T_TITLE" python3 "$SCRIPT_DIR/scripts/print_banner.py"
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Step 1: Configure agentmail gateway                                         ║
@@ -211,7 +210,7 @@ elif $REUSED_KEY; then
 else
     [ -z "$ADMIN_KEY" ] && step_fail "admin_key cannot be empty"
     echo -n "  $T_VERIFY "
-    WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: *** 2>/dev/null || echo '{}')
+    WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $ADMIN_KEY" 2>/dev/null || echo '{}')
     SCOPE=$(echo "$WHOAMI" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scope','') or ','.join(d.get('scopes',[])))" 2>/dev/null || echo "")
     CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
@@ -248,14 +247,14 @@ if ! $USE_PRODUCT_CODE; then
         DOMAIN_OK_COUNT=1
         step_ok "shared domain = $AMAIL_DOMAIN (from config)"
     else
-        source "$SCRIPT_DIR/select_domain.sh"
+        source "$SCRIPT_DIR/scripts/select_domain.sh"
     fi    # mode-aware domain handling
 else
     if echo "$PRODUCT_CODE" | grep -q "^shared-"; then
         step_begin "$T_ACTIVATE"
         # Shared domain: activate via Python (reliable)
         export GATEWAY_URL PRODUCT_CODE
-        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/activate_system.py")
+        ACTIVATE_RESULT=$(python3 "$SCRIPT_DIR/scripts/activate_system.py")
         # Parse result markers
         SYSTEM_ID=$(echo "$ACTIVATE_RESULT" | grep '^::set-system-id::' | sed 's/.*::set-system-id::\(.*\)/\1/')
         ADMIN_KEY=$(echo "$ACTIVATE_RESULT" | grep '^::set-admin-key::' | sed 's/.*::set-admin-key::\(.*\)/\1/')
@@ -425,47 +424,85 @@ export GATEWAY_URL ADMIN_KEY SYSTEM_ID AMAIL_DOMAIN WEBHOOK_MODE WEBHOOK_HOST US
 # Recompute _GW_CFG now that SYSTEM_ID is definitely set
 _GW_CFG=$(_find_gw_cfg)
 
-python3 "$SCRIPT_DIR/deploy_bridge.py"
+# ── Step 4b/5-7: agent 系统适配（按 Step 0 选择分支；公共步骤共用）──
+case "$AGENT_SYSTEM" in
+    openclaw|OpenClaw*)
+        # ── OpenClaw 接入链（scripts/openclaw/：独立激活 → 探测 → 注册 → skill → 轮询）──
+        if [ "$USE_PRODUCT_CODE" != "true" ] || [ -z "${PRODUCT_CODE:-}" ]; then
+            step_warn "OpenClaw 独立激活需要产品激活码（AMAIL_PRODUCT_CODE）——跳过 OpenClaw 接入"
+        else
+            step_begin "OpenClaw activation"
+            export AMAIL_PRODUCT_CODE="$PRODUCT_CODE"
+            OCLAW_OUT=$(python3 "$SCRIPT_DIR/scripts/openclaw/activate.py" \
+                --gateway "$GATEWAY_URL" --code "$PRODUCT_CODE" --system-name "$SYSTEM_NAME" 2>&1) \
+                || { echo "$OCLAW_OUT" | tail -3; step_fail "OpenClaw activate failed"; }
+            OCLAW_SID=$(echo "$OCLAW_OUT" | grep -oP 'system_id=\K[^\s]+' | head -1)
+            [ -n "$OCLAW_SID" ] || OCLAW_SID="$SYSTEM_ID"
+            export AMAIL_SYSTEM_ID="$OCLAW_SID"
+            step_ok "OpenClaw activated: system_id=$OCLAW_SID"
 
-CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/agentmail_gateway.json}"
-if [ -f "$CONFIG_FILE" ]; then
-    step_ok "$T_CONFIG_OK $CONFIG_FILE"
-else
-    step_warn "$T_CONFIG_WARN $CONFIG_FILE"
-fi
+            step_begin "OpenClaw register agents"
+            python3 "$SCRIPT_DIR/scripts/openclaw/probe_mode.py" --system-id "$OCLAW_SID" >/dev/null 2>&1 || true
+            python3 "$SCRIPT_DIR/scripts/openclaw/register_agent.py" --all \
+                --manager "$MANAGER_ADDRESS" --system-id "$OCLAW_SID" || step_fail "OpenClaw register failed"
+            step_ok "OpenClaw agents registered"
 
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Steps 5-8: tools, configure, diagnostics, test                            ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
-source "$SCRIPT_DIR/hermes/install-tools.sh"
+            step_begin "OpenClaw skill + pull automation"
+            bash "$SCRIPT_DIR/scripts/openclaw/install-skill.sh" || step_warn "skill install skipped"
+            # pull 轮询：cron 命令负载（确定性脚本零 token）
+            if command -v openclaw >/dev/null 2>&1; then
+                openclaw cron add --cron "*/30 * * * * *" \
+                    --command "python3 $SCRIPT_DIR/tools/openclaw/amail-poll.py --system-id $OCLAW_SID" \
+                    --name amail-poll 2>/dev/null || step_warn "cron add skipped (may exist)"
+            else
+                step_warn "openclaw CLI not found — add amail-poll.py cron job manually"
+            fi
+            step_ok "OpenClaw skill + automation configured"
+        fi
+        ;;
+    *)
+        # ── Hermes 接入链（bridge + 工具 + 补丁 + 诊断）──
+        python3 "$SCRIPT_DIR/scripts/deploy_bridge.py"
 
-# Step 6: Configure Hermes (patches + profiles + gateway)
-PATCH_STEP_PARENT=1
-step_begin "$T_WEBHOOK"
-source "$SCRIPT_DIR/hermes/configure.sh"
-unset PATCH_STEP_PARENT
+        CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/agentmail_gateway.json}"
+        if [ -f "$CONFIG_FILE" ]; then
+            step_ok "$T_CONFIG_OK $CONFIG_FILE"
+        else
+            step_warn "$T_CONFIG_WARN $CONFIG_FILE"
+        fi
 
-# Step 7: Full pipeline diagnostics + ping-pong test
-step_begin "$T_DIAG"
-set +e  # non-zero from partial failures must not abort
-AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/agentmail.json"
-AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
-[ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
-if [ -n "$AMAIL_AGENT" ]; then
-    AGENT_FLAG="--agent $AMAIL_AGENT"
-else
-    AGENT_FLAG=""
-fi
-python3 "$SCRIPT_DIR/check_status.py" $AGENT_FLAG
-STEP9_EXIT=$?
-set -e
-if [ $STEP9_EXIT -eq 0 ]; then
-    step_ok "$T_DIAG_ALL"
-else
-    step_warn "$T_DIAG_PARTIAL"
-fi
-python3 "$SCRIPT_DIR/check_status.py" --ping $AGENT_FLAG
+        # Step 5: tools, configure, diagnostics
+        source "$SCRIPT_DIR/scripts/hermes/install-tools.sh"
+
+        # Step 6: Configure Hermes (patches + profiles + gateway)
+        PATCH_STEP_PARENT=1
+        step_begin "$T_WEBHOOK"
+        source "$SCRIPT_DIR/scripts/hermes/configure.sh"
+        unset PATCH_STEP_PARENT
+
+        # Step 7: Full pipeline diagnostics + ping-pong test
+        step_begin "$T_DIAG"
+        set +e  # non-zero from partial failures must not abort
+        AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/agentmail.json"
+        AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
+        [ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
+        if [ -n "$AMAIL_AGENT" ]; then
+            AGENT_FLAG="--agent $AMAIL_AGENT"
+        else
+            AGENT_FLAG=""
+        fi
+        python3 "$SCRIPT_DIR/scripts/check_status.py" $AGENT_FLAG
+        STEP9_EXIT=$?
+        set -e
+        if [ $STEP9_EXIT -eq 0 ]; then
+            step_ok "$T_DIAG_ALL"
+        else
+            step_warn "$T_DIAG_PARTIAL"
+        fi
+        python3 "$SCRIPT_DIR/scripts/check_status.py" --ping $AGENT_FLAG
+        ;;
+esac
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
-python3 "$SCRIPT_DIR/send_welcome.py"
+python3 "$SCRIPT_DIR/scripts/send_welcome.py"

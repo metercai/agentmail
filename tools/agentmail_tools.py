@@ -378,15 +378,6 @@ def send_mail(
     if not config:
         return {"success": False, "error": "agentmail not configured for this profile"}
 
-    # Auto-activate if profile has activation_code but no api_key yet
-    if config.get("activation_code") and not config.get("api_key"):
-        profile_dir = _resolve_profile_dir() or ""
-        if profile_dir:
-            _auto_activate_profile(profile_dir, config)
-            config = _load_profile_config()
-            if not config:
-                return {"success": False, "error": "agentmail config lost after activation"}
-
     if not config.get("api_key"):
         return {"success": False, "error": "agentmail api_key not available (activation may have failed)"}
 
@@ -651,231 +642,6 @@ def set_contact_profile(address: str, profile: str) -> dict:
     client = _GatewayClient(config["gateway_url"], config["api_key"])
     return client.put_contact(address, profile)
 
-# Register the hooks explicitly (not via decorator to avoid ordering issues)
-
-
-# ═══════════════════════════════════════════════════════════════
-# Tool Registration (top-level -- auto-discovered by Hermes registry)
-# Wrapped in try/except so setup() and preprocessor can be imported
-# without the Hermes runtime (CLI / integration scripts).
-# ═══════════════════════════════════════════════════════════════
-
-try:
-    from tools.registry import registry, tool_result  # noqa: E402
-    _HERMES_REGISTRY_AVAILABLE = True
-except ImportError:
-    _HERMES_REGISTRY_AVAILABLE = False
-    class _DummyRegistry:
-        def register(self, **kw): pass
-    registry = _DummyRegistry()  # type: ignore
-    def tool_result(x): return x  # noqa: E743
-
-
-def _handle_send_mail(args, **_kw):
-    return tool_result(send_mail(
-        to=args.get("to", ""),
-        subject=args.get("subject", ""),
-        body=args.get("body", ""),
-        cc=args.get("cc"),
-        attachments=args.get("attachments"),
-        message_id=args.get("message_id"),
-    ))
-
-
-def _handle_manage_contacts(args, **_kw):
-    return tool_result(manage_contacts(
-        action=args.get("action", "check"),
-        address=args.get("address"),
-        direction=args.get("direction", "all"),
-    ))
-
-
-registry.register(
-    name="send_mail",
-    toolset=_TOOLSET,
-    schema={
-        "name": "send_mail",
-        "description": (
-            "Send an email via your agentmail address. "
-            "Attachments are automatically uploaded from local file paths. "
-            "For replies: pass the original inbound message_id -- the tool "
-            "automatically resolves In-Reply-To, References headers, and sender persona."
-            "For new emails: omit message_id; the tool will auto-create a new message_id."
-            "After sending, you may call set_email_summary to refine the thread summary."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "to": {
-                    "type": "string",
-                    "description": (
-                        "Comma-separated recipient email addresses. "
-                        "When replying: include the inbound 'sender' "
-                        "plus other 'recipients.to' addresses (excluding your own)."
-                    ),
-                },
-                "subject": {
-                    "type": "string",
-                    "description": (
-                        "Email subject line. "
-                        "When replying: prefix the inbound subject with 'Re: '."
-                    ),
-                },
-                "body": {
-                    "type": "string",
-                    "description": "Email body (plain text or markdown).",
-                },
-                "cc": {
-                    "type": "string",
-                    "description": (
-                        "Optional comma-separated CC recipients. "
-                        "When replying: use 'recipients.cc' from the inbound payload."
-                    ),
-                },
-                "attachments": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Optional list of file paths to attach. "
-                        "Accepts absolute paths, CWD-relative paths, or bare filenames. "
-                        "Bare filenames are resolved by searching the workspace directory tree."
-                    ),
-                },
-                "message_id": {
-                    "type": "string",
-                    "description": (
-                        "For replies: pass the 'message_id' field from the inbound email payload. "
-                        "The tool will automatically resolve threading headers "
-                        "and the sender persona from stored message metadata. "
-                        "Omit for new outbound emails."
-                    ),
-                },
-            },
-            "required": ["to", "subject", "body"],
-        },
-    },
-    handler=_handle_send_mail,
-)
-
-registry.register(
-    name="manage_contacts",
-    toolset=_TOOLSET,
-    schema={
-        "name": "manage_contacts",
-        "description": (
-            "Manage your address book (contacts). "
-            "Use 'check' to verify a contact, 'add' to allow a new sender, "
-            "'remove' to revoke access."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["check", "add", "remove", "update"],
-                    "description": "Action: check if a contact exists, add a new one (sends approval request), remove a contact, or update direction on existing contact.",
-                },
-                "address": {
-                    "type": "string",
-                    "description": "Email address to check, add, or remove (required for all actions).",
-                },
-                "direction": {
-                    "type": "string",
-                    "enum": ["from", "to", "all"],
-                    "description": "Direction: 'from' (inbound, allow receiving), 'to' (outbound, allow sending), or 'all'.",
-                },
-            },
-            "required": ["action", "address"],
-        },
-    },
-    handler=_handle_manage_contacts,
-)
-
-# register contact_profile tool
-def _handle_contact_profile(args, **_kw):
-    return tool_result(contact_profile(
-        address=args.get("address", ""),
-        name=args.get("name", ""),
-    ))
-
-registry.register(
-    name="contact_profile",
-    toolset=_TOOLSET,
-    schema={
-        "name": "contact_profile",
-        "description": (
-            "Look up a contact by address or name. "
-            "At least one required. Address is exact match; name searches for a "
-            "matching 'name' field in stored profiles. "
-            "Returns {address, profile} where the 'profile' value is a JSON string with keys: "
-            "name (display name), title (job title), location (city/timezone), "
-            "relationship (how they relate to you), focus (recurring topics/priorities), "
-            "close_contacts (frequent CCs, semicolon-separated), "
-            "style (communication preference). "
-            "Returns '{}' if no profile stored."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": "Email address for exact lookup.",
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Contact name for search (case-insensitive substring match on the 'name' field in contact profiles).",
-                },
-            },
-        },
-    },
-    handler=_handle_contact_profile,
-)
-
-# register set_contact_profile tool
-def _handle_set_contact_profile(args, **_kw):
-    return tool_result(set_contact_profile(
-
-
-        address=args.get("address", ""),
-        profile=args.get("profile", ""),
-    ))
-
-registry.register(
-    name="set_contact_profile",
-    toolset=_TOOLSET,
-    schema={
-        "name": "set_contact_profile",
-        "description": (
-            "Update the profile for an existing contact. "
-            "Only updates contacts that already exist in your address book."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string",
-                    "description": "Email address of the contact to update.",
-                },
-                "profile": {
-                    "type": "string",
-                    "description": (
-                        "JSON-formatted string of profile fields to update. "
-                        "Valid keys: name, title, location, relationship, focus, "
-                        "close_contacts, style. "
-                        "Prefix '+' to append, '-' to remove, no prefix to overwrite. "
-                        "Unprefixed values inherit the prefix of the preceding value. "
-                        "All values are strings; separate multiple values with semicolons. "
-                        "Max 5 values per key. "
-                        "Example: {\"location\": \"Beijing\", \"focus\": \"-Q3 planning; +Q4 planning\"}"
-                    ),
-                },
-            },
-            "required": ["address", "profile"],
-        },
-    },
-    handler=_handle_set_contact_profile,
-)
-
 # ═══════════════════════════════════════════════════════════════
 # Message Metadata — stored in gateway agent_state (internal), keyed msg:{message_id}
 #    value: {"references": [...], "thread_id": "..."}
@@ -1003,7 +769,9 @@ def _workspace_roots() -> list[Path]:
     roots: list[Path] = [Path.cwd()]
 
     # Profile directory (agent's working sandbox)
-    profile_dir = _resolve_profile_dir() or ""
+    import agentmail_base as _abm
+    _resolver = _abm._PROFILE_DIR_RESOLVER
+    profile_dir = _resolver() if _resolver else ""
     if profile_dir:
         roots.append(Path(profile_dir))
 
@@ -1076,27 +844,14 @@ def _save_outbound_snapshot(out_msg_id: str, my_addr: str, sender: str,
         logger.warning("Failed to save outbound email snapshot for %s", safe_mid)
 
 
-def _current_persona_name() -> Optional[str]:
-    """Return the current persona name from the active Hermes profile directory.
+# ── persona 上下文注入点（Hermes 适配层注入；OpenClaw 无 persona → None）──
+_PERSONA_NAME_PROVIDER = None  # () -> Optional[str]
 
-    Returns None for the default (base) profile; otherwise the profile dir name
-    (e.g. "alice" for ~/.hermes/profiles/alice).
-    """
-    profile_dir = _resolve_profile_dir() or ""
-    if not profile_dir:
-        return None
-    p = Path(profile_dir).resolve()
-    home_hermes = (Path.home() / ".hermes").resolve()
-    if p == home_hermes:
-        return None
-    # Must be a subdirectory of ~/.hermes/profiles/ — extract the persona name
-    profiles_dir = home_hermes / "profiles"
-    try:
-        p.relative_to(profiles_dir)
-    except ValueError:
-        return None
-    name = p.name
-    return name if name else None
+
+def _current_persona_name() -> Optional[str]:
+    """当前 persona 名（注入点）。Hermes 适配层注入（profile 目录派生）；
+    OpenClaw 无 persona 概念 → None（发件用基础地址）。"""
+    return _PERSONA_NAME_PROVIDER() if _PERSONA_NAME_PROVIDER is not None else None
 
 
 
@@ -1107,7 +862,9 @@ def _agentmail_dir() -> Path:
     if env:
         return Path(env)
     # Try pointer file first
-    pdir = _resolve_profile_dir() or ""
+    import agentmail_base as _abm
+    _resolver = _abm._PROFILE_DIR_RESOLVER
+    pdir = _resolver() if _resolver else ""
     if pdir:
         pointer = Path(pdir) / ".agentmail"
         if pointer.is_file():
@@ -1296,49 +1053,4 @@ def set_email_summary(message_id: str, summary: str) -> dict:
         return {"success": True}
     error = result.get("error", f"HTTP {result.get('status')}")
     return {"success": False, "error": f"Failed to store summary: {error}"}
-
-
-# ── Registry: email_summary ─────────────────────────────────────
-
-def _handle_email_summary(args, **_kw):
-    return tool_result(email_summary(
-        message_id=args.get("message_id", ""),
-    ))
-
-registry.register(
-    name="email_summary",
-    toolset=_TOOLSET,
-    schema={
-        "name": "email_summary",
-        "description": (
-            "Look up the stored summary for an email thread. "
-            "Pass any message_id from the thread -- the tool resolves "
-            "the canonical thread_id automatically. "
-            "Returns {thread_id, summary}. "
-            "The summary is a plain-text snapshot of active topics, decisions, "
-            "pending actions, and unresolved questions. Empty string if none stored. "
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "message_id": {
-                    "type": "string",
-                    "description": "Any message_id from the thread whose summary to retrieve.",
-                },
-            },
-            "required": ["message_id"],
-        },
-    },
-    handler=_handle_email_summary,
-    emoji="📧",
-)
-
-# ── Registry: set_email_summary ─────────────────────────────────
-
-def _handle_set_email_summary(args, **_kw):
-    return tool_result(set_email_summary(
-        message_id=args.get("message_id", ""),
-        summary=args.get("summary", ""),
-    ))
-
 

@@ -3,7 +3,17 @@
 step_begin "$T_TOOLS"
 
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
-TOOLS_DST="$HERMES_DIR/tools/hermes/agentmail_tools.py"
+# 仓库根（被 integrate.sh source 或独立运行时都可用）
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$(dirname "$(dirname "$0")")")" && pwd)}"
+# 部署清单：公共核心 3 文件（同目录保证相互 import）+ Hermes 适配层
+TOOLS_DST="$HERMES_DIR/tools/agentmail_tools.py"
+BASE_DST="$HERMES_DIR/tools/agentmail_base.py"
+BOARD_DST="$HERMES_DIR/tools/agentmail_board.py"
+ADAPTER_DST="$HERMES_DIR/tools/hermes/agentmail_hermes.py"
+TOOLS_PY="${TOOLS_PY:-$PROJECT_ROOT/tools/agentmail_tools.py}"
+BASE_PY="$PROJECT_ROOT/tools/agentmail_base.py"
+BOARD_PY="$PROJECT_ROOT/tools/agentmail_board.py"
+ADAPTER_PY="$PROJECT_ROOT/tools/hermes/agentmail_hermes.py"
 
 # Check if reinstall is needed: compare checksums
 NEED_COPY=false
@@ -21,10 +31,13 @@ fi
 if [ "$NEED_COPY" = false ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
     step_ok "$T_TOOLS_SKIP"
 else
-    # Copy the tool file
-    mkdir -p "$HERMES_DIR/tools"
+    # Copy the shared core files + Hermes adapter
+    mkdir -p "$HERMES_DIR/tools/hermes"
     echo -n "  $T_TOOLS_COPY "
-    if cp "$TOOLS_PY" "$TOOLS_DST" 2>/dev/null; then
+    if cp "$TOOLS_PY" "$TOOLS_DST" 2>/dev/null \
+       && cp "$BASE_PY" "$BASE_DST" 2>/dev/null \
+       && cp "$BOARD_PY" "$BOARD_DST" 2>/dev/null \
+       && cp "$ADAPTER_PY" "$ADAPTER_DST" 2>/dev/null; then
         echo "$T_OK"
     else
         echo "$T_FAILED"
