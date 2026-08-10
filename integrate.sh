@@ -147,7 +147,7 @@ if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -n "$_GW_CFG" ]; then
         echo -n "  $T_VERIFY "
         WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $STORED_KEY" 2>/dev/null || echo '{}')
         SCOPE=$(echo "$WHOAMI" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scope','') or ','.join(d.get('scopes',[])))" 2>/dev/null || echo "")
-        if echo "$SCOPE" | grep -qE "platform|system"; then
+        if echo "$SCOPE" | grep -qE "platform|system|agent_admin"; then
             echo -e "${GREEN}$T_OK${NC}"
             ADMIN_KEY="$STORED_KEY"
             REUSED_KEY=true
@@ -299,6 +299,8 @@ fi
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Step 3: Basic configuration (snapshots, manager, webhook mode)            ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
+# 供 read_config/后续子进程读取(此前仅普通变量)
+export SYSTEM_ID
 step_begin "$T_SNAP_CONFIG"
 
 # Read current config value for display
@@ -338,7 +340,9 @@ if echo "$_gw_host" | grep -qE '^(127\.|0\.0\.0\.0|localhost|::1)$'; then
     python3 -c "
 import json, os
 p = '$_GW_CFG' if os.path.exists('$_GW_CFG') else ''
-cfg = json.load(open(p)) if p else {}
+if not p:
+    raise SystemExit(0)
+cfg = json.load(open(p))
 cfg['webhook_host'] = ''
 json.dump(cfg, open(p, 'w'), indent=2)
 "

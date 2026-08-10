@@ -248,11 +248,13 @@ def check_gateway(c: Check):
         scope = data.get("scope", "")
         cat = data.get("category", "")
         sid = data.get("system_id", "")
-        ok = "platform" in scope or "system" in scope
+        # agent_admin 是集成后 config 中的标准 key 类别(9dca44e 架构)
+        ok = ("platform" in scope or "system" in scope
+              or "agent_admin" in scope or cat == "agent_admin")
         c.add("gateway", "api_key", ok,
               f"scope={scope}, category={cat}, system_id={sid[:16]}..." if ok else
-              f"scope={scope} — need platform/system",
-              "Use a key with platform or system scope")
+              f"scope={scope} — need platform/system/agent_admin",
+              "Use a key with platform, system or agent_admin scope")
     else:
         c.add("gateway", "api_key", False,
               f"whoami HTTP {code}", "Check admin_key is correct")
@@ -592,7 +594,6 @@ def _check_route_targets(c: Check, hermes_port: int):
                 target_details.append(f"{target} unreachable: {e}")
 
         ok = reachable > 0 and reachable == len(target_details)
-        total_routes = total; reachable_targets = reachable; matching = len(target_details); detail = f"{total_routes} route(s) — {reachable_targets}/{matching} match webhook port {hermes_port}"
         detail = f"{total} route(s), {reachable}/{len(unique_targets)} target(s) reachable"
         if target_details:
             detail += " — " + ", ".join(target_details[:3])

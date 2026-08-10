@@ -224,14 +224,17 @@ def main():
 
     gw = config.get("gateway_url", "")
     ak = config.get("admin_key", "")
-    sid = config.get("system_id", "")
     domain = config.get("domain", "")
-    manager = os.environ.get("MANAGER", config.get("manager_address", "925457@qq.com"))
+    manager = os.environ.get("MANAGER", config.get("manager_address", ""))
     agent_email = os.environ.get("AGENT_EMAIL") or get_agent_email(config)
 
     print(f"  Gateway:     {gw}")
     print(f"  Agent email: {agent_email}")
     print(f"  Manager:     {manager}")
+
+    if not manager:
+        log_warn("No manager address configured — set MANAGER env or manager_address in gateway config")
+        sys.exit(1)
 
     if not agent_email:
         log_warn("No agent email found in current system")

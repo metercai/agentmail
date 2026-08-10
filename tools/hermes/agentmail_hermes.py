@@ -13,8 +13,24 @@ OpenClaw 对应适配层：tools/openclaw/amail_base.py
 import json
 import logging
 import os
+import re
+import secrets
+import socket
+import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
+
+# ── Hermes 运行时定位：本模块被 install-tools.sh 拷贝到 {hermes-agent}/tools/hermes/，
+#    共享核心（agentmail_base/tools/board）同目录。Hermes 以包形式加载工具
+#    （tools.*），顶层 import 需要 tools/ 目录在 sys.path 上——与 OpenClaw 侧
+#    amail_base.py 的 AGENTMAIL_REPO 引导对称。直接 import 本模块（独立脚本 /
+#    register_profiles.py）同样依赖此引导。
+_HERMES_TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _HERMES_TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _HERMES_TOOLS_DIR)
 
 import agentmail_base as core
 import agentmail_tools as tools
@@ -34,6 +50,15 @@ contact_profile = tools.contact_profile
 set_contact_profile = tools.set_contact_profile
 email_summary = tools.email_summary
 set_email_summary = tools.set_email_summary
+# A2A Board 工具函数体（registry 注册 handler 裸调用）
+board_task_show = board.board_task_show
+board_task_list = board.board_task_list
+board_members = board.board_members
+board_roles = board.board_roles
+board_status = board.board_status
+board_heartbeat = board.board_heartbeat
+set_public_whoami = board.set_public_whoami
+_TOOLSET = "agentmail"
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +311,7 @@ def _ensure_profile_webhook(profile_dir: str) -> Optional[dict]:
 
 def _list_personas() -> dict:
     """List configured personas from profile config."""
+    profile_dir = _resolve_profile_dir()
     if profile_dir:
         try:
             import yaml
@@ -700,13 +726,13 @@ def _auto_deregister_email(name: str, profile_dir: str, config: dict) -> None:
 
 
 def _get_board_gateway_url(board_id: str, profile_cfg: dict) -> str:
-    with _board_gateways_lock:
-        return _board_gateways.get(board_id, profile_cfg.get("gateway_url", ""))
+    with core._board_gateways_lock:
+        return core._board_gateways.get(board_id, profile_cfg.get("gateway_url", ""))
 
 
 def _register_board_gateway(board_id: str, gateway_url: str):
-    with _board_gateways_lock:
-        _board_gateways[board_id] = gateway_url
+    with core._board_gateways_lock:
+        core._board_gateways[board_id] = gateway_url
 
 
 def _store_board_credential(board_id: str, gateway_url: str, token: str):
@@ -799,6 +825,11 @@ core._SOUL_PROVIDER = _read_soul_md
 core._SKILLS_PROVIDER = _read_skills
 core._BOARD_GATEWAY_SINK = _register_board_gateway
 core._BOARD_CRED_SINK = _store_board_credential
+# 跨模块运行时符号（preprocess 内部按模块级名字查找 store_inbound_message /
+# _log_amail / _GatewayClient —— OpenClaw 侧 amail_base.py 对称注入）
+core._GatewayClient = tools._GatewayClient
+core.store_inbound_message = tools.store_inbound_message
+core._log_amail = tools._log_amail
 tools._PERSONA_NAME_PROVIDER = _hermes_persona_name
 _PERSONA_NAME_PROVIDER = _hermes_persona_name          # 适配层命名空间（_current_persona_name 注入点）
 core.PERSONA_SUPPORTED = True  # Hermes 全能力（默认值，显式声明）

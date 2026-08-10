@@ -51,7 +51,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="探测 push/pull 模式")
     ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
     ap.add_argument("--bridge-port", type=int, default=8799)
-    ap.add_argument("--ssh-target", default="root@46.17.41.218", help="云端 gateway SSH 目标（探测用）")
+    ap.add_argument("--ssh-target", default=os.environ.get("AMAIL_SSH_TARGET", ""),
+                    help="云端 gateway SSH 目标（探测用；缺省读 AMAIL_SSH_TARGET 环境变量）")
     args = ap.parse_args()
 
     system_id = args.system_id or _base.detect_system_id()
@@ -61,9 +62,11 @@ def main() -> int:
     public_ip = local_public_ip()
     reachable = False
     detail = f"local_public_ip={public_ip or '(none/inner-net)'}"
-    if public_ip:
+    if public_ip and args.ssh_target:
         reachable = probe_from_gateway(args.ssh_target, public_ip, args.bridge_port)
         detail += f" probe_from_gateway={reachable}"
+    elif public_ip:
+        detail += " (no ssh-target — assume pull; set AMAIL_SSH_TARGET to probe)"
 
     mode = "push" if reachable else "pull"
     mode_cfg = {

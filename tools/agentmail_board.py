@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Callable, Dict, List, Any
 
 from agentmail_tools import _GatewayClient
-from agentmail_base import _load_profile_config
+from agentmail_base import _load_profile_config, _board_gateways
 
 
 logger = logging.getLogger(__name__)
@@ -67,15 +67,15 @@ def board_task_show(task_id: str) -> str:
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
+    board_id = _resolve_board(task_id)
+    if not board_id:
+        return "{\"error\": \"cannot resolve board_id from task_id\"}"
     gateway_url = _resolve_gateway_url(task_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
         client = _GatewayClient(gateway_url, cfg["api_key"])
-    board_id = _resolve_board(task_id)
-    if not board_id:
-        return "{\"error\": \"cannot resolve board_id from task_id\"}"
     try:
         r = client._request("GET", f"/api/v1/board/{board_id}/task/{task_id}")
         return json.dumps(r, indent=2)
@@ -86,10 +86,12 @@ def board_task_show(task_id: str) -> str:
 def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     """按条件过滤 task 列表。支持 status、assignee 过滤。常用于巡视。"""
     import json
+    import urllib.parse
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
-    gateway_url = _resolve_gateway_url(task_id)
+    board_id = _resolve_board(board) if not board.startswith("b_") else board
+    gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
@@ -100,8 +102,10 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
         params["status"] = status
     if assignee:
         params["assignee"] = assignee
+    query = "&".join(f"{k}={urllib.parse.quote(v)}" for k, v in params.items())
+    path = f"/api/v1/board/{board}/tasks" + (f"?{query}" if query else "")
     try:
-        r = client._request("GET", f"/api/v1/board/{board}/tasks", params=params)
+        r = client._request("GET", path)
         return json.dumps(r, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -114,7 +118,7 @@ def board_members(board_id: str, email: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return json.dumps({"error": "no profile config"})
-    gateway_url = _resolve_gateway_url(task_id)
+    gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
@@ -134,7 +138,7 @@ def board_roles(board_id: str, role: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return json.dumps({"error": "no profile config"})
-    gateway_url = _resolve_gateway_url(task_id)
+    gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
@@ -153,7 +157,7 @@ def board_status(board_id: str) -> str:
     import json
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
-    gateway_url = _resolve_gateway_url(task_id)
+    gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
@@ -170,15 +174,15 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
+    board_id = _resolve_board(task_id)
+    if not board_id:
+        return "{\"error\": \"cannot resolve board_id from task_id\"}"
     gateway_url = _resolve_gateway_url(task_id)
     token = _get_board_token(board_id) if board_id else None
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
         client = _GatewayClient(gateway_url, cfg["api_key"])
-    board_id = _resolve_board(task_id)
-    if not board_id:
-        return "{\"error\": \"cannot resolve board_id from task_id\"}"
     try:
         r = client._request("POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?actor=toolset",
                             body={"note": note})

@@ -19,7 +19,7 @@ ADAPTER_PY="$PROJECT_ROOT/tools/hermes/agentmail_hermes.py"
 NEED_COPY=false
 if [ ! -f "$TOOLS_DST" ]; then
     NEED_COPY=true
-elif ! md5sum --quiet -c /dev/null 2>/dev/null; then
+elif ! command -v md5sum >/dev/null 2>&1; then
     # md5sum not available — fall back to mtime comparison
     [ "$TOOLS_PY" -nt "$TOOLS_DST" ] && NEED_COPY=true
 else

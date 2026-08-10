@@ -39,7 +39,6 @@ for _p in (_TOOLS, _SCRIPTS):
 import agentmail_base as _ab          # noqa: E402  (Hermes 复用层)
 import agentmail_tools as _tools      # noqa: E402  (6 工具函数体)
 import gateway_api as _gw             # noqa: E402  (标准 API 客户端)
-from datetime import datetime         # noqa: E402  (agentmail_tools._log_amail 缺省依赖)
 
 # ── 平台注入（公共核心注入点；Hermes → tools/hermes/agentmail_hermes.py 对称）──
 def _openclaw_profile_dir() -> Optional[str]:
@@ -48,11 +47,12 @@ def _openclaw_profile_dir() -> Optional[str]:
     return str(system_dir(sid)) if sid else None
 
 
-# 公共核心隐含依赖补齐（store_inbound_message/_log_amail 定义于 agentmail_tools，
-# 公共 agentmail_base 的 preprocess 内部按模块名查找——显式注入命名空间）
-_ab.store_inbound_message = _tools.store_inbound_message      # preprocess:767
-_ab._log_amail = _tools._log_amail                            # preprocess:772
-_tools.datetime = datetime                                    # _log_amail:1140
+# 公共核心隐含依赖补齐（store_inbound_message/_log_amail/_GatewayClient 定义于
+# agentmail_tools，公共 agentmail_base 的 preprocess 内部按模块级名字查找——
+# Hermes 侧 agentmail_hermes.py 对称注入）
+_ab.store_inbound_message = _tools.store_inbound_message
+_ab._log_amail = _tools._log_amail
+_ab._GatewayClient = _tools._GatewayClient
 # 注入点设置（OpenClaw 平台实现；personas 用公共默认空）
 _ab._PROFILE_DIR_RESOLVER = _openclaw_profile_dir
 # ── 系统能力声明（跨系统共享开关，Hermes 默认 True 不变）────────
@@ -118,7 +118,8 @@ def detect_system_id() -> str:
         return sid
     base = Path.home() / ".agentmail"
     if base.is_dir():
-        dirs = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("system-"))
+        dirs = sorted(d.name for d in base.iterdir()
+                      if d.is_dir() and (d.name.startswith("system-") or d.name.startswith("shared-")))
         if len(dirs) == 1:
             return dirs[0]
         if len(dirs) > 1:

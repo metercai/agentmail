@@ -25,37 +25,6 @@ _TOOLSET = "agentmail"
 PERSONA_SUPPORTED = True
 
 
-"""
-agentmail_tools.py -- agentmail Hermes Agent 运行时模块
-
-Hermes 运行时加载的模块，提供：
-  - _GatewayClient         : HTTP client for agentmail API
-  - send_mail()            : Agent tool -- send email via gateway
-  - manage_contacts()      : Agent tool -- manage address whitelist
-  - contact_profile()      : Agent tool -- look up contact
-  - set_contact_profile()  : Agent tool -- update contact profile
-  - email_summary()        : Agent tool -- read thread summary
-  - set_email_summary()    : Agent tool -- write thread summary
-  - preprocess_mail_payload() : Gateway preprocessor -- inbound mail handling
-  - list_personas()           : personas 配置（注入点，适配层提供）
-
-平台适配：Hermes → tools/hermes/agentmail_hermes.py，OpenClaw → tools/openclaw/amail_base.py。
-"""
-
-import json
-import logging
-import os
-import re
-import secrets
-from datetime import datetime
-import socket
-import time
-import urllib.request
-import urllib.error
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
-
-logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
 # a2a_board helpers — template filling, role/context utilities
@@ -252,40 +221,6 @@ def _put_contact_profile(address: str, profile: str) -> dict:
 # ═══════════════════════════════════════════════════════════════
 # Gateway Preprocessor — inbound mail payload transformation
 # ═══════════════════════════════════════════════════════════════
-
-def _extract_board_gateway(payload: dict):
-    """Extract board_id and gateway_url from board notification emails.
-    ONLY triggers for board emails (sender contains .a2a@ or subject starts with [A2A]).
-    Does NOT affect non-board toolset gateway_url."""
-    subject = payload.get("subject", "")
-    body = payload.get("body", "")
-    from_addr = payload.get("from", "")
-
-    # Guard: only board emails
-    if ".a2a@" not in from_addr and not subject.startswith("[A2A]"):
-        return
-
-    import re
-    token_match = re.search(r'Token:\s*(bdt_\S+)', body)
-    gw_match = re.search(r'API:\s*(https?://\S+)', body)
-    if not gw_match:
-        return
-    gateway_url = gw_match.group(1).rstrip()
-
-    # Extract board short_id from sender: "shortid <shortid.a2a@domain>"
-    from_match = re.search(r'(\S+)\.a2a@', from_addr)
-    if not from_match:
-        return
-    board_short_id = from_match.group(1)
-
-    from hashlib import sha256
-    gw_domain = re.search(r'://([^/]+)', gateway_url)
-    domain = gw_domain.group(1) if gw_domain else ""
-    board_id = sha256(f"{board_short_id}:{domain}".encode()).hexdigest()[:20]
-    _register_board_gateway(board_id, gateway_url)
-    if token_match:
-        token = token_match.group(1).rstrip()
-        _store_board_credential(board_id, gateway_url, token)
 
 def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     """Preprocess agentmail webhook payload before prompt rendering.
@@ -740,3 +675,16 @@ def deregister_agent_email(client, system_id: str, email: str,
         out["whitelist"] = f"err:{e}"
 
     return out
+
+
+# ── 跨模块引用兜底（适配层注入之外的保险）────────────────────────
+# preprocess/工具链引用 agentmail_tools 的 3 个符号（模块级名字查找）。
+# 双平台适配层（agentmail_hermes / amail_base）会显式注入；此处兜底保证
+# 任何入口（直接 import base 的脚本等）也不因加载顺序触发 NameError。
+# 循环依赖注意：若 tools 正在初始化（部分加载），from-import 会 ImportError，
+# 交给适配层注入兜住；若 base 先加载完成，这里直接成功。
+try:
+    from agentmail_tools import _GatewayClient, store_inbound_message, _log_amail  # noqa: F401,E402
+except ImportError:
+    pass
+

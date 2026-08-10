@@ -110,7 +110,7 @@ if not bridge_addr:
 
 # Read webhook port from root config
 import yaml
-root_cfg_path = os.path.join(home, "config.yaml")
+root_cfg_path = os.path.join(os.path.expanduser("~"), "config.yaml")
 root_port = 8644
 if os.path.exists(root_cfg_path):
     with open(root_cfg_path) as f:
