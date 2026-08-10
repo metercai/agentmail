@@ -19,11 +19,21 @@ def gateway_config_path(system_id: str = "") -> Path:
 
 
 def load_gateway_config(system_id: str = "") -> Optional[dict]:
-    """Load gateway connection config from ~/.agentmail/{sid}/agentmail_gateway.json."""
+    """Load gateway connection config from ~/.agentmail/{sid}/agentmail_gateway.json.
+
+    Also falls back to amail_gateway.json (OpenClaw-side naming used by
+    tools/openclaw/activate.py) so both platforms resolve through one entry.
+    """
     path = gateway_config_path(system_id)
     if path.is_file():
         try:
             return json.loads(path.read_text())
+        except Exception:
+            pass
+    alt = path.with_name("amail_gateway.json")
+    if alt.is_file():
+        try:
+            return json.loads(alt.read_text())
         except Exception:
             pass
     return None
