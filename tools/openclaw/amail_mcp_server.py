@@ -135,6 +135,18 @@ def tool_board_heartbeat(args: dict) -> dict:
     return _safe(fn)
 
 
+def tool_board_members(args: dict) -> dict:
+    def fn():
+        return {"members": _board.board_members(args.get("board", ""), args.get("email", ""))}
+    return _safe(fn)
+
+
+def tool_set_public_whoami(args: dict) -> dict:
+    def fn():
+        return {"result": _board.set_public_whoami(args.get("text", ""))}
+    return _safe(fn)
+
+
 # ── 工具注册表 ──────────────────────────────────────────────────
 
 SCHEMA_STR = {"type": "string"}
@@ -184,16 +196,21 @@ TOOLS = [
          "message_id": SCHEMA_STR,
          "summary": {"type": "string", "description": "Actionable thread summary, max 2000 chars"}},
          "required": ["message_id", "summary"]}},
-    {"name": "board_status", "description": "Query A2A board status.",
-     "inputSchema": {"type": "object", "properties": {"board": SCHEMA_STR}, "required": []}},
-    {"name": "board_task_list", "description": "List A2A board tasks (filter by status/assignee).",
+    {"name": "board_status", "description": "获取 Board 状态总览：管线分布 + 依赖关系 + 负责人。",
+     "inputSchema": {"type": "object", "properties": {"board": SCHEMA_STR}, "required": ["board"]}},
+    {"name": "board_task_list", "description": "按条件过滤 task 列表。Orchestrator 巡视用。",
      "inputSchema": {"type": "object", "properties": {
-         "board": SCHEMA_STR, "status": SCHEMA_STR, "assignee": SCHEMA_STR}, "required": []}},
-    {"name": "board_task_show", "description": "Show A2A board task detail.",
+         "board": SCHEMA_STR, "status": SCHEMA_STR, "assignee": SCHEMA_STR}, "required": ["board"]}},
+    {"name": "board_task_show", "description": "查询任务详情。返回 task 的所有字段。比发邮件快，零 SMTP 往返。",
      "inputSchema": {"type": "object", "properties": {"task_id": SCHEMA_STR}, "required": ["task_id"]}},
-    {"name": "board_heartbeat", "description": "Post a heartbeat note to an A2A task.",
+    {"name": "board_heartbeat", "description": "发心跳更新任务时间戳。长任务用此工具代替发邮件。",
      "inputSchema": {"type": "object", "properties": {"task_id": SCHEMA_STR, "note": SCHEMA_STR},
                      "required": ["task_id"]}},
+    {"name": "board_members", "description": "查询某 Board 的成员列表及角色。",
+     "inputSchema": {"type": "object", "properties": {
+         "board": SCHEMA_STR, "email": SCHEMA_STR}, "required": ["board"]}},
+    {"name": "set_public_whoami", "description": "Set Agent public identity card for stranger [WHOAMI] queries",
+     "inputSchema": {"type": "object", "properties": {"text": SCHEMA_STR}, "required": ["text"]}},
 ]
 
 HANDLERS = {
@@ -207,6 +224,8 @@ HANDLERS = {
     "board_task_list": tool_board_task_list,
     "board_task_show": tool_board_task_show,
     "board_heartbeat": tool_board_heartbeat,
+    "board_members": tool_board_members,
+    "set_public_whoami": tool_set_public_whoami,
 }
 
 # board 函数体（统一走 amail_base.load_board_module，与 amail.py 共用）
