@@ -348,6 +348,15 @@ class _GatewayClient:
         Returns ``{"status": 200, "raw_key": "sk-...", "api_key_id": N, ...}``
         """
         body = {"code": code, "email_address": email_address, "scopes": scopes or ["agent"]}
+        result = self._request("POST", "/api/v1/activate-address", body=body)
+        raw_key = result.get("raw_key", "")
+        if not raw_key:
+            return {"success": False, "error": f"activation failed: {result}"}
+        return {
+            "success": True,
+            "raw_key": raw_key,
+            "api_key_id": result.get("api_key_id", ""),
+        }
 
 
 

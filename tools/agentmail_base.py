@@ -658,10 +658,10 @@ def deregister_agent_email(client, system_id: str, email: str,
                 addr_id = str(d.get("id", ""))
                 break
         if addr_id:
-            r = client._request("DELETE", f"/api/v1/admin/systems/{system_id}/domains/{addr_id}")
+            r = client._request("DELETE", f"/api/v1/admin/system-domains/{addr_id}")
             out["domain"] = str(r.get("status", r))
         else:
-            r = client._request("DELETE", f"/api/v1/admin/systems/{system_id}/domains/{email}")
+            r = client._request("DELETE", f"/api/v1/admin/system-domains/{email}")
             out["domain"] = str(r.get("status", r))
     except Exception as e:
         out["domain"] = f"err:{e}"
