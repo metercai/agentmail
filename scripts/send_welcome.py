@@ -74,7 +74,14 @@ def get_agent_email(config):
             headers={"X-Api-Key": ak})
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read())
-        # Short form (no dot in local part) = default agent
+        # Shared-domain agents use profile.system_id@domain (dotted local
+        # part); a bare address (no dot) is the system/base address and
+        # cannot receive mail — prefer the dotted (registered agent) one.
+        for d in data:
+            dom = d.get("domain", "")
+            if "@" in dom and "." in dom.split("@")[0]:
+                return dom
+        # Short form (no dot in local part) = default agent (non-shared)
         for d in data:
             dom = d.get("domain", "")
             if "@" in dom and "." not in dom.split("@")[0]:

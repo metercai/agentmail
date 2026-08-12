@@ -5,7 +5,8 @@
 
 set -e
 
-source "$SCRIPT_DIR/helpers.sh"
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+source "$SCRIPT_DIR/scripts/helpers.sh"
 
 step_begin "$T_DOMAIN"
 _GW_CFG=$(_find_gw_cfg)
@@ -19,7 +20,9 @@ fi
 if [ -n "$AMAIL_DOMAIN" ]; then
     SELECTED_DOMAINS="$AMAIL_DOMAIN"
     DOMAIN_OK_COUNT=1
-    SYSTEM_NAME=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('system_name',''))" 2>/dev/null || echo "")
+    if [ -z "${SYSTEM_NAME:-}" ]; then
+        SYSTEM_NAME=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('system_name',''))" 2>/dev/null || echo "")
+    fi
     step_ok "domain = $AMAIL_DOMAIN (identifier: ${SYSTEM_NAME:-?})"
     return 0
 fi

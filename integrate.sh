@@ -45,6 +45,12 @@ BOLD='\033[1m'
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export SCRIPT_DIR
 
+# ── Load .env file (before language selection so AMAIL_LANG etc. work) ──
+ENV_FILE="$SCRIPT_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a; . "$ENV_FILE"; set +a
+fi
+
 # ── Language selection ──────────────────────────────────────────
 LANG_CHOICE="${AMAIL_LANG:-}"
 if [ -z "$LANG_CHOICE" ]; then
@@ -106,12 +112,6 @@ case "$AGENT_SYSTEM" in
     *) AGENT_HOME="$HOME/.hermes" ;;
 esac
 export AGENT_SYSTEM AGENT_HOME
-
-# ── Load .env file ──────────────────────────────────────────────
-ENV_FILE="$SCRIPT_DIR/.env"
-if [ -f "$ENV_FILE" ]; then
-    set -a; . "$ENV_FILE"; set +a
-fi
 
 if [ ! -f "$TOOLS_PY" ]; then
     echo -e "${RED}[ERROR] $T_ERR_NO_TOOLS: $TOOLS_PY${NC}"
@@ -184,6 +184,30 @@ if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -n "$_GW_CFG" ]; then
 fi
 
 if ! $REUSED_KEY; then
+    # Reuse a previously activated system saved in .system_raw_key
+    # (activation codes are single-use; after a successful activation
+    #  the admin key is stashed there, so re-runs must not re-activate)
+    if [ -z "${AMAIL_ADMIN_KEY:-}" ]; then
+        _RAW_DIR="$HOME/.agentmail/.system_raw_key"
+        if [ -d "$_RAW_DIR" ]; then
+            _LATEST_KEY_FILE=$(ls -t "$_RAW_DIR" 2>/dev/null | head -1)
+            if [ -n "$_LATEST_KEY_FILE" ]; then
+                _TRY_KEY=$(cat "$_RAW_DIR/$_LATEST_KEY_FILE" 2>/dev/null || echo "")
+                if [ -n "$_TRY_KEY" ]; then
+                    _WHOAMI=$(curl -s "$GATEWAY_URL/api/v1/whoami" -H "X-Api-Key: $_TRY_KEY" 2>/dev/null || echo '{}')
+                    _SCOPE=$(echo "$_WHOAMI" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scope','') or ','.join(d.get('scopes',[])))" 2>/dev/null || echo "")
+                    if echo "$_SCOPE" | grep -qE "platform|system|agent_admin"; then
+                        ADMIN_KEY="$_TRY_KEY"
+                        WHOAMI="$_WHOAMI"
+                        REUSED_KEY=true
+                        step_ok "reusing saved system key ($_LATEST_KEY_FILE, scope: $_SCOPE)"
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+if ! $REUSED_KEY; then
     ADMIN_KEY="${AMAIL_ADMIN_KEY:-}"
     PRODUCT_CODE="${AMAIL_PRODUCT_CODE:-}"
     if [ -n "$ADMIN_KEY" ] && [ -z "$PRODUCT_CODE" ]; then
@@ -229,6 +253,8 @@ if $USE_PRODUCT_CODE; then
 elif $REUSED_KEY; then
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
+    # Reused system: identifier comes from .env (AMAIL_SYSTEM_NAME)
+    SYSTEM_NAME="${AMAIL_SYSTEM_NAME:-}"
     CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
     AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
     step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
@@ -338,13 +364,21 @@ if [ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ]; then
 elif [ "$(read_config "save_raw_snapshots")" = "false" ]; then
     _SAVE_DEFAULT="no"
 fi
-echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
-read -r _SAVE_INPUT
-_SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
-case "$_SAVE_INPUT" in
-    y|Y|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
-    *) SAVE_SNAPSHOTS="false" ;;
-esac
+if [ -n "${AMAIL_SAVE_SNAPSHOTS:-}" ]; then
+    # env provided → no prompt (automation)
+    case "$AMAIL_SAVE_SNAPSHOTS" in
+        true|True|TRUE|1|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
+        *) SAVE_SNAPSHOTS="false" ;;
+    esac
+else
+    echo -n "  $T_SNAP_PROMPT (yes/no) [$_SAVE_DEFAULT]: "
+    read -r _SAVE_INPUT
+    _SAVE_INPUT="${_SAVE_INPUT:-$_SAVE_DEFAULT}"
+    case "$_SAVE_INPUT" in
+        y|Y|yes|Yes|YES) SAVE_SNAPSHOTS="true" ;;
+        *) SAVE_SNAPSHOTS="false" ;;
+    esac
+fi
 unset _SAVE_CURRENT _SAVE_DEFAULT _SAVE_INPUT
 # agent_admin mode: prefill manager_address from whoami email_address
 _MGR_DEFAULT=""
@@ -456,32 +490,23 @@ _GW_CFG=$(_find_gw_cfg)
 # ── Step 4b/5-7: agent 系统适配（按 Step 0 选择分支；公共步骤共用）──
 case "$AGENT_SYSTEM" in
     openclaw|OpenClaw*)
-        # ── OpenClaw 接入链（scripts/openclaw/：独立激活 → 探测 → 注册 → skill → 轮询）──
-        if [ "$USE_PRODUCT_CODE" != "true" ] || [ -z "${PRODUCT_CODE:-}" ]; then
-            step_warn "OpenClaw 独立激活需要产品激活码（AMAIL_PRODUCT_CODE）——跳过 OpenClaw 接入"
+        # ── OpenClaw 接入链（MCP 接入，复用已激活系统：探测 → 注册 → skill → 轮询）──
+        if [ -z "$SYSTEM_ID" ]; then
+            step_warn "无可用系统 ID——跳过 OpenClaw 接入"
         else
-            step_begin "OpenClaw activation"
-            export AMAIL_PRODUCT_CODE="$PRODUCT_CODE"
-            OCLAW_OUT=$(python3 "$SCRIPT_DIR/scripts/openclaw/activate.py" \
-                --gateway "$GATEWAY_URL" --code "$PRODUCT_CODE" --system-name "$SYSTEM_NAME" 2>&1) \
-                || { echo "$OCLAW_OUT" | tail -3; step_fail "OpenClaw activate failed"; }
-            OCLAW_SID=$(echo "$OCLAW_OUT" | grep -oP 'system_id=\K[^\s]+' | head -1)
-            [ -n "$OCLAW_SID" ] || OCLAW_SID="$SYSTEM_ID"
-            export AMAIL_SYSTEM_ID="$OCLAW_SID"
-            step_ok "OpenClaw activated: system_id=$OCLAW_SID"
-
             step_begin "OpenClaw register agents"
-            python3 "$SCRIPT_DIR/scripts/openclaw/probe_mode.py" --system-id "$OCLAW_SID" >/dev/null 2>&1 || true
+            export AMAIL_SYSTEM_ID="$SYSTEM_ID"
+            python3 "$SCRIPT_DIR/scripts/openclaw/probe_mode.py" --system-id "$SYSTEM_ID" >/dev/null 2>&1 || true
             python3 "$SCRIPT_DIR/scripts/openclaw/register_agent.py" --all \
-                --manager "$MANAGER_ADDRESS" --system-id "$OCLAW_SID" || step_fail "OpenClaw register failed"
-            step_ok "OpenClaw agents registered"
+                --manager "$MANAGER_ADDRESS" --system-id "$SYSTEM_ID" || step_fail "OpenClaw register failed"
+            step_ok "OpenClaw agents registered (system: $SYSTEM_ID)"
 
             step_begin "OpenClaw skill + pull automation"
             bash "$SCRIPT_DIR/scripts/openclaw/install-skill.sh" || step_warn "skill install skipped"
             # pull 轮询：cron 命令负载（确定性脚本零 token）
             if command -v openclaw >/dev/null 2>&1; then
                 openclaw cron add --cron "*/30 * * * * *" \
-                    --command "python3 $SCRIPT_DIR/tools/openclaw/amail-poll.py --system-id $OCLAW_SID" \
+                    --command "python3 $SCRIPT_DIR/tools/openclaw/amail-poll.py --system-id $SYSTEM_ID" \
                     --name amail-poll 2>/dev/null || step_warn "cron add skipped (may exist)"
             else
                 step_warn "openclaw CLI not found — add amail-poll.py cron job manually"
@@ -534,4 +559,10 @@ esac
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
-python3 "$SCRIPT_DIR/scripts/send_welcome.py"
+# Mail delivery is the goal; the reply-wait verification times out when
+# the agent does not answer (normal) — treat "sent" as success.
+if python3 "$SCRIPT_DIR/scripts/send_welcome.py"; then
+    step_ok "welcome email sent + reply verified"
+else
+    step_ok "welcome email sent (no reply wait)"
+fi

@@ -620,6 +620,14 @@ def register_agent_email(client, system_id: str, email: str,
         client.add_whitelist(system_id=system_id, domain_addr=email,
                              direction="all", value=manager_address,
                              description="Agent ↔ Manager (auto-created)")
+        # Keep domain_addr_meta.manager_address in sync — the inbound
+        # SMTP auth resolver (resolve_sender) validates the decoded
+        # sender against it; without this, authenticated sends from the
+        # manager are rejected with "Sender not whitelisted".
+        try:
+            client.set_agent_meta(email, manager_address=manager_address)
+        except Exception as e:
+            _log.warning("set_agent_meta(%s) failed: %s", email, e)
 
     api_key = ""
     if activation_code:
