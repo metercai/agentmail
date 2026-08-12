@@ -87,8 +87,7 @@ def _gateway_config_path(system_id: str = "") -> Path:
     When system_id is provided, returns system-specific path.
     When empty, returns the base ~/.agentmail/ level (caller should resolve system_id).
     
-    Canonical name: agentmail_gateway.json (scripts/ write this). Legacy
-    amail_gateway.json is intentionally not read anymore."""
+    Canonical name: agentmail_gateway.json (scripts/ write this)."""
     base_path = _agentmail_system_dir(system_id)
     return base_path / "agentmail_gateway.json"
 

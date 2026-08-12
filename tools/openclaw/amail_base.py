@@ -112,28 +112,16 @@ def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
 
 
 def detect_system_id() -> str:
-    """Resolve current system_id: env AMAIL_SYSTEM_ID > unique system dir.
+    """Return the system id from AMAIL_SYSTEM_ID.
 
-    Multiple systems without AMAIL_SYSTEM_ID raise SystemExit — we never
-    guess by scanning (that caused cross-system config reuse, e.g. OpenClaw
-    replying as agent.vfy@).  Callers must pass an explicit system_id.
+    System identity is strict: it must come from an explicit env var (or a
+    caller-supplied argument) — never from scanning ~/.agentmail.  Scanning
+    picked the wrong system before (e.g. OpenClaw replying as agent.vfy@).
     """
     sid = os.environ.get("AMAIL_SYSTEM_ID", "")
-    if sid:
-        return sid
-    base = Path.home() / ".agentmail"
-    if base.is_dir():
-        dirs = sorted(d.name for d in base.iterdir()
-                      if d.is_dir() and (d.name.startswith("system-") or d.name.startswith("shared-")))
-        if len(dirs) == 1:
-            return dirs[0]
-        if len(dirs) > 1:
-            raise SystemExit(
-                "multiple agentmail systems detected ("
-                + ", ".join(dirs)
-                + "); set AMAIL_SYSTEM_ID to select one - refusing to guess"
-            )
-    return ""
+    if not sid:
+        raise SystemExit("AMAIL_SYSTEM_ID is not set - system identity must be explicit")
+    return sid
 
 
 def load_mode(system_id: str = "") -> dict:
