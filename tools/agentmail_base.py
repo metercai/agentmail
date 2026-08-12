@@ -588,7 +588,7 @@ def register_agent_email(client, system_id: str, email: str,
     （api_key 为空 = 激活 pending/已存在；activation_code 供延迟激活语义）。
 
     client 须提供：register_email / list_system_domains / update_system_domain /
-    add_whitelist / activate_address（agentmail_tools._GatewayClient 全具备）。
+    activate_address（agentmail_tools._GatewayClient 全具备；白名单由网关注册接口自动创建）。
     """
     result = client.register_email(
         system_id=system_id, mx_domain=mx_domain, email=email,

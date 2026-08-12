@@ -99,7 +99,7 @@ def main() -> int:
     mode = _base.load_mode(system_id)
     print(f"system_id={system_id} mode={mode.get('mode')} domain={gw.get('domain')}")
 
-    # admin client（register_email/add_whitelist/activate_address 全在 _GatewayClient）
+    # admin client（register_email/activate_address 全在 _GatewayClient）
     client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
 
     agents = [args.agent] if args.agent else discover_openclaw_agents()
