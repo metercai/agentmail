@@ -183,11 +183,12 @@ if [ -z "${AMAIL_PRODUCT_CODE:-}" ] && [ -n "$_GW_CFG" ]; then
     fi
 fi
 
-if ! $REUSED_KEY; then
-    # Reuse a previously activated system saved in .system_raw_key
-    # (activation codes are single-use; after a successful activation
-    #  the admin key is stashed there, so re-runs must not re-activate)
-    if [ -z "${AMAIL_ADMIN_KEY:-}" ]; then
+# Reuse a previously activated system saved in .system_raw_key.
+# (Activation codes are single-use; a fresh AMAIL_PRODUCT_CODE takes
+#  priority and activates a NEW system; this fallback only reuses a
+#  saved key when no product code is provided, or after a 410.)
+_reuse_saved_key() {
+    if [ -z "${AMAIL_ADMIN_KEY:-}" ] && [ -z "${PRODUCT_CODE:-}" ]; then
         _RAW_DIR="$HOME/.agentmail/.system_raw_key"
         if [ -d "$_RAW_DIR" ]; then
             _LATEST_KEY_FILE=$(ls -t "$_RAW_DIR" 2>/dev/null | head -1)
@@ -206,6 +207,18 @@ if ! $REUSED_KEY; then
             fi
         fi
     fi
+}
+_apply_reused_key() {
+    SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
+    [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
+    # Reused system: identifier comes from .env (AMAIL_SYSTEM_NAME)
+    SYSTEM_NAME="${AMAIL_SYSTEM_NAME:-}"
+    CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
+    AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
+    step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
+}
+if ! $REUSED_KEY && [ -z "${AMAIL_PRODUCT_CODE:-}" ]; then
+    _reuse_saved_key
 fi
 if ! $REUSED_KEY; then
     ADMIN_KEY="${AMAIL_ADMIN_KEY:-}"
@@ -251,13 +264,7 @@ fi
 if $USE_PRODUCT_CODE; then
     step_ok "$T_PC_USING (prefix: ${PRODUCT_CODE:0:8}...)"
 elif $REUSED_KEY; then
-    SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
-    [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
-    # Reused system: identifier comes from .env (AMAIL_SYSTEM_NAME)
-    SYSTEM_NAME="${AMAIL_SYSTEM_NAME:-}"
-    CATEGORY=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('category','?'))" 2>/dev/null || echo "?")
-    AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
-    step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"
+    _apply_reused_key
 else
     [ -z "$ADMIN_KEY" ] && step_fail "admin_key cannot be empty"
     echo -n "  $T_VERIFY "
@@ -321,9 +328,19 @@ else
             step_ok "system activated (id: ${SYSTEM_ID:0:8}..., identifier: $SYSTEM_NAME)"
         else
             if echo "$ACTIVATE_RESULT" | grep -q 'code_claimed'; then
-                step_fail "Activation code already claimed"
+                # Code already consumed (previous run) — fall back to reusing
+                # the saved system key instead of failing the whole run.
+                info "Activation code already claimed — reusing saved system key"
+                _reuse_saved_key
+                if $REUSED_KEY; then
+                    USE_PRODUCT_CODE=false
+                    _apply_reused_key
+                else
+                    step_fail "Activation code already claimed and no saved key to reuse"
+                fi
+            else
+                step_fail "System activation failed"
             fi
-            step_fail "System activation failed"
         fi
     else
         step_begin "$T_DOMAIN"
