@@ -152,41 +152,8 @@ class _GatewayClient:
             logger.error("download_attachment(%s) failed: %s", attachment_id, e)
             return None
 
-    # ── Whitelist API ───────────────────────────────────────────
 
-    def add_whitelist(
-        self, system_id: str, domain_addr: str, direction: str,
-        value: str, description: Optional[str] = None
-    ) -> dict:
-        return self._request(
-            "POST",
-            "/api/v1/whitelists",
-            body={
-                "system_id": system_id,
-                "domain_addr": domain_addr,
-                "direction": direction,
-                "value": value,
-                "description": description,
-            },
-        )
 
-    def set_agent_meta(self, email: str, manager_address: str = "",
-                      agent_signature: str = "", agent_persona: str = "") -> dict:
-        """PUT /api/v1/admin/agent-meta/:email — upsert agent metadata.
-
-        The manager_address here feeds the inbound SMTP auth resolver
-        (resolve_sender validates that the decoded sender is a registered
-        manager of the key's system), so registration must keep it in sync.
-        """
-        return self._request(
-            "PUT",
-            f"/api/v1/admin/agent-meta/{urllib.parse.quote(email)}",
-            body={
-                "manager_address": manager_address,
-                "agent_signature": agent_signature,
-                "agent_persona": agent_persona,
-            },
-        )
 
     def check_whitelist_value(self, domain_addr: str, value: str, direction: str = "to") -> dict:
         """GET /api/v1/whitelists/check — check if a value is whitelisted.
