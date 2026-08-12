@@ -85,8 +85,16 @@ def _gateway_config_path(system_id: str = "") -> Path:
     """Return path to the gateway config file.
     
     When system_id is provided, returns system-specific path.
-    When empty, returns the base ~/.agentmail/ level (caller should resolve system_id)."""
-    return _agentmail_system_dir(system_id) / "amail_gateway.json"
+    When empty, returns the base ~/.agentmail/ level (caller should resolve system_id).
+    
+    Naming: scripts/ write agentmail_gateway.json; older layouts used
+    amail_gateway.json. Prefer whichever exists (agentmail first), so both
+    new (xianlin/wguo) and legacy (vfy) systems resolve."""
+    base_path = _agentmail_system_dir(system_id)
+    primary = base_path / "agentmail_gateway.json"
+    if primary.is_file():
+        return primary
+    return base_path / "amail_gateway.json"
 
 
 def _load_gateway_config(system_id: str = "") -> Optional[dict]:

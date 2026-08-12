@@ -110,7 +110,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
 def serve(system_id: str, port: int, hooks_url: str) -> None:
     gw = _base.load_gateway_config(system_id)
     if not gw:
-        raise SystemExit(f"amail_gateway.json not found for {system_id}")
+        raise SystemExit(f"gateway config not found (agentmail_gateway.json / amail_gateway.json) for {system_id}")
     hooks = _base.load_openclaw_hooks()
     if not hooks:
         raise SystemExit("OpenClaw hooks not configured (token missing)")

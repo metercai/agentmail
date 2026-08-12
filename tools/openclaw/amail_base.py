@@ -123,10 +123,13 @@ def detect_system_id() -> str:
         if len(dirs) == 1:
             return dirs[0]
         if len(dirs) > 1:
-            # 多系统：取最近修改的 amail_gateway.json 所属目录
+            # 多系统：取最近修改的 gateway config 所属目录
+            # (agentmail_gateway.json 优先,回退 amail_gateway.json —— 新老命名兼容)
             best, best_mtime = "", 0.0
             for d in dirs:
-                p = base / d / "amail_gateway.json"
+                p = base / d / "agentmail_gateway.json"
+                if not p.is_file():
+                    p = base / d / "amail_gateway.json"
                 if p.is_file() and p.stat().st_mtime > best_mtime:
                     best, best_mtime = d, p.stat().st_mtime
             if best:

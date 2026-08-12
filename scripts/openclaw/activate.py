@@ -66,7 +66,7 @@ def save_gateway_config(gateway_url: str, resp: dict) -> Path:
         "system_name": resp.get("system_name", ""),
     }
     sid = resp["system_id"]
-    p = Path.home() / ".agentmail" / sid / "amail_gateway.json"
+    p = Path.home() / ".agentmail" / sid / "agentmail_gateway.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     # 环境提示（同 shell 后续步骤用）
