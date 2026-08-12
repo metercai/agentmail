@@ -522,9 +522,23 @@ case "$AGENT_SYSTEM" in
             bash "$SCRIPT_DIR/scripts/openclaw/install-skill.sh" || step_warn "skill install skipped"
             # pull 轮询：cron 命令负载（确定性脚本零 token）
             if command -v openclaw >/dev/null 2>&1; then
+                # 幂等覆盖：删除同名旧 cron 再添加（重复集成不会堆积重复任务）
+                openclaw cron list --json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = d if isinstance(d, list) else d.get('crons', d.get('jobs', []))
+for c in items:
+    if c.get('name') == 'amail-poll':
+        print(c.get('id'))
+" | while read -r cid; do
+                    [ -n "$cid" ] && openclaw cron remove "$cid" >/dev/null 2>&1 || true
+                done
                 openclaw cron add --cron "*/30 * * * * *" \
                     --command "python3 $SCRIPT_DIR/tools/openclaw/amail-poll.py --system-id $SYSTEM_ID" \
-                    --name amail-poll 2>/dev/null || step_warn "cron add skipped (may exist)"
+                    --name amail-poll 2>/dev/null || step_warn "cron add failed"
             else
                 step_warn "openclaw CLI not found — add amail-poll.py cron job manually"
             fi
