@@ -78,8 +78,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="OpenClaw 独立激活")
     ap.add_argument("--gateway", required=True, help="amail-gateway base URL")
     ap.add_argument("--code", required=True, help="产品激活码")
-    ap.add_argument("--system-name", required=True, help="3-8 字符系统标识（与 Hermes 不同）")
+    ap.add_argument("--system-name", default=os.environ.get("AMAIL_SYSTEM_NAME", ""),
+                    help="3-8 字符系统标识（与 Hermes 不同；默认取 AMAIL_SYSTEM_NAME）")
     args = ap.parse_args()
+    if not args.system_name:
+        ap.error("--system-name is required (or set AMAIL_SYSTEM_NAME in .env)")
 
     system_name = validate_sysname(args.system_name)
     resp = activate(args.gateway, args.code, system_name)

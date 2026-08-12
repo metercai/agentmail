@@ -16,8 +16,18 @@ def validate_sysname(name: str) -> str:
 SYSTEM_NAME = ""
 
 def prompt_activate(gateway_url: str, product_code: str) -> dict:
-    """Interactive activation loop. Returns {system_id, admin_key, domain, system_name}"""
+    """Activate with AMAIL_SYSTEM_NAME env default, else interactive loop.
+    Returns {system_id, admin_key, domain, system_name}"""
     global SYSTEM_NAME
+    env_name = os.environ.get("AMAIL_SYSTEM_NAME", "").strip().lower()
+    if env_name:
+        try:
+            name = validate_sysname(env_name)
+        except SystemExit:
+            print(f"  AMAIL_SYSTEM_NAME '{env_name}' invalid: "
+                  "lowercase letter + 2-7 more chars (a-z, 0-9, -, _)", file=sys.stderr)
+            sys.exit(1)
+        return do_activate(gateway_url, product_code, name)
     print("  Email format: profile.SYS_NAME@shared.domain", file=sys.stderr)
     while True:
         sys.stderr.write("  System identifier (3-8 chars, [a-z0-9_-]): ")
@@ -27,39 +37,44 @@ def prompt_activate(gateway_url: str, product_code: str) -> dict:
             name = validate_sysname(raw)
         except SystemExit:
             continue
+        return do_activate(gateway_url, product_code, name)
 
-        data = json.dumps({"code": product_code, "system_name": name}).encode()
-        req = urllib.request.Request(
-            f"{gateway_url.rstrip('/')}/api/v1/activate-system",
-            data=data, headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            resp = urllib.request.urlopen(req, timeout=15)
-            body = json.loads(resp.read())
-            SYSTEM_NAME = body.get("system_name", name)
-            print(f"  System activated:", file=sys.stderr)
-            print(f"  ├─ system_id:  {body.get('system_id','')}", file=sys.stderr)
-            print(f"  ├─ domain:     {body.get('domain','')}", file=sys.stderr)
-            print(f"  └─ identifier: {SYSTEM_NAME}", file=sys.stderr)
-            return {
-                "system_id": body.get("system_id", ""),
-                "admin_key": body.get("raw_key", ""),
-                "domain": body.get("domain", ""),
-                "system_name": SYSTEM_NAME,
-            }
-        except urllib.error.HTTPError as e:
-            body = json.loads(e.read())
-            error, detail = body.get("error", ""), body.get("detail", "")
-            if e.code == 410:
-                print(f"  Activation code already claimed — use a fresh code", file=sys.stderr)
-                sys.exit(1)
-            elif e.code == 409:
-                print(f"  Identifier '{name}' is already taken — choose another", file=sys.stderr)
-            elif e.code == 429:
-                m = re.search(r'(\d+)', detail)
-                wait = max(int(m.group(1)) if m else 5, 1)
-                print(f"  Rate limited — retry after {wait}s", file=sys.stderr)
-                # User reads the message and decides when to retry
-            else:
+
+def do_activate(gateway_url: str, product_code: str, name: str) -> dict:
+    """POST /api/v1/activate-system and return the result dict."""
+    global SYSTEM_NAME
+    data = json.dumps({"code": product_code, "system_name": name}).encode()
+    req = urllib.request.Request(
+        f"{gateway_url.rstrip('/')}/api/v1/activate-system",
+        data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        body = json.loads(resp.read())
+        SYSTEM_NAME = body.get("system_name", name)
+        print(f"  System activated:", file=sys.stderr)
+        print(f"  ├─ system_id:  {body.get('system_id','')}", file=sys.stderr)
+        print(f"  ├─ domain:     {body.get('domain','')}", file=sys.stderr)
+        print(f"  └─ identifier: {SYSTEM_NAME}", file=sys.stderr)
+        return {
+            "system_id": body.get("system_id", ""),
+            "admin_key": body.get("raw_key", ""),
+            "domain": body.get("domain", ""),
+            "system_name": SYSTEM_NAME,
+        }
+    except urllib.error.HTTPError as e:
+        body = json.loads(e.read())
+        error, detail = body.get("error", ""), body.get("detail", "")
+        if e.code == 410:
+            print(f"  Activation code already claimed — use a fresh code", file=sys.stderr)
+            sys.exit(1)
+        elif e.code == 409:
+            print(f"  Identifier '{name}' is already taken — choose another", file=sys.stderr)
+        elif e.code == 429:
+            m = re.search(r'(\d+)', detail)
+            wait = max(int(m.group(1)) if m else 5, 1)
+            print(f"  Rate limited — retry after {wait}s", file=sys.stderr)
+            # User reads the message and decides when to retry
+        else:
                 print(f"  {detail or error}", file=sys.stderr)
                 print(f"  Please try a different name or check the code", file=sys.stderr)
 
