@@ -151,66 +151,68 @@ def tool_set_public_whoami(args: dict) -> dict:
 
 SCHEMA_STR = {"type": "string"}
 TOOLS = [
-    {"name": "send_mail", "description": (
-        "Send an email via your agentmail address. For replies: pass the inbound "
-        "message_id — the tool resolves In-Reply-To/References and sender persona "
-        "automatically. For new emails: omit message_id. After sending, call "
-        "set_email_summary to refine the thread summary."),
+    {"name": "send_mail", "description": "Send an email from your agentmail address. Returns delivery status.",
      "inputSchema": {"type": "object", "properties": {
          "to": {"type": "string", "description": "Comma-separated recipients"},
          "subject": SCHEMA_STR, "body": {"type": "string", "description": "Markdown body"},
-         "cc": {"type": "string", "description": "Comma-separated CC"},
+         "cc": {"type": "string", "description": "Comma-separated CC recipients"},
          "attachments": {"type": "array", "items": {"type": "string"},
-                         "description": "Local file paths"},
-         "message_id": {"type": "string", "description": "Inbound message_id for threading"},
+                         "description": "Local file paths to attach"},
+         "message_id": {"type": "string", "description": "Inbound message_id to reply to (threads the reply)"},
      }, "required": ["to", "subject", "body"]}},
     {"name": "manage_contacts", "description": (
-        "Manage your address book (whitelist). check: verify address allowed "
-        "(in_contacts). add: sends approval request to manager. remove: delete. "
-        "update: change direction. direction: from/to/all."),
+        "Manage your contact whitelist: check if an address is allowed, "
+        "add, remove, or update entries."),
      "inputSchema": {"type": "object", "properties": {
-         "action": {"type": "string", "enum": ["check", "add", "remove", "update"]},
-         "address": {"type": "string", "description": "email address"},
-         "direction": {"type": "string", "enum": ["from", "to", "all"], "default": "all"},
+         "action": {"type": "string", "enum": ["check", "add", "remove", "update"],
+                    "description": "Action to perform"},
+         "address": {"type": "string", "description": "Email address"},
+         "direction": {"type": "string", "enum": ["from", "to", "all"], "default": "all",
+                       "description": "Whitelist direction"},
      }, "required": ["action"]}},
-    {"name": "contact_profile", "description": (
-        "Look up a contact profile by address or name. Returns profile fields "
-        "(name/title/location/focus/close_contacts/style) or ambiguous candidates."),
+    {"name": "contact_profile", "description": "Look up a contact's profile.",
      "inputSchema": {"type": "object", "properties": {
-         "address": SCHEMA_STR, "name": SCHEMA_STR}, "required": []}},
-    {"name": "set_contact_profile", "description": (
-        "Store or update a contact profile (JSON merge on gateway). Only write "
-        "fields that changed; + prefix appends, - removes."),
+         "address": {"type": "string", "description": "Email address"},
+         "name": {"type": "string", "description": "Contact name"}}, "required": []}},
+    {"name": "set_contact_profile", "description": "Store or update a contact's profile.",
      "inputSchema": {"type": "object", "properties": {
-         "address": SCHEMA_STR, "profile": {"type": "string", "description": "JSON string"}},
+         "address": {"type": "string", "description": "Email address"},
+         "profile": {"type": "string", "description": "Profile fields as JSON string"}},
          "required": ["address", "profile"]}},
-    {"name": "email_summary", "description": (
-        "Retrieve the stored thread summary for a message_id (pre-loaded as "
-        "thread_summary in inbound payloads; call when you need to re-read)."),
-     "inputSchema": {"type": "object", "properties": {"message_id": SCHEMA_STR},
+    {"name": "email_summary", "description": "Read the stored summary of an email thread.",
+     "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string", "description": "Thread message_id"}},
                      "required": ["message_id"]}},
-    {"name": "set_email_summary", "description": (
-        "Store or update the summary for an email thread. Call after processing "
-        "an inbound email to persist updated state. Empty summary clears."),
+    {"name": "set_email_summary", "description": "Save the summary of an email thread.",
      "inputSchema": {"type": "object", "properties": {
-         "message_id": SCHEMA_STR,
-         "summary": {"type": "string", "description": "Actionable thread summary, max 2000 chars"}},
+         "message_id": {"type": "string", "description": "Thread message_id"},
+         "summary": {"type": "string", "description": "Thread summary text (max 2000 chars)"}},
          "required": ["message_id", "summary"]}},
-    {"name": "board_status", "description": "获取 Board 状态总览：管线分布 + 依赖关系 + 负责人。",
-     "inputSchema": {"type": "object", "properties": {"board": SCHEMA_STR}, "required": ["board"]}},
-    {"name": "board_task_list", "description": "按条件过滤 task 列表。Orchestrator 巡视用。",
+    {"name": "board_status", "description": (
+        "Get a board's working status: goal, progress per status "
+        "with assignees, and blockers."),
      "inputSchema": {"type": "object", "properties": {
-         "board": SCHEMA_STR, "status": SCHEMA_STR, "assignee": SCHEMA_STR}, "required": ["board"]}},
-    {"name": "board_task_show", "description": "查询任务详情。返回 task 的所有字段。比发邮件快，零 SMTP 往返。",
-     "inputSchema": {"type": "object", "properties": {"task_id": SCHEMA_STR}, "required": ["task_id"]}},
-    {"name": "board_heartbeat", "description": "发心跳更新任务时间戳。长任务用此工具代替发邮件。",
-     "inputSchema": {"type": "object", "properties": {"task_id": SCHEMA_STR, "note": SCHEMA_STR},
+         "board": {"type": "string", "description": "Board ID (b_ prefix)"}}, "required": ["board"]}},
+    {"name": "board_task_list", "description": "List a board's tasks, optionally filtered by status or assignee.",
+     "inputSchema": {"type": "object", "properties": {
+         "board": {"type": "string", "description": "Board ID (b_ prefix)"},
+         "status": {"type": "string", "description": "Filter by task status"},
+         "assignee": {"type": "string", "description": "Filter by assignee email"}}, "required": ["board"]}},
+    {"name": "board_task_show", "description": "Show one task's full details, including parent-task context.",
+     "inputSchema": {"type": "object", "properties": {
+         "task_id": {"type": "string", "description": "Task ID (t_<board>_<id>)"}}, "required": ["task_id"]}},
+    {"name": "board_heartbeat", "description": (
+        "Signal your task is still in progress (a ready task advances to running)."),
+     "inputSchema": {"type": "object", "properties": {
+         "task_id": {"type": "string", "description": "Task ID (t_<board>_<id>)"},
+         "note": {"type": "string", "description": "Progress note (optional)"}},
                      "required": ["task_id"]}},
-    {"name": "board_members", "description": "查询某 Board 的成员列表及角色。",
+    {"name": "board_members", "description": "List a board's members and their roles.",
      "inputSchema": {"type": "object", "properties": {
-         "board": SCHEMA_STR, "email": SCHEMA_STR}, "required": ["board"]}},
-    {"name": "set_public_whoami", "description": "Set Agent public identity card for stranger [WHOAMI] queries",
-     "inputSchema": {"type": "object", "properties": {"text": SCHEMA_STR}, "required": ["text"]}},
+         "board": {"type": "string", "description": "Board ID (b_ prefix)"},
+         "email": {"type": "string", "description": "Filter by member email"}}, "required": ["board"]}},
+    {"name": "set_public_whoami", "description": "Set the public identity card returned for stranger WHOAMI queries.",
+     "inputSchema": {"type": "object", "properties": {
+         "text": {"type": "string", "description": "Public identity text"}}, "required": ["text"]}},
 ]
 
 HANDLERS = {

@@ -870,13 +870,13 @@ if registry is not None:
             toolset=_TOOLSET,
             schema={
                 "name": "a2a_show",
-                "description": "查询任务详情。返回 task 的所有字段。比发邮件快，零 SMTP 往返。",
+                "description": "Show one task's full details, including parent-task context.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "task_id": {
                             "type": "string",
-                            "description": "任务 ID（如 t_a1b2c3d4）"
+                            "description": "Task ID (t_<board>_<id>)"
                         }
                     },
                     "required": ["task_id"]
@@ -891,13 +891,13 @@ if registry is not None:
             toolset=_TOOLSET,
             schema={
                 "name": "a2a_list",
-                "description": "按条件过滤 task 列表。Orchestrator 巡视用。",
+                "description": "List a board's tasks, optionally filtered by status or assignee.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "board": {"type": "string", "description": "看板 ID"},
-                        "status": {"type": "string", "description": "过滤状态（running/blocked/done）"},
-                        "assignee": {"type": "string", "description": "过滤负责人 email"}
+                        "board": {"type": "string", "description": "Board ID (b_ prefix)"},
+                        "status": {"type": "string", "description": "Filter by task status"},
+                        "assignee": {"type": "string", "description": "Filter by assignee email"}
                     },
                     "required": ["board"]
                 }
@@ -911,11 +911,11 @@ if registry is not None:
             toolset=_TOOLSET,
             schema={
                 "name": "a2a_members",
-                "description": "查询某 Board 的成员列表及角色。",
+                "description": "List a board's members and their roles.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "board": {"type": "string", "description": "看板 ID"}
+                        "board": {"type": "string", "description": "Board ID (b_ prefix)"}
                     },
                     "required": ["board"]
                 }
@@ -929,12 +929,12 @@ if registry is not None:
             toolset=_TOOLSET,
             schema={
                 "name": "a2a_heartbeat",
-                "description": "发心跳更新任务时间戳。长任务用此工具代替发邮件。",
+                "description": "Signal your task is still in progress (a ready task advances to running).",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "task_id": {"type": "string", "description": "任务 ID"},
-                        "note": {"type": "string", "description": "进度备注（可选）"}
+                        "task_id": {"type": "string", "description": "Task ID (t_<board>_<id>)"},
+                        "note": {"type": "string", "description": "Progress note (optional)"}
                     },
                     "required": ["task_id"]
                 }
@@ -951,7 +951,7 @@ if registry is not None:
             toolset=_TOOLSET,
             schema={
                 "name": "a2a_set_public_whoami",
-                "description": "Set Agent public identity card for stranger [WHOAMI] queries",
+                "description": "Set the public identity card returned for stranger WHOAMI queries.",
                 "parameters": {
                     "type": "object",
                     "properties": {
