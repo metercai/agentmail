@@ -6,7 +6,7 @@ scripts/gateway_api.py（标准 amail API 客户端），仅替换 config 加载
 目录约定为 OpenClaw 形态：
 
   ~/.agentmail/{system_id}/                  ← 独立激活产生的系统目录
-      amail_gateway.json                     ← 网关配置（激活时写入）
+      agentmail_gateway.json               ← 网关配置（激活时写入）
       mode.json                              ← push/pull 模式（探测时写入）
       agents.json                            ← {email → agentId} 路由注册表
       agents/<agentId>/config.json           ← 每 agent 配置（api_key 等）
@@ -69,7 +69,7 @@ def system_dir(system_id: str = "") -> Path:
 
 
 def load_gateway_config(system_id: str = "") -> Optional[dict]:
-    """读取 amail_gateway.json（{gateway_url, admin_key, domain, system_id, system_name}）。"""
+    """读取 agentmail_gateway.json（{gateway_url, admin_key, domain, system_id, system_name}）。"""
     return _gw.load_gateway_config(system_id)
 
 
@@ -112,7 +112,12 @@ def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
 
 
 def detect_system_id() -> str:
-    """探测当前 system_id：env AMAIL_SYSTEM_ID > agents 注册表扫描 > 单目录回退。"""
+    """Resolve current system_id: env AMAIL_SYSTEM_ID > unique system dir.
+
+    Multiple systems without AMAIL_SYSTEM_ID raise SystemExit — we never
+    guess by scanning (that caused cross-system config reuse, e.g. OpenClaw
+    replying as agent.vfy@).  Callers must pass an explicit system_id.
+    """
     sid = os.environ.get("AMAIL_SYSTEM_ID", "")
     if sid:
         return sid
@@ -123,17 +128,11 @@ def detect_system_id() -> str:
         if len(dirs) == 1:
             return dirs[0]
         if len(dirs) > 1:
-            # 多系统：取最近修改的 gateway config 所属目录
-            # (agentmail_gateway.json 优先,回退 amail_gateway.json —— 新老命名兼容)
-            best, best_mtime = "", 0.0
-            for d in dirs:
-                p = base / d / "agentmail_gateway.json"
-                if not p.is_file():
-                    p = base / d / "amail_gateway.json"
-                if p.is_file() and p.stat().st_mtime > best_mtime:
-                    best, best_mtime = d, p.stat().st_mtime
-            if best:
-                return best
+            raise SystemExit(
+                "multiple agentmail systems detected ("
+                + ", ".join(dirs)
+                + "); set AMAIL_SYSTEM_ID to select one - refusing to guess"
+            )
     return ""
 
 
@@ -219,7 +218,7 @@ def make_client(api_key: str, system_id: str = ""):
     """按 api_key 构造标准 API 客户端。"""
     gw = load_gateway_config(system_id) if system_id else load_gateway_config(detect_system_id())
     if not gw:
-        raise RuntimeError("amail_gateway.json not found")
+        raise RuntimeError("agentmail_gateway.json not found")
     return GatewayClient(gw["gateway_url"], api_key)
 
 

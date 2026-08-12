@@ -87,14 +87,10 @@ def _gateway_config_path(system_id: str = "") -> Path:
     When system_id is provided, returns system-specific path.
     When empty, returns the base ~/.agentmail/ level (caller should resolve system_id).
     
-    Naming: scripts/ write agentmail_gateway.json; older layouts used
-    amail_gateway.json. Prefer whichever exists (agentmail first), so both
-    new (xianlin/wguo) and legacy (vfy) systems resolve."""
+    Canonical name: agentmail_gateway.json (scripts/ write this). Legacy
+    amail_gateway.json is intentionally not read anymore."""
     base_path = _agentmail_system_dir(system_id)
-    primary = base_path / "agentmail_gateway.json"
-    if primary.is_file():
-        return primary
-    return base_path / "amail_gateway.json"
+    return base_path / "agentmail_gateway.json"
 
 
 def _load_gateway_config(system_id: str = "") -> Optional[dict]:
@@ -102,7 +98,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
-    2. ~/.agentmail/{system_id}/amail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
+    2. ~/.agentmail/{system_id}/agentmail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
     """
     # Try environment variables first
     gateway_url = os.environ.get("AMAIL_GATEWAY_URL", "")
@@ -130,7 +126,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
             "mx_domain": mx_domain,
         }
 
-    # Try ~/.agentmail/{system_id}/amail_gateway.json
+    # Try ~/.agentmail/{system_id}/agentmail_gateway.json
     resolved_sid = system_id
     if not resolved_sid:
         # Resolve from HERMES_PROFILE_DIR/.agentmail pointer

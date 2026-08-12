@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """activate.py — OpenClaw 独立激活（步骤 4）。
 
-使用产品激活码激活新系统，落盘 ~/.agentmail/{system_id}/amail_gateway.json。
+使用产品激活码激活新系统，落盘 ~/.agentmail/{system_id}/agentmail_gateway.json。
 独立激活保证 system_id 与 Hermes 不同 → 目录天然隔离。
 
 用法:
