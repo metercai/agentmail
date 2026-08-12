@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # integrate.sh — amail Hermes one-click integration script
 # =============================================================================
-# Usage: bash integrate.sh
+# Usage: bash integrate.sh [--agent-type hermes|openclaw]
+#
+#   --agent-type hermes|openclaw — skip interactive agent system
+#     selection (defaults to hermes when omitted and no env set)
 #
 # Steps:
 #   [1] Gateway connectivity
@@ -16,6 +19,25 @@
 TOTAL_STEPS=8
 
 set -eo pipefail
+
+# ── CLI argument parsing ────────────────────────────────────────
+# --agent-type <hermes|openclaw> : skip interactive agent selection
+AGENT_TYPE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --agent-type)
+            AGENT_TYPE="${2:-}"; shift 2 ;;
+        --agent-type=*)
+            AGENT_TYPE="${1#*=}"; shift ;;
+        *) shift ;;
+    esac
+done
+if [ -n "$AGENT_TYPE" ]; then
+    case "$AGENT_TYPE" in
+        hermes|openclaw) ;;
+        *) echo "错误: --agent-type 仅支持 hermes|openclaw (got: $AGENT_TYPE)"; exit 1 ;;
+    esac
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 BOLD='\033[1m'
@@ -46,7 +68,8 @@ HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
 # ═══════════════════════════════════════════════════════════════
 # Step 0: Agent system detection
 # ═══════════════════════════════════════════════════════════════
-AGENT_SYSTEM="${AMAIL_AGENT_SYSTEM:-}"
+# Priority: --agent-type CLI arg > AMAIL_AGENT_SYSTEM env > interactive
+AGENT_SYSTEM="${AGENT_TYPE:-${AMAIL_AGENT_SYSTEM:-}}"
 AGENT_HOME=""
 if [ -z "$AGENT_SYSTEM" ]; then
     echo ""
