@@ -121,8 +121,7 @@ def detect_system_id() -> str:
     env tweak.  Never scan ~/.agentmail (that picked the wrong system
     before, e.g. OpenClaw replying as agent.vfy@).
     """
-    agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
-    pointer = Path.home() / ".openclaw" / "agents" / agent_id / "agent" / ".agentmail"
+    pointer = Path.home() / ".openclaw" / ".agentmail"
     if pointer.is_file():
         try:
             data = json.loads(pointer.read_text())
