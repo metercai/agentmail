@@ -112,16 +112,30 @@ def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
 
 
 def detect_system_id() -> str:
-    """Return the system id from AMAIL_SYSTEM_ID.
+    """Resolve the OpenClaw system id: AMAIL_SYSTEM_ID env > pointer file.
 
-    System identity is strict: it must come from an explicit env var (or a
-    caller-supplied argument) — never from scanning ~/.agentmail.  Scanning
-    picked the wrong system before (e.g. OpenClaw replying as agent.vfy@).
+    Same mechanism as the Hermes side: the agent keeps a .agentmail pointer
+    file that names its system.  OpenClaw's pointer lives at
+    ~/.openclaw/agents/{agent_id}/agent/.agentmail (agent_id from
+    AMAIL_AGENT_ID, default "main").  Never scan ~/.agentmail — scanning
+    picked the wrong system before (OpenClaw replying as agent.vfy@).
     """
     sid = os.environ.get("AMAIL_SYSTEM_ID", "")
-    if not sid:
-        raise SystemExit("AMAIL_SYSTEM_ID is not set - system identity must be explicit")
-    return sid
+    if sid:
+        return sid
+    agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
+    pointer = Path.home() / ".openclaw" / "agents" / agent_id / "agent" / ".agentmail"
+    if pointer.is_file():
+        try:
+            data = json.loads(pointer.read_text())
+            return data.get("system_id", "")
+        except Exception:
+            pass
+    raise SystemExit(
+        "AMAIL_SYSTEM_ID is not set and no .agentmail pointer at "
+        + str(pointer)
+        + " - system identity must be explicit"
+    )
 
 
 def load_mode(system_id: str = "") -> dict:
