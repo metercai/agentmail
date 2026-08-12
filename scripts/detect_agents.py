@@ -34,9 +34,13 @@ def detect_hermes():
     return {"product": "Hermes Agent", "version": version, "profiles": profiles}
 
 def detect_openclaw():
-    """Return {name, version, profiles} or None."""
-    profiles_dir = HOME / ".openclaw" / "profiles"
-    if not profiles_dir.is_dir():
+    """Return {name, version, profiles} or None.
+
+    OpenClaw stores agents under ~/.openclaw/agents/<id>/agent
+    (legacy ~/.openclaw/profiles is no longer used).
+    """
+    agents_dir = HOME / ".openclaw" / "agents"
+    if not agents_dir.is_dir():
         return None
     version = "unknown"
     try:
@@ -45,8 +49,8 @@ def detect_openclaw():
     except Exception:
         pass
     profiles = []
-    for p in sorted(profiles_dir.iterdir()):
-        if p.is_dir():
+    for p in sorted(agents_dir.iterdir()):
+        if p.is_dir() and (p / "agent").is_dir():
             profiles.append({"name": p.name, "email": ""})
     return {"product": "OpenClaw", "version": version, "profiles": profiles}
 

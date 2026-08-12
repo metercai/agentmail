@@ -83,15 +83,17 @@ if [ -z "$AGENT_SYSTEM" ]; then
         AGENT_HOME="${_MANUAL_HOME:-$HOME/.hermes}"
         AGENT_SYSTEM="hermes"
     else
-        IDX=1
         echo "$AGENTS_JSON" | python3 -c "
-import sys,json
-for a in json.load(sys.stdin):
+import sys, json
+for idx, a in enumerate(json.load(sys.stdin), start=1):
     profiles = [p['name'] for p in a.get('profiles',[])][:3]
     extra = f' +{len(a[\"profiles\"])-3} more' if len(a.get('profiles',[])) > 3 else ''
     plist = ', '.join(profiles) + extra
-    print(f'  [{IDX}] {a[\"product\"]} v{a[\"version\"]} ({len(a[\"profiles\"])} profiles: {plist})')
-" IDX="$IDX" 2>/dev/null
+    v = a.get('version','')
+    m = __import__('re').search(r'\d+\.\d+\.\d+', v)
+    vstr = m.group(0) if m else '?'
+    print(f'  [{idx}] {a[\"product\"]} v{vstr} ({len(a[\"profiles\"])} profiles: {plist})')
+" 2>/dev/null
         echo -n "  Choice [1]: "; read -r AGENT_CHOICE
         AGENT_CHOICE="${AGENT_CHOICE:-1}"
         # Map choice to product name
