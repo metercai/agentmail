@@ -354,35 +354,76 @@ class _GatewayClient:
 # Agent Tools
 # ═══════════════════════════════════════════════════════════════
 
+# ── Agent-system detection registry ──────────────────────────────
+# Different agent systems are detected (and versioned) differently.
+# Add a new entry to extend support; explicit config/env always wins
+# over automatic detection (see _agent_identity).
+_AGENT_DETECTORS = [
+    {
+        "name": "hermes",
+        "detect": lambda home: bool(os.environ.get("HERMES_PROFILE_DIR"))
+        or os.path.isdir(os.path.join(home, ".hermes")),
+        "version_args": ["hermes", "--version"],
+        "version_re": r"v([0-9][0-9.]*)",
+    },
+    {
+        "name": "openclaw",
+        "detect": lambda home: os.path.isdir(os.path.join(home, ".openclaw")),
+        "version_args": ["openclaw", "--version"],
+        "version_re": r"([0-9][0-9.]*-?[0-9]*)",
+    },
+]
+
+
+def _detect_agent_identity() -> str:
+    """Auto-detect {platform}/{version} by walking the detector registry."""
+    home = os.path.expanduser("~")
+    for det in _AGENT_DETECTORS:
+        try:
+            if det["detect"](home):
+                version = "unknown"
+                try:
+                    r = subprocess.run(
+                        det["version_args"], capture_output=True, text=True, timeout=5
+                    )
+                    out = (r.stdout or r.stderr).strip()
+                    m = re.search(det["version_re"], out)
+                    if m:
+                        version = m.group(1)
+                except Exception:
+                    pass
+                return f"{det['name']}/{version}"
+        except Exception:
+            continue
+    return "unknown/unknown"
+
+
 def _agent_identity() -> str:
     """X-Agentmail-Agent header value: {platform}/{version}.
 
-    Identifies which agent system (Hermes / OpenClaw) sent the mail and
-    its version, so receivers can attribute the message.
+    Resolution order (inclusive of different agent systems):
+      1. explicit config (agentmail.json: agent_system / agent_version)
+      2. environment overrides (AMAIL_AGENT_SYSTEM / AMAIL_AGENT_VERSION)
+      3. automatic detection via the _AGENT_DETECTORS registry
     """
-    platform = "unknown"
-    home = os.path.expanduser("~")
-    if os.environ.get("HERMES_PROFILE_DIR") or os.path.isdir(os.path.join(home, ".hermes")):
-        platform = "hermes"
-    elif os.path.isdir(os.path.join(home, ".openclaw")):
-        platform = "openclaw"
-    version = "unknown"
+    cfg = {}
     try:
-        if platform == "hermes":
-            r = subprocess.run(["hermes", "--version"], capture_output=True, text=True, timeout=5)
-            out = (r.stdout or r.stderr).strip()
-            m = re.search(r"v([0-9][0-9.]*)", out)
-            if m:
-                version = m.group(1)
-        elif platform == "openclaw":
-            r = subprocess.run(["openclaw", "--version"], capture_output=True, text=True, timeout=5)
-            out = (r.stdout or r.stderr).strip()
-            m = re.search(r"([0-9][0-9.]*-?[0-9]*)", out)
-            if m:
-                version = m.group(1)
+        cfg = _load_profile_config() or {}
     except Exception:
         pass
-    return f"{platform}/{version}"
+    explicit_system = (
+        cfg.get("agent_system")
+        or os.environ.get("AMAIL_AGENT_SYSTEM")
+        or ""
+    ).strip()
+    explicit_version = (
+        cfg.get("agent_version")
+        or os.environ.get("AMAIL_AGENT_VERSION")
+        or ""
+    ).strip()
+    if explicit_system:
+        return f"{explicit_system}/{explicit_version or 'unknown'}"
+    return _detect_agent_identity()
 
 
 def send_mail(
