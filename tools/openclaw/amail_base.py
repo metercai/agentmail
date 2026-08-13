@@ -319,7 +319,7 @@ ping_id = _ab.ping_id
 handle_ping_pong = _ab.handle_ping_pong
 
 
-# handle_ping_pong is imported from amail_common (single shared impl).
+# handle_ping_pong is imported from agentmail_base (shared impl).
 
 
 def send_pong(payload: dict, pong_id_value: str) -> bool:
