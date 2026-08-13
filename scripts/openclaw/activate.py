@@ -18,6 +18,9 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "openclaw"))
+import amail_base as _base
+
 SYSNAME_RE = re.compile(r"^[a-z][a-z0-9_-]{2,7}$")
 
 
@@ -87,6 +90,10 @@ def main() -> int:
     system_name = validate_sysname(args.system_name)
     resp = activate(args.gateway, args.code, system_name)
     p = save_gateway_config(args.gateway, resp)
+    _base.write_system_pointer(
+        resp["system_id"],
+        f"{resp.get('system_name', '')}@{resp.get('domain', '')}",
+    )
     print(f"activated: system_id={resp['system_id']} system_name={resp.get('system_name')} "
           f"domain={resp.get('domain')} config={p}")
     print(f"export AMAIL_SYSTEM_ID={resp['system_id']}")

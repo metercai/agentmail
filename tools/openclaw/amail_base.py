@@ -111,6 +111,20 @@ def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
     p.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
 
 
+def write_system_pointer(system_id: str, email: str = "") -> None:
+    """Write the OpenClaw agent pointer (~/.openclaw/.agentmail).
+
+    Single source of system identity for MCP tools — must be refreshed
+    whenever a new system is activated, otherwise MCP keeps resolving a
+    stale (deleted) system_id.
+    """
+    pointer = Path.home() / ".openclaw" / ".agentmail"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(
+        json.dumps({"system_id": system_id, "email": email}, indent=2, ensure_ascii=False) + "\n"
+    )
+
+
 def detect_system_id() -> str:
     """Resolve the OpenClaw system id from the agent pointer file.
 
