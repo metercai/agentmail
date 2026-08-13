@@ -401,28 +401,11 @@ def _detect_agent_identity() -> str:
 def _agent_identity() -> str:
     """X-Agentmail-Agent header value: {platform}/{version}.
 
-    Resolution order (inclusive of different agent systems):
-      1. explicit config (agentmail.json: agent_system / agent_version)
-      2. environment overrides (AMAIL_AGENT_SYSTEM / AMAIL_AGENT_VERSION)
-      3. automatic detection via the _AGENT_DETECTORS registry
+    Only real detection results are reported: the host agent system is
+    identified by walking the _AGENT_DETECTORS registry (different
+    systems are detected differently). If nothing is detected the value
+    is unknown/unknown — we never guess.
     """
-    cfg = {}
-    try:
-        cfg = _load_profile_config() or {}
-    except Exception:
-        pass
-    explicit_system = (
-        cfg.get("agent_system")
-        or os.environ.get("AMAIL_AGENT_SYSTEM")
-        or ""
-    ).strip()
-    explicit_version = (
-        cfg.get("agent_version")
-        or os.environ.get("AMAIL_AGENT_VERSION")
-        or ""
-    ).strip()
-    if explicit_system:
-        return f"{explicit_system}/{explicit_version or 'unknown'}"
     return _detect_agent_identity()
 
 
