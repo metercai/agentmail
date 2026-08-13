@@ -72,12 +72,13 @@ def board_task_show(task_id: str) -> str:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
     gateway_url = _resolve_gateway_url(task_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
         client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
-        r = client._request("GET", f"/api/v1/board/{board_id}/task/{task_id}")
+        r = _board_request(client, "GET", f"/api/v1/board/{board_id}/task/{task_id}", _email)
         return json.dumps(r, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -93,6 +94,7 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     board_id = _resolve_board(board) if not board.startswith("b_") else board
     gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
@@ -105,7 +107,7 @@ def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     query = "&".join(f"{k}={urllib.parse.quote(v)}" for k, v in params.items())
     path = f"/api/v1/board/{board}/tasks" + (f"?{query}" if query else "")
     try:
-        r = client._request("GET", path)
+        r = _board_request(client, "GET", path, _email)
         return json.dumps(r, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -120,6 +122,7 @@ def board_members(board_id: str, email: str = "") -> str:
         return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
@@ -128,7 +131,7 @@ def board_members(board_id: str, email: str = "") -> str:
         path = f"/api/v1/board/{board_id}/members"
         if email:
             path += f"?email={urllib.parse.quote(email)}"
-        return json.dumps(client._request("GET", path), indent=2)
+        return json.dumps(_board_request(client, "GET", path, _email), indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -140,6 +143,7 @@ def board_roles(board_id: str, role: str = "") -> str:
         return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
@@ -148,7 +152,7 @@ def board_roles(board_id: str, role: str = "") -> str:
         path = f"/api/v1/board/{board_id}/roles"
         if role:
             path += f"?role={urllib.parse.quote(role)}"
-        return json.dumps(client._request("GET", path), indent=2)
+        return json.dumps(_board_request(client, "GET", path, _email), indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -159,12 +163,13 @@ def board_status(board_id: str) -> str:
     if not cfg: return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(board_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
         client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
-        return json.dumps(client._request("GET", f"/api/v1/board/{board_id}/status"), indent=2)
+        return json.dumps(_board_request(client, "GET", f"/api/v1/board/{board_id}/status", _email), indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -179,12 +184,13 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
         return "{\"error\": \"cannot resolve board_id from task_id\"}"
     gateway_url = _resolve_gateway_url(task_id)
     token = _get_board_token(board_id) if board_id else None
+    _email = cfg.get("email", "")
     if token:
         client = _GatewayClient(gateway_url, token)
     else:
         client = _GatewayClient(gateway_url, cfg["api_key"])
     try:
-        r = client._request("POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?actor=toolset",
+        r = _board_request(client, "POST", f"/api/v1/board/{board_id}/task/{task_id}/heartbeat?actor=toolset", _email,
                             body={"note": note})
         return json.dumps(r, indent=2)
     except Exception as e:
@@ -202,3 +208,11 @@ def set_public_whoami(text: str) -> str:
         return json.dumps({"status": "ok"})
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+def _board_request(client, method, path, email, **kwargs):
+    """Board API request with the member's email as the second credential
+    (dual-credential auth: token + member email must both match)."""
+    import urllib.parse as _up
+    sep = "&" if "?" in path else "?"
+    path = f"{path}{sep}email={_up.quote(email)}"
+    return client._request(method, path, **kwargs)
