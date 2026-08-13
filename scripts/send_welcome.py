@@ -232,7 +232,17 @@ def main():
     gw = config.get("gateway_url", "")
     ak = config.get("admin_key", "")
     domain = config.get("domain", "")
-    manager = os.environ.get("MANAGER", config.get("manager_address", ""))
+    # Manager address: .env (AMAIL_MANAGER_ADDRESS) is the source of
+    # truth; fall back to the gateway config, then ask for input — never
+    # hardcode a recipient.
+    manager = (
+        os.environ.get("AMAIL_MANAGER_ADDRESS")
+        or os.environ.get("MANAGER")
+        or config.get("manager_address", "")
+    )
+    # The manager address is provided up-front (integrate.sh activation
+    # prompts for it and writes AMAIL_MANAGER_ADDRESS to .env) — never
+    # wait for input here; if it is missing something upstream failed.
     agent_email = os.environ.get("AGENT_EMAIL") or get_agent_email(config)
 
     print(f"  Gateway:     {gw}")
@@ -240,7 +250,7 @@ def main():
     print(f"  Manager:     {manager}")
 
     if not manager:
-        log_warn("No manager address configured — set MANAGER env or manager_address in gateway config")
+        log_warn("No manager address — set AMAIL_MANAGER_ADDRESS in .env (integrate.sh sets it up-front)")
         sys.exit(1)
 
     if not agent_email:

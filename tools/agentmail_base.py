@@ -256,8 +256,74 @@ def _put_contact_profile(address: str, profile: str) -> dict:
 # Gateway Preprocessor — inbound mail payload transformation
 # ═══════════════════════════════════════════════════════════════
 
-def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
+# ── Ping/pong interception (shared by Hermes + OpenClaw) ────────────
+# Single implementation: Hermes webhook preprocess, OpenClaw poll and
+# OpenClaw bridge all call handle_ping_pong() instead of each writing
+# their own copy — trigger conditions stay identical everywhere.
+PING_PREFIX = "__agentmail_ping__:"
+PONG_PREFIX = "__agentmail_pong__:"
+
+
+def is_ping(subject: str) -> bool:
+    return isinstance(subject, str) and subject.startswith(PING_PREFIX)
+
+
+def is_pong(subject: str) -> bool:
+    return isinstance(subject, str) and subject.startswith(PONG_PREFIX)
+
+
+def ping_id(subject: str) -> str:
+    return subject.split(":", 1)[1].strip() if is_ping(subject) else ""
+
+
+def handle_ping_pong(
+    body: dict,
+    send_pong_fn=None,
+) -> Optional[str]:
+    """Unified ping/pong interception for all agent platforms.
+
+    Returns "ping" (pong sent back via send_pong_fn), "pong"
+    (acknowledged — caller swallows it), or None (not a ping/pong).
+    """
+    subject = body.get("subject", "")
+    if is_ping(subject):
+        pid = ping_id(subject)
+        if send_pong_fn is not None:
+            try:
+                send_pong_fn(body, pid)
+            except Exception:
+                pass
+        return "ping"
+    if is_pong(subject):
+        return "pong"
+    return None
+
+
+def _hermes_pong_sender(body: dict, pong_id_value: str) -> bool:
+    """Hermes-side pong sender: replies via the send_mail tool chain."""
+    try:
+        from agentmail_tools import send_mail
+        to = body.get("from", "")
+        if not to:
+            return False
+        res = send_mail(
+            to=to,
+            subject=f"{PONG_PREFIX}{pong_id_value}",
+            body='{"ping_id": "%s", "event": {"mail_id": "%s"}}'
+            % (pong_id_value, body.get("mail_id", "")),
+            message_id=str(body.get("mail_id", "")) or None,
+        )
+        return bool(res.get("success"))
+    except Exception:
+        return False
+
+
+def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
     """Preprocess agentmail webhook payload before prompt rendering.
+
+    Returns None when the event must be swallowed (ping/pong
+    interception — the webhook adapter responds "ignored" and no agent
+    run happens), otherwise the (possibly enriched) payload dict.
 
     Rust backend already handles text cleaning. Python side handles:
 
@@ -267,6 +333,11 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> dict:
     - direct_message / mentioned (persona-aware matching)
     - attachment download
     """
+    # ── Unified ping/pong interception (shared with OpenClaw poll/bridge) ──
+    if handle_ping_pong(payload, _hermes_pong_sender) is not None:
+        logger.info("[agentmail_gateway] ping/pong intercepted — swallowed")
+        return None
+
     result = dict(payload)
     body = result.get("body", "")
 

@@ -45,18 +45,18 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
         if not deliveries:
             continue
         # ── ping-pong 拦截（E2E 验证，同 Hermes 补丁语义）──
-        subject = body.get("subject", "")
-        if _base.is_ping(subject):
-            pid = _base.ping_id(subject)
+        # Unified ping/pong interception (shared implementation —
+        # identical conditions on Hermes preprocess and OpenClaw poll).
+        pp = _base.handle_ping_pong(body, _base.send_pong)
+        if pp == "ping":
             for d in deliveries:
                 ack_ids.append(d.get("id"))
-                _base.send_pong(body, pid)
-            print(f"  ping-pong: {pid} intercepted ({len(deliveries)} delivery)")
+            print(f"  ping-pong: {_base.ping_id(body.get('subject',''))} intercepted ({len(deliveries)} delivery)")
             continue
-        if _base.is_pong(subject):
+        if pp == "pong":
             for d in deliveries:
                 ack_ids.append(d.get("id"))
-            print(f"  pong returned: {subject.split(':', 1)[1].strip()}")
+            print(f"  pong returned: {body.get('subject','').split(':', 1)[1].strip()}")
             continue
 
         # 该批所有收件人 → 每个 agent 各投一次（按 delivery 逐条，保证 agentId 正确）

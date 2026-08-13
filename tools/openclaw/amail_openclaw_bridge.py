@@ -71,15 +71,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "bad signature"})
             return
 
-        # ── ping-pong 拦截（E2E 验证，同 Hermes 补丁语义）──
-        subject = payload.get("subject", "")
-        if _base.is_ping(subject):
-            pid = _base.ping_id(subject)
-            pong_ok = _base.send_pong(payload, pid)
-            self._send_json(200, {"pong": pid, "status": "pong_sent" if pong_ok else "pong_failed"})
+        # ── ping-pong 拦截（E2E 验证）—— 统一共享实现 ──
+        pp = _base.handle_ping_pong(payload, _base.send_pong)
+        if pp == "ping":
+            pid = _base.ping_id(payload.get("subject", ""))
+            self._send_json(200, {"pong": pid, "status": "pong_sent"})
             return
-        if _base.is_pong(subject):
-            self._send_json(200, {"pong": subject.split(":", 1)[1].strip(), "status": "pong_returned"})
+        if pp == "pong":
+            self._send_json(200, {"pong": payload.get("subject", "").split(":", 1)[1].strip(), "status": "pong_returned"})
             return
 
         # ── 2. 路由 + 共享投递链 ──

@@ -306,20 +306,20 @@ def agent_for_email(registry: dict, email: str) -> str:
     return ""
 
 
-PING_PREFIX = "__agentmail_ping__:"
+# is_ping/is_pong/ping_id/handle_ping_pong come from agentmail_base
+# (the shared Hermes + OpenClaw layer) — single implementation.
 PONG_PREFIX = "__agentmail_pong__:"
 
 
-def is_ping(subject: str) -> bool:
-    return isinstance(subject, str) and subject.startswith(PING_PREFIX)
+PING_PREFIX = _ab.PING_PREFIX
+PONG_PREFIX = _ab.PONG_PREFIX
+is_ping = _ab.is_ping
+is_pong = _ab.is_pong
+ping_id = _ab.ping_id
+handle_ping_pong = _ab.handle_ping_pong
 
 
-def is_pong(subject: str) -> bool:
-    return isinstance(subject, str) and subject.startswith(PONG_PREFIX)
-
-
-def ping_id(subject: str) -> str:
-    return subject.split(":", 1)[1].strip() if is_ping(subject) else ""
+# handle_ping_pong is imported from amail_common (single shared impl).
 
 
 def send_pong(payload: dict, pong_id_value: str) -> bool:
