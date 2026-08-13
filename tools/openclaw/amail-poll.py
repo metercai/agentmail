@@ -44,19 +44,14 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
         deliveries = batch.get("deliveries") or []
         if not deliveries:
             continue
-        # ── ping-pong 拦截（E2E 验证，同 Hermes 补丁语义）──
-        # Unified ping/pong interception (shared implementation —
-        # identical conditions on Hermes preprocess and OpenClaw poll).
-        pp = _base.handle_ping_pong(body, _base.send_pong)
-        if pp == "ping":
+        # ── 中间预处理：与 Hermes preprocess 同一共享实现（单一调用）──
+        # ping/pong 拦截 → persona(PERSONA_SUPPORTED 开关) → 富化。
+        enriched = _base.preprocess_mail_payload(dict(body), {})
+        if enriched is None:
+            # ping/pong 拦截：整批 ack，不投递（pong 已由共享链回复）
             for d in deliveries:
                 ack_ids.append(d.get("id"))
             print(f"  ping-pong: {_base.ping_id(body.get('subject',''))} intercepted ({len(deliveries)} delivery)")
-            continue
-        if pp == "pong":
-            for d in deliveries:
-                ack_ids.append(d.get("id"))
-            print(f"  pong returned: {body.get('subject','').split(':', 1)[1].strip()}")
             continue
 
         # 该批所有收件人 → 每个 agent 各投一次（按 delivery 逐条，保证 agentId 正确）
@@ -68,13 +63,6 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
                 ack_ids.append(d.get("id"))
                 continue
             try:
-                # 统一中间预处理（与 Hermes preprocess 同一实现）：
-                # persona 归一/附件下载/board gateway 提取。None = 拦截。
-                enriched = _base.preprocess_mail_payload(dict(body), {})
-                if enriched is None:
-                    print(f"  — {email}: intercepted by preprocess, skipping", file=sys.stderr)
-                    ack_ids.append(d.get("id"))
-                    continue
                 hook_resp = _base.dispatch_to_hooks(
                     hooks_url, hooks_token, agent_id, enriched,
                     idempotency_key=f"amail:{d.get('id')}",
