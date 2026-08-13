@@ -200,27 +200,35 @@ def _register_board_gateway(board_id: str, gateway_url: str) -> None:
         _BOARD_GATEWAY_SINK(board_id, gateway_url)
 
 
-def _board_creds_path() -> Optional[Path]:
-    """Path of the per-agent board credential file.
+def _clean_agent_dir_name(addr: str) -> str:
+    """agent 地址 → 目录名：路径不合法字符替换（@ → _ 等）。
 
-    Board credentials live next to the agent config file (whatever the
-    platform layout):
-      - Hermes:  same dir as agentmail.json ({sid}/ or {sid}/profiles/{name}/)
-      - OpenClaw: agents/{agent_id}/ (same dir as config.json)
+    与 bridge 顶层 agent 目录命名同规则（mike_amail.token.tm）。
+    """
+    return re.sub(r"[^\w.\-]", "_", addr)
+
+
+def _board_creds_path() -> Optional[Path]:
+    """Universal per-agent board credential path.
+
+    ~/.agentmail/{system_id}/agents/{agent_addr_cleaned}/board_creds.json
+
+    The directory key is the agent's FINAL address (path-unsafe chars
+    replaced) — every agent system (Hermes, OpenClaw, ...) follows this
+    one convention, so a system's agents never share a creds file.
     """
     try:
         cfg = _load_profile_config()
-        if cfg and cfg.get("_config_path"):
-            return Path(cfg["_config_path"]).parent / "board_creds.json"
-        # OpenClaw layout: agents/{agent_id}/config.json
-        import os as _os
-        agent_id = _os.environ.get("AMAIL_AGENT_ID", "main")
-        sid = cfg.get("system_id", "") if cfg else ""
-        if sid:
-            return Path.home() / ".agentmail" / sid / "agents" / agent_id / "board_creds.json"
+        if not cfg:
+            return None
+        sid = cfg.get("system_id", "")
+        addr = cfg.get("email", "")
+        if not sid or not addr:
+            return None
+        cleaned = _clean_agent_dir_name(addr)
+        return Path.home() / ".agentmail" / sid / "agents" / cleaned / "board_creds.json"
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _store_board_credential(board_id: str, gateway_url: str, token: str) -> None:
