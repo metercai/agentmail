@@ -41,6 +41,7 @@ _GatewayClient = tools._GatewayClient
 
 # ── 公共函数转发（搬移函数/_handle_* 内部裸调用——同源公共核心）──
 _agentmail_system_dir = core._agentmail_system_dir
+_board_creds_path = core._board_creds_path
 _load_gateway_config = core._load_gateway_config
 list_personas = core.list_personas
 # 6 工具函数体（注册表 handler 包装器裸调用）
@@ -165,7 +166,11 @@ def _load_profile_config() -> Optional[dict]:
     for config_path in search_paths:
         if config_path.is_file():
             try:
-                return json.loads(config_path.read_text())
+                cfg = json.loads(config_path.read_text())
+                # Internal key: location of the agent config file — board
+                # credentials live next to it (per-agent layout).
+                cfg["_config_path"] = str(config_path)
+                return cfg
             except Exception:
                 pass
     
@@ -739,13 +744,7 @@ def _store_board_credential(board_id: str, gateway_url: str, token: str):
     """Persist board credential to file for subprocess access."""
     try:
         import json as _json
-        cfg = _load_profile_config()
-        sid = cfg.get("system_id", "default") if cfg else "default"
-        # Per-agent credential file (a system may host multiple agents).
-        agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
-        creds_path = (
-            Path.home() / ".agentmail" / sid / "agents" / agent_id / "board_creds.json"
-        )
+        creds_path = _board_creds_path()
         creds = {}
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())

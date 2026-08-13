@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Callable, Dict, List, Any
 
 from agentmail_tools import _GatewayClient
-from agentmail_base import _load_profile_config, _board_gateways
+from agentmail_base import _load_profile_config, _board_gateways, _board_creds_path
 
 
 logger = logging.getLogger(__name__)
@@ -50,14 +50,7 @@ def _get_board_token(board_id: str) -> Optional[str]:
     """Get board token from persisted creds file."""
     try:
         import json as _json
-        cfg = _load_profile_config()
-        sid = cfg.get("system_id", "default") if cfg else "default"
-        # One system may host multiple agents — board credentials are
-        # per-agent (agents/{agent_id}/), matching the agent config layout.
-        agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
-        creds_path = (
-            Path.home() / ".agentmail" / sid / "agents" / agent_id / "board_creds.json"
-        )
+        creds_path = _board_creds_path()
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())
             return creds.get(board_id, {}).get("token")
