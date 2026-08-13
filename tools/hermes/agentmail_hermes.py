@@ -739,12 +739,17 @@ def _store_board_credential(board_id: str, gateway_url: str, token: str):
     """Persist board credential to file for subprocess access."""
     try:
         import json as _json
-        sid = _load_profile_config().get("system_id", "default") if _load_profile_config() else "default"
-        creds_path = Path.home() / ".agentmail" / sid / "board_creds.json"
+        cfg = _load_profile_config()
+        sid = cfg.get("system_id", "default") if cfg else "default"
+        # Per-agent credential file (a system may host multiple agents).
+        agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
+        creds_path = (
+            Path.home() / ".agentmail" / sid / "agents" / agent_id / "board_creds.json"
+        )
         creds = {}
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())
-        creds[board_id] = {"url": gateway_url, "token": token}
+        creds[board_id] = {"gateway_url": gateway_url, "token": token}
         creds_path.write_text(_json.dumps(creds, indent=2))
     except Exception:
         pass

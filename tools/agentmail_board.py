@@ -52,7 +52,12 @@ def _get_board_token(board_id: str) -> Optional[str]:
         import json as _json
         cfg = _load_profile_config()
         sid = cfg.get("system_id", "default") if cfg else "default"
-        creds_path = Path.home() / ".agentmail" / sid / "board_creds.json"
+        # One system may host multiple agents — board credentials are
+        # per-agent (agents/{agent_id}/), matching the agent config layout.
+        agent_id = os.environ.get("AMAIL_AGENT_ID", "main")
+        creds_path = (
+            Path.home() / ".agentmail" / sid / "agents" / agent_id / "board_creds.json"
+        )
         if creds_path.exists():
             creds = _json.loads(creds_path.read_text())
             return creds.get(board_id, {}).get("token")

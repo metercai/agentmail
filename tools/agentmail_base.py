@@ -550,7 +550,11 @@ def _extract_board_gateway(payload: dict):
     board_short_id = from_match.group(1)
     gw_domain = re.search(r'://([^/]+)', gateway_url)
     domain = gw_domain.group(1) if gw_domain else ""
-    board_id = hashlib.sha256(f"{board_short_id}:{domain}".encode()).hexdigest()[:20]
+    # board_id must match the gateway's derive_board_id: hash of the FULL
+    # board address ({short}.a2a@{domain}) — embeds system name on shared
+    # domains, no cross-system collision.
+    board_email = f"{board_short_id}.a2a@{domain}"
+    board_id = hashlib.sha256(board_email.encode()).hexdigest()[:20]
     _register_board_gateway(board_id, gateway_url)
     if token_match:
         token = token_match.group(1).rstrip()
