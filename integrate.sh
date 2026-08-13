@@ -274,6 +274,9 @@ else
     SYSTEM_ID=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('system_id',''))" 2>/dev/null || echo "")
     AGENT_ADMIN_EMAIL=$(echo "$WHOAMI" | python3 -c "import sys,json; print(json.load(sys.stdin).get('email','') or json.load(sys.stdin).get('email_address',''))" 2>/dev/null || echo "")
     [ -z "$SYSTEM_ID" ] && step_fail "Failed to determine system_id from whoami"
+    # system_name (shared-domain identifier) must be persisted in config;
+    # default to the AMAIL_SYSTEM_NAME env (set by the operator for shared systems).
+    SYSTEM_NAME="${AMAIL_SYSTEM_NAME:-}"
     if echo "$SCOPE" | grep -qE "platform|system|agent_admin"; then
         echo -e "${GREEN}$T_OK${NC}"
         step_ok "$T_ADMIN_KEY_OK ($SYSTEM_ID)"

@@ -8,7 +8,10 @@
 #   3. Register existing profiles as amail addresses
 #   4. Ensure Hermes gateway is running with webhook support
 
-SCRIPT_DIR="$(cd "$(dirname "$(dirname "$0")")" && pwd)"
+# When sourced from integrate.sh, $0 is the parent script; BASH_SOURCE[0]
+# is always this file (scripts/hermes/configure.sh) → repo root is ../.. .
+# Callers below append /scripts/... so SCRIPT_DIR must be the repo root.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # ── 0. Stop any running gateways BEFORE patching ─────────────────
 echo "  Stopping any running Hermes gateways..."

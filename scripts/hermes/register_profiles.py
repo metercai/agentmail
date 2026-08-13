@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Register existing Hermes profiles as amail addresses in the current system."""
 import sys, os, json
+# tools/ is the shared module root (works whether run from repo or copied tree)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "hermes"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 def load_gateway_config():
     # Use SYSTEM_ID env var to locate config directly

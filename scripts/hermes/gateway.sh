@@ -23,7 +23,7 @@ sleep 2
 
 # ── 3. Start root profile gateway ──────────────────────────────
 echo "  Starting Hermes gateway for default profile..."
-nohup hermes -p default gateway run --accept-hooks \
+nohup env HERMES_PROFILE=default hermes gateway run --accept-hooks \
     < /dev/null \
     > "$HOME/.hermes/gateway.log" 2>&1 &
 GATEWAY_PID=$!
@@ -66,7 +66,7 @@ except: print(8644)
 
         echo "  Starting Hermes gateway for '$profile_name' profile..."
         PROF_LOG="$profile_dir/gateway.log"
-        nohup hermes -p "$profile_name" gateway run --accept-hooks --replace \
+        nohup env HERMES_PROFILE="$profile_name" hermes gateway run --accept-hooks --replace \
             < /dev/null \
             > "$PROF_LOG" 2>&1 &
         PROF_PID=$!

@@ -52,6 +52,16 @@ BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
 BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
 BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
 AGENT_CFG   = AGENT_HOME / "config.yaml"
+# --agent 指定 profile 时,读该 profile 的 config.yaml(端口随 profile)
+if "--agent" in sys.argv:
+    try:
+        ai = sys.argv.index("--agent")
+        if ai + 1 < len(sys.argv):
+            _prof_cfg = AGENT_HOME / "profiles" / sys.argv[ai + 1].split("@")[0] / "config.yaml"
+            if _prof_cfg.exists():
+                AGENT_CFG = _prof_cfg
+    except Exception:
+        pass
 SUBS_FILE   = AGENT_HOME / "webhook_subscriptions.json"
 PROFILES_DIR = AGENT_HOME / "profiles"
 ROUTES_FILE = AGENTMAIL_HOME / "amail_routes.toml"
