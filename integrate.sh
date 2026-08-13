@@ -590,6 +590,8 @@ esac
 
 # Step 8: Send welcome email
 step_begin "$T_TEST"
+# send_welcome.py reads SYSTEM_ID (env) — must be exported for the child process
+export SYSTEM_ID="${SYSTEM_ID:-}"
 # Mail delivery is the goal; the reply-wait verification times out when
 # the agent does not answer (normal) — treat "sent" as success.
 if python3 "$SCRIPT_DIR/scripts/send_welcome.py"; then

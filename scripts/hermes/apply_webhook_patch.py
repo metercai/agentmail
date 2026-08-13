@@ -328,17 +328,17 @@ if hermes_commit != "unknown":
         detected = _auto_detect_anchors(_original_lines)
         print(file=sys.stderr)
         print(f"  ╔═══ NEW HERMES COMMIT: {hermes_commit}", file=sys.stderr)
-        print(f"  ║ Not in WEBHOOK_ANCHOR_MAP — auto-detected:", file=sys.stderr)
+        print("  ║ Not in WEBHOOK_ANCHOR_MAP — auto-detected:", file=sys.stderr)
         for k in ["typing", "logger", "prompt", "non_blocking"]:
             v = detected.get(k, "?")
             print(f"  ║   {k}: {v}", file=sys.stderr)
-        print(f"  ║", file=sys.stderr)
-        print(f"  ║ Suggested anchor entry:", file=sys.stderr)
+        print("  ║", file=sys.stderr)
+        print("  ║ Suggested anchor entry:", file=sys.stderr)
         print(f'  ║   ("{hermes_commit}", {{"typing": {detected.get("typing","?")},'
               f' "logger": {detected.get("logger","?")},'
               f' "prompt": {detected.get("prompt","?")}}}),', file=sys.stderr)
-        print(f"  ║ Add to WEBHOOK_ANCHOR_MAP and commit.", file=sys.stderr)
-        print(f"  ╚═══", file=sys.stderr)
+        print("  ║ Add to WEBHOOK_ANCHOR_MAP and commit.", file=sys.stderr)
+        print("  ╚═══", file=sys.stderr)
 
 
 # ── Patch 6: add a2a_board prompt field consumer (always replace) ──

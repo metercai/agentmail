@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Print a centered ASCII banner. Called by integrate.sh."""
-import shutil, sys, os
+import shutil, os
 
 title = os.environ.get("TITLE", "Agentmail and  Hermes Integration Wizard")
 tw = shutil.get_terminal_size().columns

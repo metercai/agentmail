@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Detect installed agent systems (Hermes / OpenClaw) and list profiles."""
-import json, os, subprocess, sys
+import json, subprocess
 from pathlib import Path
 
 HOME = Path.home()

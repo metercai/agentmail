@@ -359,18 +359,18 @@ def main():
     print("  Amail — Hermes Integration Uninstall")
     print(f"{'='*60}")
 
-    print(f"\n  What will be done:\n")
-    print(f"  [surgical patch removal — 3 source files]")
-    print(f"    Only exact amail-added text blocks removed.")
-    print(f"    All other changes preserved (Hermes updates, user edits).")
-    print(f"")
-    print(f"  [config cleanup]")
-    print(f"    - webhook_subscriptions.json  → remove agentmail-inbound route")
-    print(f"    - config.yaml                 → remove amail from platform_toolsets")
-    print(f"")
-    print(f"  [no file deletion]")
-    print(f"    Config already in ~/.agentmail/ — preserving for reinstall")
-    print(f"")
+    print("\n  What will be done:\n")
+    print("  [surgical patch removal — 3 source files]")
+    print("    Only exact amail-added text blocks removed.")
+    print("    All other changes preserved (Hermes updates, user edits).")
+    print("")
+    print("  [config cleanup]")
+    print("    - webhook_subscriptions.json  → remove agentmail-inbound route")
+    print("    - config.yaml                 → remove amail from platform_toolsets")
+    print("")
+    print("  [no file deletion]")
+    print("    Config already in ~/.agentmail/ — preserving for reinstall")
+    print("")
 
     # ── 1/6: Stop processes ──
     print("\n  [1/6] Stopping gateway + bridge")
@@ -447,7 +447,7 @@ def main():
         if marker in wh_text:
             still_patched.append(marker)
 
-    print(f"""
+    print("""
   ✓ Processes stopped (bridge killed, gateway stopped)
   ✓ Patches: {patched_count}/3 files cleaned
   ✓ webhook_subscriptions.json: agentmail-inbound removed

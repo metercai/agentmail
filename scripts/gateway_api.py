@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Gateway API client + config helpers — shared by setup_system.py, deploy_bridge.py."""
 import json
-import os
 import urllib.request
 import urllib.error
 from pathlib import Path

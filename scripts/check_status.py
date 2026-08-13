@@ -78,7 +78,6 @@ def _agentmail_log() -> Path:
     return Path.home() / ".agentmail" / "default" / "agentmail.log"
 
 def _agentmail_raw() -> Path:
-    global _AGENT_DIR
     if _AGENT_DIR:
         return _AGENT_DIR
     return Path.home() / ".agentmail" / "default"
@@ -128,7 +127,6 @@ class Check:
         for title, items in groups:
             if not items:
                 continue
-            icon = GREEN if all(i["pass"] for i in items) else (YELLOW if any(i["pass"] for i in items) else RED)
             print(f"\n  {BROWN}╓─ {title}{NC}")
             for chk in items:
                 ik = GREEN + CHECK + NC if chk["pass"] else RED + CROSS + NC
@@ -459,7 +457,7 @@ def check_agent_gateway(c: Check):
         with urllib.request.urlopen(req, timeout=3) as r:
             c.add("agent-gw", "webhook_port", r.status == 200,
                   f"Port {port} HTTP {r.status}")
-    except Exception as e:
+    except Exception:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(2)
@@ -630,14 +628,12 @@ def _check_webhook_callback(c: Check, port: int):
                                      headers={"Content-Type": "application/json"},
                                      method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
-            body = r.read().decode(errors="replace")[:100]
             c.add("agent-gw", "webhook_callback", True,
                   f"route active — POST /webhooks/{route_name} → HTTP {r.status}")
     except urllib.error.HTTPError as e:
         # 401 = route exists + authenticates (our probe has no HMAC signature)
         # 403 = route exists, HMAC mismatch
         # 404 = route not registered
-        ok = e.code in (200, 201, 202, 401, 403)
         if e.code == 401:
             c.add("agent-gw", "webhook_callback", True,
                   f"route active — POST /webhooks/{route_name} → 401 (HMAC required)")
@@ -824,7 +820,6 @@ def _run_ping_test() -> int:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(15)
         s.connect((host, 25))
-        banner = s.recv(4096).decode(errors="replace")
         def cmd(c):
             s.sendall(f"{c}\r\n".encode())
             return s.recv(4096).decode().strip()
@@ -856,7 +851,6 @@ def _run_ping_test() -> int:
     amail_log = _agentmail_log()
     deadline = time.time() + 60
     found_ping = found_pong = found_sent = False
-    ping_ts = pong_ts = sent_ts = ""
 
     def _parse_ts(s):
         for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
@@ -885,17 +879,14 @@ def _run_ping_test() -> int:
                     ts = entry.get("ts", "")
                     if d == "ping_intercepted" and not found_ping:
                         found_ping = True
-                        ping_ts = ts
                         sec = _fmt_secs(ts, dt_sent)
                         print(f"  +{sec:5.1f}s    Webhook Receive (ping)         ✓")
                     if d == "pong_sent" and found_ping and not found_sent:
                         found_sent = True
-                        sent_ts = ts
                         sec = _fmt_secs(ts, dt_sent)
                         print(f"  +{sec:5.1f}s    Pong Sent (send_mail)          ✓")
                     if d == "pong_returned" and found_ping and not found_pong:
                         found_pong = True
-                        pong_ts = ts
                         sec = _fmt_secs(ts, dt_sent)
                         print(f"  +{sec:5.1f}s    Webhook Return (pong)          ✓")
                         print(f"  +{sec:5.1f}s    Total round-trip: {sec:.1f}s")
@@ -907,9 +898,9 @@ def _run_ping_test() -> int:
 
     if not (found_ping and found_pong):
         if found_ping:
-            print(f"  ✓ Ping intercepted, but pong not returned within 60s")
+            print("  ✓ Ping intercepted, but pong not returned within 60s")
             return 1
-        print(f"  ✗ No ping or pong detected within 60s")
+        print("  ✗ No ping or pong detected within 60s")
         return 1
 
     # Verify raw email snapshots were saved
@@ -986,7 +977,7 @@ def main():
             fail = sum(1 for ch in c.checks if not ch["pass"])
             print(f"  {YELLOW}{BOLD}⚠ {fail}  issue(s) — check items marked  {CROSS} {NC}")
             if not verbose:
-                print(f"    Use --verbose for fix suggestions")
+                print("    Use --verbose for fix suggestions")
 
     return 0 if c.all_pass() else 1
 

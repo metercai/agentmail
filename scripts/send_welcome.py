@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Step 9: Send welcome email via SMTP, verify delivery and reply."""
-import sys, os, json, time, re, socket, base64, hashlib
-from datetime import datetime, timezone
-from email.mime.text import MIMEText
+import sys, os, json, time, socket, base64
 import urllib.request, urllib.error
 
 def log_info(msg):
@@ -15,7 +13,7 @@ def log_ok(msg):
     print(f"  ✓ {msg}")
 
 def load_config():
-    sid = os.environ.get("SYSTEM_ID", "")
+    sid = os.environ.get("SYSTEM_ID", "") or os.environ.get("AMAIL_SYSTEM_ID", "")
     if not sid:
         return None
     sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
@@ -32,7 +30,6 @@ def get_agent_email(config):
     gw = config.get("gateway_url", "")
     ak = config.get("admin_key", "")
     sid = config.get("system_id", "")
-    domain = config.get("domain", "")
 
     # 1. Env var
     email = os.environ.get("AGENT_EMAIL", "")
@@ -231,7 +228,6 @@ def main():
 
     gw = config.get("gateway_url", "")
     ak = config.get("admin_key", "")
-    domain = config.get("domain", "")
     # Manager address: .env (AMAIL_MANAGER_ADDRESS) is the source of
     # truth; fall back to the gateway config, then ask for input — never
     # hardcode a recipient.

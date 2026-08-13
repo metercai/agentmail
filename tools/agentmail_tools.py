@@ -4,17 +4,15 @@ import json
 import logging
 import os
 import re
-import secrets
-import hashlib
-import threading
+import subprocess
 import time
 from pathlib import Path
-from typing import Optional, Callable, Dict, List, Any, Union
+from typing import Optional, Dict, List, Any, Union
 from datetime import datetime
 import urllib.request
 import urllib.error
 
-from agentmail_base import _load_profile_config, _agentmail_system_dir
+from agentmail_base import _load_profile_config
 import urllib.parse
 
 
@@ -557,7 +555,6 @@ def send_mail(
         if thread_bootstrapped:
             out["thread_bootstrapped"] = True
         if upload_errors:
-            failed_names = [Path(e.split(":")[0] if ":" not in e else "").name or e for e in upload_errors]
             out["note"] = f"Sent, but {len(upload_errors)} attachment(s) had issues: {'; '.join(upload_errors[:3])}"
         return out
     else:
@@ -586,7 +583,6 @@ def manage_contacts(
     # Agent whitelist is per-profile, not per-domain.
     # domain_addr = agentmail address (agent-1@mail.project.com)
     email_addr = config.get("email", "")
-    system_id = config.get("system_id", "")
 
     if action == "check":
         if not address:
@@ -744,8 +740,6 @@ def _resolve_attachments(raw_paths: list) -> tuple:
 
     Returns (resolved: list[str], errors: list[str]).
     """
-    import glob as _glob
-
     resolved: list[str] = []
     errors: list[str] = []
 
@@ -873,7 +867,6 @@ def _save_outbound_snapshot(out_msg_id: str, my_addr: str, sender: str,
     my_addr determines the snapshot subdirectory (persona or base address).
     """
     safe_mid = _sanitize_message_id(out_msg_id)
-    safe_addr = _sanitize_message_id(my_addr)
     now = datetime.now()
     yyyymm = now.strftime("%Y%m")
     snapshot_dir = _raw_email_dir() / yyyymm
@@ -982,7 +975,6 @@ def store_inbound_message(
     if not message_id or not message_id.strip():
         return None
     mid = message_id.strip()
-    refs = [r.strip() for r in (references or []) if r.strip()]
 
     # Metadata is pre-populated by the Rust gateway before webhook delivery.
     # Only save local snapshot if configured.
@@ -993,7 +985,6 @@ def store_inbound_message(
         return None
 
     safe_mid = _sanitize_message_id(mid)
-    safe_addr = _sanitize_message_id(my_amail_addr)
     now = datetime.now()
     yyyymm = now.strftime("%Y%m")
     snapshot_dir = _raw_email_dir() / yyyymm

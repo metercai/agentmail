@@ -1,6 +1,6 @@
 """Core integration steps — shared domain activation, profile registration.
 Replaces complex shell logic to avoid quoting/heredoc bugs."""
-import sys, os, json, re, time, hashlib, urllib.request, urllib.error
+import sys, os, json, re, urllib.request, urllib.error
 
 # ── System name validation ────────────────────────────────────────
 SYSNAME_RE = re.compile(r'^[a-z][a-z0-9_-]{2,7}$')
@@ -18,7 +18,6 @@ SYSTEM_NAME = ""
 def prompt_activate(gateway_url: str, product_code: str) -> dict:
     """Activate with AMAIL_SYSTEM_NAME env default, else interactive loop.
     Returns {system_id, admin_key, domain, system_name}"""
-    global SYSTEM_NAME
     env_name = os.environ.get("AMAIL_SYSTEM_NAME", "").strip().lower()
     if env_name:
         try:
@@ -51,8 +50,8 @@ def do_activate(gateway_url: str, product_code: str, name: str) -> dict:
         resp = urllib.request.urlopen(req, timeout=15)
         body = json.loads(resp.read())
         SYSTEM_NAME = body.get("system_name", name)
-        print(f"  System activated:", file=sys.stderr)
-        print(f"  ├─ system_id:  {body.get('system_id','')}", file=sys.stderr)
+        print("  System activated:", file=sys.stderr)
+        print("  ├─ system_id:  {body.get('system_id','')}", file=sys.stderr)
         print(f"  ├─ domain:     {body.get('domain','')}", file=sys.stderr)
         print(f"  └─ identifier: {SYSTEM_NAME}", file=sys.stderr)
         return {
@@ -65,7 +64,7 @@ def do_activate(gateway_url: str, product_code: str, name: str) -> dict:
         body = json.loads(e.read())
         error, detail = body.get("error", ""), body.get("detail", "")
         if e.code == 410:
-            print(f"  Activation code already claimed — use a fresh code", file=sys.stderr)
+            print("  Activation code already claimed — use a fresh code", file=sys.stderr)
             sys.exit(1)
         elif e.code == 409:
             print(f"  Identifier '{name}' is already taken — choose another", file=sys.stderr)
@@ -76,10 +75,10 @@ def do_activate(gateway_url: str, product_code: str, name: str) -> dict:
             # User reads the message and decides when to retry
         else:
                 print(f"  {detail or error}", file=sys.stderr)
-                print(f"  Please try a different name or check the code", file=sys.stderr)
+                print("  Please try a different name or check the code", file=sys.stderr)
 
 if __name__ == "__main__":
-    import sys
+
     gw = os.environ.get("GATEWAY_URL", "")
     code = os.environ.get("PRODUCT_CODE", "")
     if not gw or not code:

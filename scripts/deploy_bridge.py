@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy amail-bridge: bridge config, startup."""
-import sys, os, json, subprocess, socket, time
-import urllib.request, urllib.error, re
+import sys, os, json, re, subprocess, socket, time
+
 from gateway_api import create_api_key
 
 def log_step(msg: str):
@@ -119,7 +119,6 @@ def main():
     domain = os.environ.get("AMAIL_DOMAIN", "")
     wh_mode = os.environ.get("WEBHOOK_MODE", "bridge")
     wh_host = os.environ.get("WEBHOOK_HOST", "")
-    use_pc = os.environ.get("USE_PRODUCT_CODE", "false") == "true"
 
     if not all([gw, ak, sid, domain]):
         log_warn("Required vars missing: GATEWAY_URL, ADMIN_KEY, SYSTEM_ID, AMAIL_DOMAIN")
@@ -234,7 +233,7 @@ def main():
     if start_bridge(bridge_bin, bridge_cfg, pid_path):
         log_ok(f"bridge started (mode={bridge_mode}, {wh_host})")
         if bridge_key:
-            log_ok(f"bridge API key created (category=bridge)")
+            log_ok("bridge API key created (category=bridge)")
     else:
         log_warn(f"bridge failed to start — check {cfg_dir}/bridge.log")
 

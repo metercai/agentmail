@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Register existing Hermes profiles as amail addresses in the current system."""
-import sys, os, json, urllib.request, urllib.error
+import sys, os, json
 
 def load_gateway_config():
     # Use SYSTEM_ID env var to locate config directly
@@ -26,7 +26,6 @@ def register_emails():
     from agentmail_base import _agentmail_system_dir
     from agentmail_hermes import _auto_register_email
 
-    gw = config.get("gateway_url", "")
     system_id = config.get("system_id", "")
     home = os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes"))
     profiles_dir = os.path.expanduser(os.environ.get("HERMES_PROFILES_DIR", os.path.join(home, "profiles")))

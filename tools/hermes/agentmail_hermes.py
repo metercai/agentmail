@@ -297,21 +297,38 @@ def _ensure_profile_webhook(profile_dir: str) -> Optional[dict]:
         except Exception as e:
             logger.warning("[agentmail_gateway] Failed to read webhook config: %s", e)
     
-    # Auto-generate
+    # Auto-generate: persist the webhook config, then return it
     port = _next_available_webhook_port()
     secret = secrets.token_hex(32)
-    
+
     try:
         import yaml
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         existing = {}
         if cfg_path.exists():
             existing = yaml.safe_load(cfg_path.read_text()) or {}
-        
+
         # Deep-merge with existing config
         platforms = dict(existing.get("platforms", {}))
-    except Exception:
-        pass
+        platforms["webhook"] = {
+            "enabled": True,
+            "host": "0.0.0.0",
+            "port": port,
+            "extra": {"port": port, "secret": secret},
+        }
+        existing["platforms"] = platforms
+        tmp = cfg_path.with_suffix(".tmp")
+        tmp.write_text(yaml.safe_dump(existing, allow_unicode=True, sort_keys=False))
+        tmp.replace(cfg_path)
+        return {
+            "enabled": True,
+            "host": "0.0.0.0",
+            "port": port,
+            "secret": secret,
+        }
+    except Exception as e:
+        logger.warning("[agentmail_gateway] Failed to write webhook config: %s", e)
+        return None
 
 
 def _list_personas() -> dict:
@@ -369,8 +386,6 @@ def _ensure_webhook_route(
             subs = json.loads(subs_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, IOError):
             pass
-
-    existed = route_name in subs
 
     route_entry = {
         "description": f"agentmail inbound email route ({route_name})",
@@ -680,8 +695,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
                             headers={"Content-Type": "application/json"},
                             method="POST",
                         )
-                        with urllib.request.urlopen(req, timeout=5) as r:
-                            pass
+                        urllib.request.urlopen(req, timeout=5).close()
                         prof["_wh_port"] = current_port
                         with open(config_path, "w") as f:
                             json.dump(prof, f, indent=2)

@@ -2,14 +2,7 @@
 from __future__ import annotations
 import json
 import logging
-import os
-import re
-import secrets
-import hashlib
-import threading
-import time
-from pathlib import Path
-from typing import Optional, Callable, Dict, List, Any
+from typing import Optional
 
 from agentmail_tools import _GatewayClient
 from agentmail_base import _load_profile_config, _board_gateways, _board_creds_path
@@ -61,7 +54,6 @@ def _get_board_token(board_id: str) -> Optional[str]:
 
 def board_task_show(task_id: str) -> str:
     """查询任务详情。返回 task 的所有字段（body、status、assignee、reviewer 等）。"""
-    import json
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
@@ -84,7 +76,6 @@ def board_task_show(task_id: str) -> str:
 
 def board_task_list(board: str, status: str = "", assignee: str = "") -> str:
     """按条件过滤 task 列表。支持 status、assignee 过滤。常用于巡视。"""
-    import json
     import urllib.parse
     cfg = _load_profile_config()
     if not cfg:
@@ -156,7 +147,6 @@ def board_roles(board_id: str, role: str = "") -> str:
 
 def board_status(board_id: str) -> str:
     """获取 Board 状态总览：管线分布 + 依赖关系 + 负责人。"""
-    import json
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
     gateway_url = _resolve_gateway_url(board_id)
@@ -173,7 +163,6 @@ def board_status(board_id: str) -> str:
 
 def board_heartbeat(task_id: str, note: str = "") -> str:
     """发心跳更新任务时间戳。长任务期间定期调用，让Board/Orchestrator知道任务仍在进行。"""
-    import json
     cfg = _load_profile_config()
     if not cfg:
         return "{\"error\": \"no profile config\"}"
@@ -197,12 +186,11 @@ def board_heartbeat(task_id: str, note: str = "") -> str:
 
 def set_public_whoami(text: str) -> str:
     """Set Agent public WHOAMI card for stranger queries."""
-    import json
     cfg = _load_profile_config()
     if not cfg: return json.dumps({"error": "no profile config"})
     client = _GatewayClient(cfg["gateway_url"], cfg["api_key"])
     try:
-        r = client.agent_state_put("public_whoami", text)
+        client.agent_state_put("public_whoami", text)
         return json.dumps({"status": "ok"})
     except Exception as e:
         return json.dumps({"error": str(e)})

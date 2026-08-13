@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """List domains for a system. Used by integrate.sh Step 3 domain selection."""
-import sys, json, os
+import json, os
 import urllib.request
 
 gw = os.environ.get("GATEWAY_URL", "")
