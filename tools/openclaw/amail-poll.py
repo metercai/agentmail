@@ -68,8 +68,15 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
                 ack_ids.append(d.get("id"))
                 continue
             try:
+                # 统一中间预处理（与 Hermes preprocess 同一实现）：
+                # persona 归一/附件下载/board gateway 提取。None = 拦截。
+                enriched = _base.preprocess_mail_payload(dict(body), {})
+                if enriched is None:
+                    print(f"  — {email}: intercepted by preprocess, skipping", file=sys.stderr)
+                    ack_ids.append(d.get("id"))
+                    continue
                 hook_resp = _base.dispatch_to_hooks(
-                    hooks_url, hooks_token, agent_id, dict(body),
+                    hooks_url, hooks_token, agent_id, enriched,
                     idempotency_key=f"amail:{d.get('id')}",
                     system_id=system_id,
                 )
