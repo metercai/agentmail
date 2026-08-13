@@ -89,6 +89,7 @@ class _GatewayClient:
         references: Optional[str] = None,
         sender: Optional[str] = None,
         message_id: Optional[str] = None,
+        headers: Optional[dict] = None,
     ) -> dict:
         """POST /api/v1/send"""
         payload: Dict[str, Any] = {
@@ -104,16 +105,18 @@ class _GatewayClient:
         if attachments:
             payload["attachments"] = attachments
 
-        headers = {}
+        hdrs: Dict[str, str] = {}
         if message_id:
-            headers["Message-ID"] = message_id
+            hdrs["Message-ID"] = message_id
         if in_reply_to:
-            headers["In-Reply-To"] = in_reply_to
+            hdrs["In-Reply-To"] = in_reply_to
         if references:
-            headers["References"] = references
+            hdrs["References"] = references
         if headers:
-            payload["headers"] = headers
-
+            # Caller-supplied headers (e.g. X-Agentmail-Agent) merged in.
+            hdrs.update(headers)
+        if hdrs:
+            payload["headers"] = hdrs
         return self._request("POST", "/api/v1/send", body=payload)
 
     # ── Attachment API ──────────────────────────────────────────
@@ -351,6 +354,37 @@ class _GatewayClient:
 # Agent Tools
 # ═══════════════════════════════════════════════════════════════
 
+def _agent_identity() -> str:
+    """X-Agentmail-Agent header value: {platform}/{version}.
+
+    Identifies which agent system (Hermes / OpenClaw) sent the mail and
+    its version, so receivers can attribute the message.
+    """
+    platform = "unknown"
+    home = os.path.expanduser("~")
+    if os.environ.get("HERMES_PROFILE_DIR") or os.path.isdir(os.path.join(home, ".hermes")):
+        platform = "hermes"
+    elif os.path.isdir(os.path.join(home, ".openclaw")):
+        platform = "openclaw"
+    version = "unknown"
+    try:
+        if platform == "hermes":
+            r = subprocess.run(["hermes", "--version"], capture_output=True, text=True, timeout=5)
+            out = (r.stdout or r.stderr).strip()
+            m = re.search(r"v([0-9][0-9.]*)", out)
+            if m:
+                version = m.group(1)
+        elif platform == "openclaw":
+            r = subprocess.run(["openclaw", "--version"], capture_output=True, text=True, timeout=5)
+            out = (r.stdout or r.stderr).strip()
+            m = re.search(r"([0-9][0-9.]*-?[0-9]*)", out)
+            if m:
+                version = m.group(1)
+    except Exception:
+        pass
+    return f"{platform}/{version}"
+
+
 def send_mail(
     to: Union[str, List[str]],
     subject: str,
@@ -467,6 +501,7 @@ def send_mail(
         references=references,
         sender=sender,
         message_id=_build_message_id(config),
+        headers={"X-Agentmail-Agent": _agent_identity()},
     )
 
     # Store outbound message metadata for future replies
