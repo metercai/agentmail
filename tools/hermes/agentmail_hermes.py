@@ -401,7 +401,13 @@ def _ensure_webhook_route(
         route_entry["persona"] = persona
     subs[route_name] = route_entry
 
+    # Persist the route (atomic replace). Previously missing — the route
+    # was never written, so inbound webhook delivery 404'd.
     subs_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = subs_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(subs, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(subs_path)
+    return True
 
 
 def register_profile_hook(event: str, callback: Callable) -> None:
@@ -527,6 +533,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     logger.info("[agentmail_gateway] Registered email %s (api_key=%s)",
                 email, "ok" if reg.get("api_key") else "pending")
     activation_code = reg.get("activation_code", "")
+    api_key = reg.get("api_key", "")
 
     if not activation_code:
         # Already registered: profile should have existing api_key or activation_code
@@ -558,12 +565,16 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         "webhook_secret": webhook_secret,
         "_wh_port": wh_port if wh_config else 0,
     }
+    if api_key:
+        inject_cfg["api_key"] = api_key
     if activation_code:
         inject_cfg["activation_code"] = activation_code
     _inject_profile_config(profile_dir, inject_cfg)
 
-    # Activate the profile immediately after registration
-    if activation_code:
+    # Activate the profile immediately after registration.
+    # register_agent_email already activated when it returned an api_key —
+    # only re-activate (via activation_code) when no api_key came back.
+    if activation_code and not api_key:
         try:
             _auto_activate_profile(profile_dir, config)
         except Exception as e:
