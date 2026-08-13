@@ -318,6 +318,26 @@ def _hermes_pong_sender(body: dict, pong_id_value: str) -> bool:
         return False
 
 
+def process_inbound_mail(payload: dict, headers: dict) -> Optional[dict]:
+    """THE shared inbound middle pipeline (single call, every platform).
+
+    Runs the full preprocessing (identity → persona → enrichment →
+    whoami → store) FIRST, then intercepts ping/pong at the very LAST
+    step — right before the agent is invoked. A ping therefore
+    exercises the entire inbound chain; the pong is only replied when
+    every step worked — maximizing E2E verification of the pipeline
+    (if any middle step breaks, no pong comes back).
+    """
+    enriched = preprocess_mail_payload(payload, headers)
+    if enriched is None:
+        return None
+    # ── LAST: ping/pong interception (after every preprocessing step) ──
+    if handle_ping_pong(enriched, _hermes_pong_sender) is not None:
+        logger.info("[agentmail_gateway] ping/pong intercepted — swallowed at the last step")
+        return None
+    return enriched
+
+
 def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
     """Preprocess agentmail webhook payload before prompt rendering.
 
@@ -333,11 +353,6 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
     - direct_message / mentioned (persona-aware matching)
     - attachment download
     """
-    # ── Unified ping/pong interception (shared with OpenClaw poll/bridge) ──
-    if handle_ping_pong(payload, _hermes_pong_sender) is not None:
-        logger.info("[agentmail_gateway] ping/pong intercepted — swallowed")
-        return None
-
     result = dict(payload)
     body = result.get("body", "")
 

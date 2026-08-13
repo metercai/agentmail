@@ -845,7 +845,7 @@ core.PERSONA_SUPPORTED = True  # Hermes 全能力（默认值，显式声明）
 try:
     from gateway.platforms.webhook import register_preprocessor
 
-    register_preprocessor("agentmail_gateway", core.preprocess_mail_payload)
+    register_preprocessor("agentmail_gateway", core.process_inbound_mail)
     logger.info("agentmail preprocessor registered with webhook gateway")
 except ImportError:
     pass

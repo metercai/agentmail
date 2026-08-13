@@ -46,7 +46,7 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
             continue
         # ── 中间预处理：与 Hermes preprocess 同一共享实现（单一调用）──
         # ping/pong 拦截 → persona(PERSONA_SUPPORTED 开关) → 富化。
-        enriched = _base.preprocess_mail_payload(dict(body), {})
+        enriched = _base.process_inbound_mail(dict(body), {})
         if enriched is None:
             # ping/pong 拦截：整批 ack，不投递（pong 已由共享链回复）
             for d in deliveries:
