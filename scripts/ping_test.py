@@ -40,6 +40,30 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ── 共享核心复用(带降级):email_for_agent 地址派生规则单源 ──────
+# 优先 import tools/agentmail_base 的共享实现;不可用时(如纯离线
+# 环境)复刻同一规则,保证共享域/非共享域行为一致。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+try:
+    from agentmail_base import email_for_agent  # noqa: E402
+except Exception:
+    def email_for_agent(agent_id: str, domain: str, system_name: str = "",
+                        default_aliases: tuple = ("default",)) -> str:
+        """复刻 agentmail_base.email_for_agent(仅主 agent 场景)。"""
+        base = "agent" if agent_id in default_aliases else agent_id
+        base = re.sub(r"[^A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]", "_", base) or "agent"
+        if system_name:
+            return f"{base}.{system_name}@{domain}"
+        return f"{base}@{domain}"
+
+def _main_agent_email(cfg: dict) -> str:
+    """主 agent 地址,自适应共享域/非共享域:
+    共享域(system_name 非空) → agent.{system_name}@{domain}
+    非共享域(system_name 空)   → agent@{domain}
+    (Hermes 默认 agent_id=default,OpenClaw 默认 agent_id=main,均归一 agent)"""
+    return email_for_agent("default", cfg.get("domain", ""),
+                           cfg.get("system_name", ""))
+
 # ── 路径 ──────────────────────────────────────────────────────────
 AGENTMAIL_HOME = Path.home() / ".agentmail"
 SYSTEMS_DIR = AGENTMAIL_HOME / "systems"
@@ -200,14 +224,26 @@ def main() -> int:
         return 1
     cfg = json.loads(config_path.read_text())
     gw_url = cfg.get("gateway_url", "")
-    ak = cfg.get("admin_key", "")
     if not email:
-        # 主 agent 地址派生:Hermes 默认 agent_id=default,OpenClaw 默认
-        # agent_id=main,共享域统一归一为 agent.{system_name}@{domain}
-        # (email_for_agent 规则)——不能直接用 system_name@domain(缺 agent.)
-        email = f"agent.{cfg.get('system_name', 'agent')}@{cfg.get('domain', '')}"
+        # 主 agent 地址,自适应共享域/非共享域(见 _main_agent_email)
+        email = _main_agent_email(cfg)
     manager = args.manager or cfg.get("manager_address", "")
     mode = cfg.get("mode", "pull")  # pull|push(8/14 起 mode 合并进 gateway config)
+
+    # ── SMTP auth.local 认证 key:优先用 agent 的 api_key ──────────
+    # 安全语义:auth.local 模拟 manager 发信与 agent 一对一,用 agent key
+    # 最小权限(泄露只影响该 agent 自己的 manager 模拟);admin_key 回退。
+    # agent api_key 也是 64 位 hex(bytes.fromhex 兼容)。
+    ak = cfg.get("admin_key", "")
+    try:
+        agent_cfg_path = SYSTEMS_DIR / sid / _clean_agent_dir_name(email) / "agentmail.json"
+        if agent_cfg_path.is_file():
+            _acfg = json.loads(agent_cfg_path.read_text())
+            _aak = _acfg.get("api_key", "")
+            if _aak:
+                ak = _aak
+    except Exception:
+        pass
 
     if not all([gw_url, ak, email, manager]):
         print("✗ Missing required config fields(gateway_url/admin_key/email/manager)")
