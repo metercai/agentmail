@@ -10,6 +10,31 @@ def log_step(msg: str):
 def log_ok(msg: str):
     print(f"  ✓ {msg}")
 
+def _version_key(name: str):
+    """Extract (major, minor, patch) sort key from 'amail-bridge-vX.Y[.Z]-...'."""
+    m = re.search(r"-v(\d+)\.(\d+)(?:\.(\d+))?", name)
+    if not m:
+        return (0, 0, 0)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+def latest_bridge_zip(bridge_dir_local: str, arch: str) -> str:
+    """Pick the newest amail-bridge-v*-linux-{arch}.zip in the bridge dir.
+
+    Scans actual files (not a hardcoded version) so a new release is picked
+    up automatically — bumping the version only requires adding the zip.
+    """
+    prefix = f"amail-bridge-v"
+    suffix = f"-linux-{arch}.zip"
+    candidates = []
+    for f in os.listdir(bridge_dir_local):
+        if f.startswith(prefix) and f.endswith(suffix):
+            candidates.append(f)
+    if not candidates:
+        return ""
+    # Highest semantic version wins (v0.6.1 > v0.6)
+    best = max(candidates, key=lambda f: _version_key(f))
+    return os.path.join(bridge_dir_local, best)
+
 def log_warn(msg: str):
     print(f"  ⚠ {msg}")
 
@@ -256,8 +281,10 @@ def main():
             arch = "arm64"
         else:
             arch = "amd64"
-        zip_base = f"amail-bridge-v0.6-linux-{arch}"
-        zip_path = os.path.join(bridge_dir_local, f"{zip_base}.zip")
+        zip_path = latest_bridge_zip(bridge_dir_local, arch)
+        if not zip_path:
+            log_warn(f"No bridge zip found in {bridge_dir_local} (amail-bridge-v*-linux-{arch}.zip)")
+            return 0
         log_step(f"Extracting bridge from {zip_path}...")
         try:
             subprocess.run(
