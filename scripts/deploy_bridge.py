@@ -44,8 +44,66 @@ def format_webhook_host(ip: str) -> str:
 def write_bridge_config(path: str, mode: str, addr: str, gw: str,
                         ak: str, sid: str, api_key: str = "",
                         webhook_secret: str = ""):
-    """Write amail_bridge.toml."""
+    """Write/merge amail_bridge.toml — SINGLE bridge, MULTI-system.
+
+    2026-08-16 用户定调: 本机只安装一个 bridge,不管几套 agent 系统
+    (bridge 已支持多系统透传)。因此本函数**合并**而非覆盖:
+      - 已有 [pull].systems 数组 → 追加/更新当前 sid 的条目,保留其他系统
+      - 无 systems 数组(旧单系统格式)→ 迁移为 systems 数组(保留顶层
+        字段作为兼容,resolved_systems 空数组回退单系统)
+    重启由 start_bridge 幂等处理(先杀旧进程再起新,单实例)。
+    """
     log_path = os.path.expanduser("~/.agentmail/logs/amail-bridge.log")
+
+    def _entry() -> dict:
+        e = {
+            "amail_url": gw,
+            "admin_key": ak,
+            "system_id": sid,
+            "poll_interval_sec": 2,
+        }
+        if api_key:
+            e["api_key"] = api_key
+        if webhook_secret:
+            e["webhook_secret"] = webhook_secret
+        return e
+
+    new_entry = _entry()
+    existing_systems = []
+
+    # 读取已有配置(若存在):保留其他系统的 systems 条目
+    if os.path.exists(path):
+        try:
+            import tomllib
+            with open(path, "rb") as f:
+                old = tomllib.load(f)
+            old_pull = old.get("pull", {})
+            old_systems = old_pull.get("systems", [])
+            if isinstance(old_systems, list):
+                existing_systems = [dict(s) for s in old_systems]
+            # 旧单系统格式:顶层字段已在 systems 里则跳过,否则保留为
+            # 兼容字段(resolved_systems 空数组时回退使用)
+            old_flat_sid = old_pull.get("system_id", "")
+            if old_flat_sid and old_flat_sid != sid:
+                # 旧配置是另一个系统的单系统格式 → 迁移:把旧系统加入数组
+                legacy = {
+                    "amail_url": old_pull.get("amail_url", gw),
+                    "admin_key": old_pull.get("admin_key", ak),
+                    "system_id": old_flat_sid,
+                    "poll_interval_sec": old_pull.get("poll_interval_sec", 2),
+                }
+                if old_pull.get("api_key"):
+                    legacy["api_key"] = old_pull["api_key"]
+                if old_pull.get("webhook_secret"):
+                    legacy["webhook_secret"] = old_pull["webhook_secret"]
+                existing_systems.append(legacy)
+        except Exception:
+            pass
+
+    # 更新/追加当前系统条目(按 system_id 去重)
+    merged = [s for s in existing_systems if s.get("system_id") != sid]
+    merged.append(new_entry)
+
     lines = [
         f'addr = "{addr}"',
         f'mode = "{mode}"',
@@ -55,39 +113,95 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
         'level = "info"',
         '',
         '[pull]',
-        f'amail_url = "{gw}"',
-        f'admin_key = "{ak}"',
-        f'system_id = "{sid}"',
-        'poll_interval_sec = 2',
+        '# 单 bridge 多系统:每系统一条,独立 key/system_id/dedup/backoff',
+        'systems = [',
     ]
-    if webhook_secret:
-        lines.insert(-1, f'webhook_secret = "{webhook_secret}"')
+    for i, s in enumerate(merged):
+        comma = ',' if i < len(merged) - 1 else ''
+        parts = [
+            f'amail_url = "{s["amail_url"]}"',
+            f'admin_key = "{s["admin_key"]}"',
+            f'system_id = "{s["system_id"]}"',
+            f'poll_interval_sec = {s.get("poll_interval_sec", 2)}',
+        ]
+        if s.get("api_key"):
+            parts.append(f'api_key = "{s["api_key"]}"')
+        if s.get("webhook_secret"):
+            parts.append(f'webhook_secret = "{s["webhook_secret"]}"')
+        lines.append(f'  {{ {", ".join(parts)} }}{comma}')
     lines.extend([
+        ']',
         '',
         '[health]',
         'check_interval_sec = 30',
         'fail_threshold = 6',
         'connect_timeout_sec = 3',
     ])
-    if api_key:
-        lines.insert(lines.index('[pull]') + 1, f'api_key = "{api_key}"')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
 
 def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
-    """Start bridge process. Returns True if running."""
-    # Kill all old bridge processes (pkill by process name)
-    subprocess.run(['pkill', '-f', 'amail-bridge.*amail_bridge.toml'],
-        capture_output=True, timeout=5)
-    time.sleep(1)
-    
-    # Kill by PID file as fallback
+    """Start bridge process — SINGLE instance. Returns True if running.
+
+    2026-08-16 双进程教训: pkill 模式匹配可能漏杀(旧进程 cmdline
+    是旧路径),残留进程与新进程双拉同一 pending = 重复投递风险。
+    因此: ① 按 pid 文件精确杀 ② pgrep -af 兜底列出全部 amail-bridge
+    进程按 PID 逐个 kill(不依赖模式匹配)③ 再启动。
+    """
+    # 1) pid 文件精确杀
+    old_pid = -1
     if os.path.exists(pid_path):
         try:
             old_pid = int(open(pid_path).read().strip())
             os.kill(old_pid, 15)
-        except: pass
-        os.remove(pid_path)
+            try:
+                os.waitpid(old_pid, 0)
+            except (ChildProcessError, OSError):
+                pass
+        except (ValueError, ProcessLookupError):
+            pass
+        time.sleep(1)
+        # 优雅关闭可能卡住(pull 循环阻塞)→ 复查强杀
+        try:
+            os.kill(old_pid, 0)  # 进程还存在?
+            os.kill(old_pid, 9)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    # 2) pgrep 兜底:列出全部 amail-bridge 进程按 PID 杀(防模式漏杀)
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", "amail-bridge"], text=True, timeout=5)
+        for line in out.splitlines():
+            pid = line.strip()
+            if pid and pid.isdigit():
+                # 不杀自己(本脚本 python 进程不含该串,安全)
+                try:
+                    os.kill(int(pid), 15)
+                except (ProcessLookupError, PermissionError):
+                    pass
+        time.sleep(1)
+        # 复查残留 → 强杀
+        try:
+            out2 = subprocess.check_output(
+                ["pgrep", "-f", "amail-bridge"], text=True, timeout=5)
+            for line in out2.splitlines():
+                pid = line.strip()
+                if pid and pid.isdigit():
+                    try:
+                        os.kill(int(pid), 9)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+        except subprocess.CalledProcessError:
+            pass  # 无残留
+    except subprocess.CalledProcessError:
+        pass  # 无 bridge 进程
+
+    if os.path.exists(pid_path):
+        try:
+            os.remove(pid_path)
+        except OSError:
+            pass
 
     with open(os.devnull, 'w') as lf:
         proc = subprocess.Popen(
