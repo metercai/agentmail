@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """activate.py — OpenClaw 独立激活（步骤 4）。
 
-使用产品激活码激活新系统，落盘 ~/.agentmail/{system_id}/agentmail_gateway.json。
+使用产品激活码激活新系统，落盘 ~/.agentmail/systems/{system_id}/agentmail_gateway.json。
 独立激活保证 system_id 与 Hermes 不同 → 目录天然隔离。
 
 用法:
@@ -69,7 +69,7 @@ def save_gateway_config(gateway_url: str, resp: dict) -> Path:
         "system_name": resp.get("system_name", ""),
     }
     sid = resp["system_id"]
-    p = Path.home() / ".agentmail" / sid / "agentmail_gateway.json"
+    p = Path.home() / ".agentmail" / "systems" / sid / "agentmail_gateway.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     # 环境提示（同 shell 后续步骤用）

@@ -13,12 +13,12 @@ from typing import Optional
 
 def gateway_config_path(system_id: str = "") -> Path:
     """Return path to agentmail_gateway.json for a system_id."""
-    base = Path.home() / ".agentmail"
+    base = Path.home() / ".agentmail" / "systems"
     return (base / system_id if system_id else base) / "agentmail_gateway.json"
 
 
 def load_gateway_config(system_id: str = "") -> Optional[dict]:
-    """Load gateway connection config from ~/.agentmail/{sid}/agentmail_gateway.json.
+    """Load gateway connection config from ~/.agentmail/systems/{sid}/agentmail_gateway.json.
 
     Canonical name: agentmail_gateway.json (scripts/ write this).
     """

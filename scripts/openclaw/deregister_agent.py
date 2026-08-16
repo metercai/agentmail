@@ -5,7 +5,7 @@
   1. DELETE /api/v1/admin/api-keys/:id（删 agent 身份令牌）
   2. DELETE /api/v1/admin/systems/:sid/domains/<email>（停收信）
   3. 白名单清理（DELETE /api/v1/whitelists/:id 或按值删）
-  4. 删本地 agents/<agentId>/config.json + agents.json 条目
+  4. 删本地地址键 agentmail.json（systems/{sid}/{addr}/agentmail.json）
   5. openclaw agents delete <agentId>（workspace/会话进 Trash）
 
 用法:
@@ -50,16 +50,11 @@ def main() -> int:
     status = _base.deregister_agent_email(client, system_id, email, manager_address=mgr)
     print(f"  api-key: {status.get('api_key')} | domain: {status.get('domain')} | whitelist: {status.get('whitelist')}")
 
-    # 4. 本地清理
-    cfg_path = _base.system_dir(system_id) / "agents" / args.agent / "config.json"
+    # 4. 本地清理（地址键 agentmail.json）
+    cfg_path = _base.agent_config_path(system_id, email)
     if cfg_path.is_file():
         cfg_path.unlink()
         print(f"  removed {cfg_path}")
-    registry = _base.load_agents_registry(system_id)
-    if email in registry:
-        del registry[email]
-        _base.save_agents_registry(system_id, registry)
-        print(f"  removed {email} from agents.json")
 
     # 5. OpenClaw agent 删除
     if not args.no_openclaw_delete:

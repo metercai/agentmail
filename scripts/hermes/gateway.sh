@@ -46,13 +46,8 @@ if [ -d "$PROFILES_DIR" ]; then
         [ -d "$profile_dir" ] || continue
         profile_name=$(basename "$profile_dir")
 
-        # Skip profiles without amail config (check centralized path)
-        if [ -n "$SYSTEM_ID" ]; then
-            [ -f "$HOME/.agentmail/$SYSTEM_ID/profiles/$profile_name/agentmail.json" ] || continue
-        else
-            # No system_id — try legacy profile_dir check during transition
-            [ -f "$profile_dir/agentmail.json" ] || continue
-        fi
+        # Skip profiles without amail identity (pointer file)
+        [ -f "$profile_dir/.agentmail" ] || continue
 
         # Read profile's webhook port from its config.yaml
         PROF_PORT=$(python3 -c "
@@ -95,7 +90,7 @@ from pathlib import Path
 # Prefer centralized gateway config via SYSTEM_ID env var
 sid = os.environ.get("SYSTEM_ID", "")
 if sid:
-    gw_cfg_path = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
+    gw_cfg_path = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid, "agentmail_gateway.json")
 else:
     gw_cfg_path = os.path.join(os.path.expanduser("~/.hermes"), "agentmail_gateway.json")
 if not os.path.exists(gw_cfg_path):
@@ -108,7 +103,7 @@ bridge_addr = gw_cfg.get("webhook_host", "")
 if not bridge_addr:
     exit(0)  # no bridge deployed
 
-# Read webhook port from root config
+# Read webhook port from root config (fallback when _wh_port not in agent config)
 import yaml
 root_cfg_path = os.path.join(os.path.expanduser("~"), "config.yaml")
 root_port = 8644
@@ -120,42 +115,21 @@ if os.path.exists(root_cfg_path):
 bridge_base = f"http://{bridge_addr}"
 profiles = {}
 
-# Root profile
+# Address-keyed configs (root + named both live under systems/{sid}/*/)
 if sid:
-    root_amail = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail.json")
-else:
-    root_amail = os.path.join(os.path.expanduser("~/.hermes"), "agentmail.json")
-if os.path.exists(root_amail):
-    with open(root_amail) as f:
-        pf = json.load(f)
-    email = pf.get("email", "")
-    if email:
-        port = root_port
-        profiles[email] = ("127.0.0.1", port)
-
-# Named profiles — each has its own port from its config.yaml
-if sid:
-    profiles_dir = os.path.join(os.path.expanduser("~/.agentmail"), sid, "profiles")
-else:
-    profiles_dir = os.path.join(os.path.expanduser("~/.hermes"), "profiles")
-if os.path.isdir(profiles_dir):
-    for name in sorted(os.listdir(profiles_dir)):
-        aj = os.path.join(profiles_dir, name, "agentmail.json")
-        if not os.path.exists(aj):
-            continue
-        with open(aj) as f:
-            pf = json.load(f)
-        email = pf.get("email", "")
-        if not email:
-            continue
-        # Read profile's own webhook port
-        prof_cfg_path = os.path.join(profiles_dir, name, "config.yaml")
-        port = root_port
-        if os.path.exists(prof_cfg_path):
-            with open(prof_cfg_path) as f:
-                prof_cfg = yaml.safe_load(f) or {}
-            port = int(prof_cfg.get("platforms", {}).get("webhook", {}).get("extra", {}).get("port", port))
-        profiles[email] = ("127.0.0.1", port)
+    sys_dir = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid)
+    if os.path.isdir(sys_dir):
+        for name in sorted(os.listdir(sys_dir)):
+            aj = os.path.join(sys_dir, name, "agentmail.json")
+            if not os.path.isfile(aj):
+                continue
+            with open(aj) as f:
+                pf = json.load(f)
+            email = pf.get("email", "")
+            if not email:
+                continue
+            port = int(pf.get("_wh_port", 0) or root_port)
+            profiles[email] = ("127.0.0.1", port)
 
 if not profiles:
     exit(0)

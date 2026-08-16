@@ -174,9 +174,12 @@ else:
 
 # ── Patch 3: add preprocessor call in webhook handler (always replace) ──
 # Remove old instance if present: from the comment marker to blank line before # Format prompt
+# old_end 用无缩进锚点 —— 补丁重跑时该行可能以不同缩进存在(8 空格手工补丁
+# vs 16 空格脚本补丁),硬编码缩进会导致 ValueError 且中断(webhook.py 已补丁
+# 场景)。
 old_start = '        # ── Preprocess payload (AmailGateway integration) ──────────'
-old_end   = '                # Format prompt from template'
-if old_start in content:
+old_end   = '# Format prompt from template'
+if old_start in content and old_end in content:
     before = content[:content.index(old_start)]
     after  = content[content.index(old_end):]
     content = before + after
@@ -187,127 +190,65 @@ call_block = '''
             preprocessor = PREPROCESS_REGISTRY.get(preprocess_name)
             if preprocessor:
                 try:
-                    payload = preprocessor(payload, dict(request.headers))
+                    _pre = preprocessor(payload, dict(request.headers))
                 except Exception as e:
                     logger.error(
                         "[webhook] preprocessor '%s' failed: %s",
                         preprocess_name, e
                     )
+                    _pre = payload
+                if _pre is None:
+                    # Preprocessor swallowed the event (ping/pong
+                    # interception in shared core) — respond ignored,
+                    # do NOT continue rendering/agent run.
+                    return web.json_response({"status": "ignored", "reason": "preprocess"})
+                payload = _pre
 
 '''
 # Insert before "# Format prompt from template"
-target = "# Format prompt from template"
-if target in content:
-    content = content.replace(target, call_block + "        " + target, 1)
+# NOTE: must NOT reuse the module-level `target` variable (holds the
+# webhook.py path from sys.argv[1]) — assigning it here silently
+# redirected every later `open(target, "w")` to a file literally named
+# "# Format prompt from template", leaving webhook.py unpatched while
+# the script reported success. Use a dedicated local name.
+prompt_anchor = "# Format prompt from template"
+if prompt_anchor in content:
+    content = content.replace(prompt_anchor, call_block + "        " + prompt_anchor, 1)
     patched = True
     print("Patch 3: preprocessor call added/updated", file=sys.stderr)
 else:
     print("WARNING: could not find '# Format prompt from template' — patch 3 skipped", file=sys.stderr)
 
-# ── Patch 4: ensure _log_ping_event helper (always replace) ────
-# Remove old instance if present, then append latest
-import re as _re4
-content, _nr = _re4.subn(
+# ── Patch 4: REMOVE legacy _log_ping_event from webhook.py (2026-08-16) ──
+# _log_ping_event moved to shared core agentmail_base — webhook.py must
+# not carry its own copy (double-write of ping-pong log lines).
+content, _nr4 = re.subn(
     r'\n+def _log_ping_event\(.*?(?=\n(?:def |\Z))',
     '',
     content,
     count=0,
-    flags=_re4.DOTALL
+    flags=re.DOTALL
 )
-def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
-    """Append a JSON line to agentmail.log for ping-pong tracking."""
-    import json, os as _os
-    from datetime import datetime, timezone
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "dir": dir_, "ping_id": ping_id,
-        "from": payload.get("from", ""),
-        "to": payload.get("to", ""),
-    }
-    if pong_status:
-        entry["pong_status"] = pong_status
-    _log_dir = _os.environ.get("AGENTMAIL_HOME", "")
-    if not _log_dir:
-        # Resolve email from profile dir .agentmail pointer
-        _pdir = _os.environ.get("HERMES_PROFILE_DIR", "")
-        if not _pdir:
-            # Fallback: try default Hermes home
-            _pdir = _os.path.expanduser("~/.hermes")
-        _pointer = _os.path.join(_pdir, ".agentmail")
-        if _os.path.isfile(_pointer):
-            try:
-                import json as _json
-                _pd = _json.load(open(_pointer))
-                _email = _pd.get("email", "")
-                if _email:
-                    _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
-            except:
-                pass
-    if not _log_dir:
-        _log_dir = _os.path.expanduser("~/.agentmail/default")
-    log_path = _os.path.join(_log_dir, "agentmail.log")
-    try:
-        _os.makedirs(_log_dir, exist_ok=True)
-        with open(log_path, "a") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-import inspect as _ins
-content += "\n" + _ins.getsource(_log_ping_event)
-patched = True
-print("Patch 4: _log_ping_event added", file=sys.stderr)
-# ── Patch 5: add ping-pong interception (end-to-end test, always replace) ──
-# Remove old instance if present
-content = re.sub(
-    r'        # ── Ping-pong interception.*?pong_returned"\)\}\n+',
-    '',
-    content, count=1, flags=re.DOTALL
-)
-ping_block = '''
-        # ── Ping-pong interception (end-to-end test) ────────────────
-        ping_subject = (payload.get("subject") or "").strip()
-        if ping_subject.startswith("__agentmail_ping__:"):
-            ping_id = ping_subject.split(":", 1)[1].strip()
-            if ping_id:
-                try:
-                    import json as _json, os as _os, sys as _sys
-                    from datetime import datetime, timezone
-                    _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "tools")
-                    _sys.path.insert(0, _os.path.abspath(_tools_dir))
-                    from agentmail_tools import send_mail as _send_mail
-                    pong_body = _json.dumps({
-                        "ping_id": ping_id,
-                        "event": {"prompt": prompt, "route": route_name,
-                                  "delivery_id": delivery_id, "skills": skills},
-                    }, indent=2)
-                    _log_ping_event("ping_intercepted", ping_id, payload, "")
-                    pong_result = _send_mail(
-                        to=payload.get("from", ""),
-                        subject="__agentmail_pong__:" + ping_id, body=pong_body,
-                        message_id=payload.get("message_id") or "",
-                    )
-                    pong_status = "ok" if pong_result.get("success") else pong_result.get("error", "?")
-                except Exception as _e:
-                    pong_status = str(_e)
-                    logger.error("[ping] send_mail failed: %s", _e)
-                _log_ping_event("pong_sent", ping_id, payload, pong_status)
-            return web.json_response({"pong": ping_id, "status": "pong_sent"})
-
-        elif ping_subject.startswith("__agentmail_pong__:"):
-            ping_id = ping_subject.split(":", 1)[1].strip()
-            if ping_id:
-                _log_ping_event("pong_returned", ping_id, payload, "")
-            return web.json_response({"pong": ping_id, "status": "pong_returned"})
-
-'''
-# Insert before "# Non-blocking" comment
-target_line = "# Non-blocking"
-if target_line in content:
-    content = content.replace(target_line, ping_block + "        " + target_line, 1)
-    patched = True
-    print("Patch 5: ping-pong interception added/updated", file=sys.stderr)
+if _nr4:
+    print(f"Patch 4: removed {_nr4} legacy _log_ping_event definition(s)", file=sys.stderr)
 else:
-    print("WARNING: could not find '# Non-blocking' — patch 5 skipped", file=sys.stderr)
+    print("Patch 4: no legacy _log_ping_event found (already clean)", file=sys.stderr)
+# ── Patch 5: REMOVE legacy ping-pong interception block (2026-08-16) ──
+# Ping/pong interception moved into the shared core
+# (agentmail_base.process_inbound_mail, registered as the webhook
+# preprocessor). The webhook.py-level block is now dead code that
+# double-handles pings (preprocessor already swallowed them → payload is
+# None) and its __agentmail_pong__ prefix mismatched the gateway's
+# __amail_pong__ P0 interception. Remove every legacy instance.
+content, _nr5 = re.subn(
+    r'        # ── Ping-pong interception.*?pong_returned"\}\)\n+',
+    '',
+    content, count=0, flags=re.DOTALL
+)
+if _nr5:
+    print(f"Patch 5: removed {_nr5} legacy ping-pong block(s)", file=sys.stderr)
+else:
+    print("Patch 5: no legacy ping-pong block found (already clean)", file=sys.stderr)
 
 if patched:
     with open(target, "w") as f:

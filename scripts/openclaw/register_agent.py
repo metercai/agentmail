@@ -5,7 +5,7 @@
 走公共核心 agentmail_base.register_agent_email（Hermes/OpenClaw 共用）：
   1. 计算 email（main → agent@{domain}，其余 {agentId}@{domain}；共享域加 .{system_name}）
   2. 注册链（公共，幂等）→ api_key
-  3. 落盘 agents/<agentId>/config.json + agents.json 注册表
+  3. 落盘地址键 agentmail.json（systems/{sid}/{addr}/agentmail.json，含 agent_id）
 
 用法:
   python3 register_agent.py --agent main --manager admin@x.com
@@ -106,7 +106,6 @@ def main() -> int:
         agents = ["main"]
 
     webhook_url = mode.get("bridge_url", "") if mode.get("mode") == "push" else ""
-    registry = _base.load_agents_registry(system_id)
     created = 0
 
     for agent_id in agents:
@@ -119,13 +118,11 @@ def main() -> int:
         )
         if cfg["api_key"]:
             _base.save_agent_config(agent_id, cfg, system_id)
-            registry[email] = agent_id
             created += 1
             print(f"  ✓ {agent_id} → {email} (api_key ok)")
         else:
             print(f"  ⚠ {agent_id} → {email} registered but no api_key (activation pending)")
 
-    _base.save_agents_registry(system_id, registry)
     print(f"registered: {created}/{len(agents)}")
     return 0
 

@@ -46,6 +46,17 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
             continue
         # ── 中间预处理：与 Hermes preprocess 同一共享实现（单一调用）──
         # ping/pong 拦截 → persona(PERSONA_SUPPORTED 开关) → 富化。
+        # 拦截 ping 时共享 send_pong 需要 agent 凭据(api_key)——批级无
+        # context,先用首个收件人的 agent 注入(拦截后即 ack 不投递,
+        # 注入仅服务于 pong 发送;非 ping 批的富化产物不流入投递链)。
+        if deliveries:
+            _email0 = deliveries[0].get("email", "")
+            _agent0 = _base.agent_for_email(registry, _email0)
+            if _agent0:
+                try:
+                    _base.set_agent_context(_agent0, system_id)
+                except Exception:
+                    pass
         enriched = _base.process_inbound_mail(dict(body), {})
         if enriched is None:
             # ping/pong 拦截：整批 ack，不投递（pong 已由共享链回复）
@@ -55,6 +66,9 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
             continue
 
         # 该批所有收件人 → 每个 agent 各投一次（按 delivery 逐条，保证 agentId 正确）
+        # 投递传原始 body：dispatch_to_hooks 内部 set_agent_context 后做真正富化
+        # （批级 process_inbound_mail 只承担 ping/pong 拦截，其无 context 的
+        #  预处理产物含 _preprocess_error 标记，不得流入投递链）
         for d in deliveries:
             email = d.get("email", "")
             agent_id = _base.agent_for_email(registry, email)
@@ -64,7 +78,7 @@ def poll_once(system_id: str, gateway_url: str, bridge_key: str, domain: str,
                 continue
             try:
                 hook_resp = _base.dispatch_to_hooks(
-                    hooks_url, hooks_token, agent_id, enriched,
+                    hooks_url, hooks_token, agent_id, dict(body),
                     idempotency_key=f"amail:{d.get('id')}",
                     system_id=system_id,
                 )
@@ -108,15 +122,8 @@ def main() -> int:
         print("NO_REPLY")
         return 0
 
-    # bridge-scope key（poll 配置里找，找不到则用 admin_key 兜底——服务端接受 system scope）
-    poll_cfg_path = _base.system_dir(system_id) / "poll.json"
-    bridge_key = ""
-    if poll_cfg_path.is_file():
-        try:
-            bridge_key = json.loads(poll_cfg_path.read_text()).get("bridge_key", "")
-        except Exception:
-            pass
-    bridge_key = bridge_key or gw.get("admin_key", "")
+    # bridge-scope key（gateway config 里找，找不到则用 admin_key 兜底——服务端接受 system scope）
+    bridge_key = gw.get("bridge_key", "") or gw.get("admin_key", "")
 
     hooks = _base.load_openclaw_hooks()
     if not hooks:

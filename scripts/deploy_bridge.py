@@ -45,7 +45,7 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
                         ak: str, sid: str, api_key: str = "",
                         webhook_secret: str = ""):
     """Write amail_bridge.toml."""
-    log_path = os.path.expanduser("~/.agentmail/amail-bridge.log")
+    log_path = os.path.expanduser("~/.agentmail/logs/amail-bridge.log")
     lines = [
         f'addr = "{addr}"',
         f'mode = "{mode}"',
@@ -106,9 +106,9 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
 def main():
     # Standalone restart: just kill and restart bridge process
     if "--restart" in sys.argv:
-        bin_path = os.path.expanduser("~/.agentmail/bin/amail-bridge")
-        cfg_path = os.path.expanduser("~/.agentmail/amail_bridge.toml")
-        pid_path = os.path.expanduser("~/.agentmail/bridge.pid")
+        bin_path = os.path.expanduser("~/.agentmail/bridge/bin/amail-bridge")
+        cfg_path = os.path.expanduser("~/.agentmail/bridge/amail_bridge.toml")
+        pid_path = os.path.expanduser("~/.agentmail/bridge/bridge.pid")
         start_bridge(bin_path, cfg_path, pid_path)
         return 0 if os.path.exists(pid_path) else 1
 
@@ -125,7 +125,7 @@ def main():
         return 1
 
     # ── Bridge deployment ────────────────────────────────────
-    bridge_dir = os.path.expanduser("~/.agentmail/bin")
+    bridge_dir = os.path.expanduser("~/.agentmail/bridge/bin")
     bridge_bin = os.path.join(bridge_dir, "amail-bridge")
     os.makedirs(bridge_dir, exist_ok=True)
 
@@ -171,7 +171,7 @@ def main():
 
     # Write bridge config
     bridge_mode = "pull" if wh_mode == "bridge" else "push"
-    cfg_dir = os.path.expanduser("~/.agentmail")
+    cfg_dir = os.path.expanduser("~/.agentmail/bridge")
     os.makedirs(cfg_dir, exist_ok=True)
     bridge_cfg = os.path.join(cfg_dir, "amail_bridge.toml")
 
@@ -215,7 +215,7 @@ def main():
     gw_cfg = None
     gw_cfg_path = None
     if sid:
-        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
+        sub = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid, "agentmail_gateway.json")
         if os.path.isfile(sub):
             try:
                 with open(sub) as f:
@@ -235,7 +235,7 @@ def main():
         if bridge_key:
             log_ok("bridge API key created (category=bridge)")
     else:
-        log_warn(f"bridge failed to start — check {cfg_dir}/bridge.log")
+        log_warn(f"bridge failed to start — check ~/.agentmail/logs/amail-bridge.log")
 
     return 0
 

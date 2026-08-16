@@ -152,14 +152,9 @@ step_ok "$T_GATEWAY_OK ${UPTIME}s)"
 PRODUCT_CODE=""
 USE_PRODUCT_CODE=false
 
-# Helper: find agentmail_gateway.json under ~/.agentmail/{system_id}/
+# Helper: find agentmail_gateway.json under ~/.agentmail/systems/{system_id}/
 _find_gw_cfg() {
-    echo "$HOME/.agentmail/$SYSTEM_ID/agentmail_gateway.json"
-}
-
-# Helper: find agentmail.json under ~/.agentmail/{system_id}/
-_find_agent_cfg() {
-    echo "$HOME/.agentmail/$SYSTEM_ID/agentmail.json"
+    echo "$HOME/.agentmail/systems/$SYSTEM_ID/agentmail_gateway.json"
 }
 
 # Reuse existing config (skip if product code is explicitly requested)
@@ -552,7 +547,7 @@ for c in items:
         # ── Hermes 接入链（bridge + 工具 + 补丁 + 诊断）──
         python3 "$SCRIPT_DIR/scripts/deploy_bridge.py"
 
-        CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/agentmail_gateway.json}"
+        CONFIG_FILE="${_GW_CFG:-$HOME/.agentmail/systems/agentmail_gateway.json}"
         if [ -f "$CONFIG_FILE" ]; then
             step_ok "$T_CONFIG_OK $CONFIG_FILE"
         else
@@ -571,8 +566,7 @@ for c in items:
         # Step 7: Full pipeline diagnostics + ping-pong test
         step_begin "$T_DIAG"
         set +e  # non-zero from partial failures must not abort
-        AMAIL_AGENT_JSON="${_GW_CFG%/agentmail_gateway.json}/agentmail.json"
-        AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$AMAIL_AGENT_JSON')).get('email',''))" 2>/dev/null || echo "")
+        AMAIL_AGENT=$(python3 -c "import json,os; p=os.path.expanduser('~/.hermes/.agentmail'); print(json.load(open(p)).get('email','')) if os.path.isfile(p) else print('')" 2>/dev/null || echo "")
         [ -z "$AMAIL_AGENT" ] && AMAIL_AGENT=$(python3 -c "import json; print(json.load(open('$_GW_CFG')).get('domain',''))" 2>/dev/null || echo "")
         if [ -n "$AMAIL_AGENT" ]; then
             AGENT_FLAG="--agent $AMAIL_AGENT"

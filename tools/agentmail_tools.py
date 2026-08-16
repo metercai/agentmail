@@ -907,7 +907,10 @@ def _current_persona_name() -> Optional[str]:
 
 
 def _agentmail_dir() -> Path:
-    """Return the per-agent data directory (AGENTMAIL_HOME env or default)."""
+    """Return the per-agent mail data directory (AGENTMAIL_HOME env or default).
+
+    Layout: ~/.agentmail/mail/{cleaned_addr}/ — email content + attachments,
+    isolated from ~/.agentmail/systems/ (config)."""
     env = os.environ.get("AGENTMAIL_HOME", "")
     if env:
         return Path(env)
@@ -922,12 +925,12 @@ def _agentmail_dir() -> Path:
                 pd = json.loads(pointer.read_text())
                 email = pd.get("email", "")
                 if email:
-                    ag_home = f"~/.agentmail/{email.replace('@', '_')}"
+                    ag_home = f"~/.agentmail/mail/{_abm._clean_agent_dir_name(email)}"
                     return Path(ag_home).expanduser()
             except Exception:
                 pass
     # Fallback: use default directory
-    return Path.home() / ".agentmail" / "default"
+    return Path.home() / ".agentmail" / "mail" / "default"
 
 
 def _raw_email_dir() -> Path:

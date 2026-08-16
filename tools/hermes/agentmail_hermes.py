@@ -41,7 +41,6 @@ _GatewayClient = tools._GatewayClient
 
 # ── 公共函数转发（搬移函数/_handle_* 内部裸调用——同源公共核心）──
 _agentmail_system_dir = core._agentmail_system_dir
-_board_creds_path = core._board_creds_path
 _load_gateway_config = core._load_gateway_config
 list_personas = core.list_personas
 # 6 工具函数体（注册表 handler 包装器裸调用）
@@ -130,38 +129,26 @@ def _resolve_profile_dir() -> Optional[str]:
     return None
 
 
+_profile_config_path = core._agent_config_path  # 地址键 per-agent 配置路径（共享）
+
+
 def _load_profile_config() -> Optional[dict]:
-    """Load per-profile gateway config from centralized agentmail directory.
-    
-    Uses {profile_dir}/.agentmail pointer → {system_id}/ path:
-      Root profile:  ~/.agentmail/{system_id}/agentmail.json
-      Named profile: ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
+    """Load per-agent config from the address-keyed directory.
+
+    Uses {profile_dir}/.agentmail pointer → {system_id} + {email} → path:
+      ~/.agentmail/systems/{system_id}/{cleaned_addr}/agentmail.json
     """
     profile_dir = _resolve_profile_dir() or ""
     
     search_paths = []
 
     if profile_dir:
-        # Priority 1: .agentmail pointer → structured path
-        pointer = Path(profile_dir) / ".agentmail"
-        if pointer.is_file():
-            try:
-                pointer_data = json.loads(pointer.read_text())
-                sid = pointer_data.get("system_id", "")
-                if sid:
-                    pname = Path(profile_dir).name
-                    hermes_home = Path.home() / ".hermes"
-                    is_root = Path(profile_dir).resolve() == hermes_home.resolve()
-                    if is_root:
-                        search_paths.append(
-                            _agentmail_system_dir(sid) / "agentmail.json"
-                        )
-                    else:
-                        search_paths.append(
-                            _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
-                        )
-            except Exception:
-                pass
+        # .agentmail pointer → address-keyed path
+        pointer_data = core._read_pointer(Path(profile_dir) / ".agentmail")
+        sid = pointer_data.get("system_id", "")
+        email = pointer_data.get("email", "")
+        if sid and email:
+            search_paths.append(_profile_config_path(sid, email))
 
     for config_path in search_paths:
         if config_path.is_file():
@@ -178,28 +165,20 @@ def _load_profile_config() -> Optional[dict]:
 
 
 def _inject_profile_config(profile_dir: str, config: dict) -> None:
-    """Write per-profile agentmail config.
+    """Write per-agent agentmail config.
 
-    Root profile:  ~/.agentmail/{system_id}/agentmail.json
-    Named profile: ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
-    Pointer file:  {profile_dir}/.agentmail  (contains system_id for discovery)
+    Address-keyed: ~/.agentmail/systems/{system_id}/{cleaned_addr}/agentmail.json
+    Pointer file:  {profile_dir}/.agentmail  (contains system_id + email for discovery)
 
     Merges with existing config — preserves fields not in the new config
     (e.g. api_key from previous activation).
     """
     system_id = config.get("system_id", "")
-    pname = Path(profile_dir).name
+    email = config.get("email", "")
 
-    # Detect root profile: profile_dir is HERMES_HOME
-    hermes_home = Path.home() / ".hermes"
-    is_root = Path(profile_dir).resolve() == hermes_home.resolve()
-
-    # Write primary config to centralized agentmail directory
-    if system_id:
-        if is_root:
-            primary = _agentmail_system_dir(system_id) / "agentmail.json"
-        else:
-            primary = _agentmail_system_dir(system_id) / "profiles" / pname / "agentmail.json"
+    # Write primary config to the address-keyed directory
+    if system_id and email:
+        primary = _profile_config_path(system_id, email)
         primary.parent.mkdir(parents=True, exist_ok=True)
         # Merge with existing — preserve fields like api_key
         existing = {}
@@ -215,11 +194,7 @@ def _inject_profile_config(profile_dir: str, config: dict) -> None:
         primary.write_text(json.dumps(merged, indent=2))
 
     # Write .agentmail pointer for discovery
-    pointer_path = Path(profile_dir) / ".agentmail"
-    pointer_path.write_text(json.dumps({
-        "system_id": system_id,
-        "email": config.get("email", ""),
-    }, indent=2))
+    core._write_pointer(Path(profile_dir) / ".agentmail", system_id, email)
 
 
 def _port_is_available(port: int, host: str = "0.0.0.0") -> bool:
@@ -541,11 +516,8 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         # Don't pass activation_code to inject; merge preserves existing value
         # Check if existing config has a pending activation_code to activate
         try:
-            if system_id:
-                if name == "default":
-                    existing_cfg_path = _agentmail_system_dir(system_id) / "agentmail.json"
-                else:
-                    existing_cfg_path = _agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json"
+            if system_id and email:
+                existing_cfg_path = _profile_config_path(system_id, email)
                 if existing_cfg_path.is_file():
                     existing_cfg = json.loads(existing_cfg_path.read_text())
                     if existing_cfg.get("activation_code") and not existing_cfg.get("api_key"):
@@ -588,20 +560,17 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
     in the profile config. This ensures the raw_key is only visible to
     the agent process itself.
 
-    Reads from centralized ~/.agentmail/{system_id}/ path only.
+    Reads from the address-keyed ~/.agentmail/systems/{system_id}/{addr}/ path only.
     """
-    # Resolve the correct centralized config path
-    hermes_home = Path.home() / ".hermes"
-    is_root = Path(profile_dir).resolve() == hermes_home.resolve()
-    pname = Path(profile_dir).name
-
-    # Read system_id from pointer file to find centralized config
+    # Read system_id + email from pointer file to find address-keyed config
     sid = ""
+    email = ""
     pointer_path = Path(profile_dir) / ".agentmail"
     if pointer_path.is_file():
         try:
             pd_data = json.loads(pointer_path.read_text())
             sid = pd_data.get("system_id", "")
+            email = pd_data.get("email", "")
         except Exception:
             pass
 
@@ -612,10 +581,7 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         )
         return
 
-    if is_root:
-        config_path = _agentmail_system_dir(sid) / "agentmail.json"
-    else:
-        config_path = _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
+    config_path = _profile_config_path(sid, email) if email else None
 
     if not config_path or not config_path.is_file():
         return
@@ -648,36 +614,21 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
             json.dump(prof, f, indent=2)
         logger.info("[agentmail_gateway] Activated profile, api_key saved to %s", config_path)
 
-        # ── Sync api_key to centralized config ─────────────────────
-        # Only write to the correct centralized path based on profile type:
-        #   root profile  → ~/.agentmail/{system_id}/agentmail.json
-        #   named profile → ~/.agentmail/{system_id}/profiles/{name}/agentmail.json
-        # NEVER write a named profile's key to the root config.
+        # ── Sync api_key to address-keyed config ─────────────────────
         try:
             pointer_path = Path(profile_dir) / ".agentmail"
             if pointer_path.is_file():
                 pd = json.loads(pointer_path.read_text())
-                pname = Path(profile_dir).name
-                hermes_home = Path.home() / ".hermes"
-                is_root = Path(profile_dir).resolve() == hermes_home.resolve()
                 sid = pd.get("system_id", "")
-
-                if is_root and sid:
-                    root_path = _agentmail_system_dir(sid) / "agentmail.json"
-                    if root_path.is_file():
-                        root = json.loads(root_path.read_text())
-                        root["api_key"] = result["raw_key"]
-                        root.pop("activation_code", None)
-                        root_path.write_text(json.dumps(root, indent=2))
-                        logger.info("[agentmail_gateway] api_key synced to %s", root_path)
-                elif not is_root and sid:
-                    named_path = _agentmail_system_dir(sid) / "profiles" / pname / "agentmail.json"
-                    if named_path.is_file():
-                        named = json.loads(named_path.read_text())
-                        named["api_key"] = result["raw_key"]
-                        named.pop("activation_code", None)
-                        named_path.write_text(json.dumps(named, indent=2))
-                        logger.info("[agentmail_gateway] api_key synced to %s", named_path)
+                email = pd.get("email", "")
+                if sid and email:
+                    sync_path = _profile_config_path(sid, email)
+                    if sync_path.is_file():
+                        cfg = json.loads(sync_path.read_text())
+                        cfg["api_key"] = result["raw_key"]
+                        cfg.pop("activation_code", None)
+                        sync_path.write_text(json.dumps(cfg, indent=2))
+                        logger.info("[agentmail_gateway] api_key synced to %s", sync_path)
         except Exception as sync_err:
             logger.warning("[agentmail_gateway] Failed to sync api_key: %s", sync_err)
 
@@ -765,19 +716,6 @@ def _register_board_gateway(board_id: str, gateway_url: str):
         core._board_gateways[board_id] = gateway_url
 
 
-def _store_board_credential(board_id: str, gateway_url: str, token: str):
-    """Persist board credential to file for subprocess access."""
-    try:
-        import json as _json
-        creds_path = _board_creds_path()
-        creds = {}
-        if creds_path.exists():
-            creds = _json.loads(creds_path.read_text())
-        creds[board_id] = {"gateway_url": gateway_url, "token": token}
-        creds_path.write_text(_json.dumps(creds, indent=2))
-    except Exception:
-        pass
-
 def _handle_send_mail(args, **_kw):
     return tool_result(send_mail(
         to=args.get("to", ""),
@@ -853,12 +791,9 @@ core._PERSONAS_PROVIDER = _list_personas
 core._SOUL_PROVIDER = _read_soul_md
 core._SKILLS_PROVIDER = _read_skills
 core._BOARD_GATEWAY_SINK = _register_board_gateway
-core._BOARD_CRED_SINK = _store_board_credential
-# 跨模块运行时符号（preprocess 内部按模块级名字查找 store_inbound_message /
-# _log_amail / _GatewayClient —— OpenClaw 侧 amail_base.py 对称注入）
-core._GatewayClient = tools._GatewayClient
-core.store_inbound_message = tools.store_inbound_message
-core._log_amail = tools._log_amail
+# board 凭据存储（_store_board_credential）已提升到公共核心默认实现；
+# 跨模块名（store_inbound_message/_log_amail/_GatewayClient）已由公共核心
+# 函数级 import 自解析——均无需适配层注入。
 tools._PERSONA_NAME_PROVIDER = _hermes_persona_name
 _PERSONA_NAME_PROVIDER = _hermes_persona_name          # 适配层命名空间（_current_persona_name 注入点）
 core.PERSONA_SUPPORTED = True  # Hermes 全能力（默认值，显式声明）

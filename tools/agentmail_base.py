@@ -7,6 +7,7 @@ import re
 import hashlib
 import threading
 from pathlib import Path
+from datetime import datetime
 from typing import Optional, Callable, Dict, List
 
 
@@ -37,17 +38,29 @@ def fill_template(text: str, ctx: dict) -> str:
 
 
 def _read_role_file(name: str) -> str:
-    """Read a2a_board role file from ~/.agentmail/a2a_board/skills/role/<name>.md.
-    Falls back to 'common.md' if the named role file is not found."""
+    """Read a2a_board role file — address-level first, then system-level.
+
+    Priority:
+    1. ~/.agentmail/systems/{sid}/{addr}/role_prompt/{name}.md  (address override)
+    2. ~/.agentmail/systems/{sid}/board/role_prompt/{name}.md   (system-level)
+    3. common.md fallback (system-level dir)
+    """
     cfg = _load_profile_config()
     sid = cfg.get("system_id", "default") if cfg else "default"
-    role_dir = Path.home() / ".agentmail" / sid / "board" / "role_prompt"
-    # Try exact match first
-    p = role_dir / f"{name}.md"
+    addr = _clean_agent_dir_name(cfg.get("email", "")) if cfg and cfg.get("email") else ""
+    sys_role_dir = _agentmail_system_dir(sid) / "board" / "role_prompt"
+    # 1) address-level override
+    if addr:
+        addr_role_dir = _agentmail_system_dir(sid) / addr / "role_prompt"
+        p = addr_role_dir / f"{name}.md"
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    # 2) system-level exact match
+    p = sys_role_dir / f"{name}.md"
     if p.exists():
         return p.read_text(encoding="utf-8")
-    # Fallback to common.md
-    common = role_dir / "common.md"
+    # 3) common.md fallback
+    common = sys_role_dir / "common.md"
     if common.exists():
         logger.info("[a2a_board] role '%s' not found, using common.md", name)
         return common.read_text(encoding="utf-8")
@@ -72,10 +85,10 @@ def build_ctx(payload: dict, headers: dict) -> dict:
 # ── Config helpers ──
 
 def _agentmail_system_dir(system_id: str = "") -> Path:
-    """Return ~/.agentmail/{system_id}/ for config storage.
+    """Return ~/.agentmail/systems/{system_id}/ for config storage.
     
-    When system_id is empty, returns ~/.agentmail/ itself."""
-    base = Path.home() / ".agentmail"
+    When system_id is empty, returns ~/.agentmail/systems/ itself."""
+    base = Path.home() / ".agentmail" / "systems"
     return base / system_id if system_id else base
 
 
@@ -83,7 +96,7 @@ def _gateway_config_path(system_id: str = "") -> Path:
     """Return path to the gateway config file.
     
     When system_id is provided, returns system-specific path.
-    When empty, returns the base ~/.agentmail/ level (caller should resolve system_id).
+    When empty, returns the base ~/.agentmail/systems/ level (caller should resolve system_id).
     
     Canonical name: agentmail_gateway.json (scripts/ write this)."""
     base_path = _agentmail_system_dir(system_id)
@@ -95,7 +108,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
 
     Reads from (in priority order):
     1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
-    2. ~/.agentmail/{system_id}/agentmail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
+    2. ~/.agentmail/systems/{system_id}/agentmail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
     """
     # Try environment variables first
     gateway_url = os.environ.get("AMAIL_GATEWAY_URL", "")
@@ -123,7 +136,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
             "mx_domain": mx_domain,
         }
 
-    # Try ~/.agentmail/{system_id}/agentmail_gateway.json
+    # Try ~/.agentmail/systems/{system_id}/agentmail_gateway.json
     resolved_sid = system_id
     if not resolved_sid:
         # Resolve from HERMES_PROFILE_DIR/.agentmail pointer
@@ -164,7 +177,10 @@ _PROFILE_DIR_RESOLVER = None   # () -> Optional[str]       profile 目录（gate
 _SOUL_PROVIDER = None          # () -> str                 SOUL 内容（board ctx）
 _SKILLS_PROVIDER = None        # () -> list[str]           skills 列表（board ctx）
 _BOARD_GATEWAY_SINK = None     # (board_id, gateway_url) -> None
-_BOARD_CRED_SINK = None        # (board_id, gateway_url, token) -> None
+# ping/pong 拦截的 pong 回发函数。Hermes 与 OpenClaw 共享同一实现
+# (send_pong)——无平台差异("结尾如何调 agent 可不同"不适用于 pong,
+# 它始终是 http 出站 send_mail)。默认即共享实现,无需平台注入。
+_PONG_SENDER = None            # (body, pong_id) -> bool (保留兼容,恒等于 send_pong)
 
 
 def _read_soul_md() -> str:
@@ -206,10 +222,57 @@ def _clean_agent_dir_name(addr: str) -> str:
     return re.sub(r"[^\w.\-]", "_", addr)
 
 
+def _agent_config_path(system_id: str, email: str) -> Path:
+    """地址键 per-agent 配置路径：systems/{sid}/{cleaned_addr}/agentmail.json。"""
+    return _agentmail_system_dir(system_id) / _clean_agent_dir_name(email) / "agentmail.json"
+
+
+def route_agent_for_email(registry: dict, email: str) -> str:
+    """收件地址 → agent_id（精确匹配 + persona 前缀剥离：support.alice@… → alice@…）。
+
+    多收件人入站路由共享（OpenClaw/DeerFlow 等单入多出平台）。
+    """
+    if email in registry:
+        return registry[email]
+    local = email.split("@")[0]
+    for addr, agent_id in registry.items():
+        base_local = addr.split("@")[0]
+        if local and local.endswith("." + base_local):
+            return agent_id
+    return ""
+
+
+def render_message(payload: dict) -> str:
+    """把富化后的 amail payload 组装成 agent 输入 message。
+
+    对齐 Hermes webhook.py 空模板 fallback 渲染语义
+    （json.dumps(payload, indent=2)[:4000]），各平台保持一致。
+    """
+    return json.dumps(payload, indent=2)[:4000]
+
+
+def _read_pointer(pointer: Path) -> dict:
+    """读取 {dir}/.agentmail 指针（{system_id, email}）。缺失/损坏返回 {}。"""
+    if pointer.is_file():
+        try:
+            return json.loads(pointer.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _write_pointer(pointer: Path, system_id: str, email: str) -> None:
+    """写 {dir}/.agentmail 指针（系统身份唯一来源）。"""
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(
+        json.dumps({"system_id": system_id, "email": email}, indent=2, ensure_ascii=False) + "\n"
+    )
+
+
 def _board_creds_path() -> Optional[Path]:
     """Universal per-agent board credential path.
 
-    ~/.agentmail/{system_id}/agents/{agent_addr_cleaned}/board_creds.json
+    ~/.agentmail/systems/{system_id}/{agent_addr_cleaned}/board_creds.json
 
     The directory key is the agent's FINAL address (path-unsafe chars
     replaced) — every agent system (Hermes, OpenClaw, ...) follows this
@@ -224,18 +287,36 @@ def _board_creds_path() -> Optional[Path]:
         if not sid or not addr:
             return None
         cleaned = _clean_agent_dir_name(addr)
-        return Path.home() / ".agentmail" / sid / "agents" / cleaned / "board_creds.json"
+        return _agentmail_system_dir(sid) / cleaned / "board_creds.json"
     except Exception:
         return None
 
 
 def _store_board_credential(board_id: str, gateway_url: str, token: str) -> None:
-    """board 凭据存储（注入点）。Hermes 适配层注入；默认 no-op。"""
-    if _BOARD_CRED_SINK is not None:
-        _BOARD_CRED_SINK(board_id, gateway_url, token)
+    """board 凭据存储（共享默认实现）：写入 per-agent board_creds.json。
+
+    所有平台共用。此前是 Hermes 适配层注入的 sink（OpenClaw 未注入 → 凭据
+    静默不落盘），现提升到共享核心作默认实现，各平台无需注入即得持久化。
+    """
+    try:
+        creds_path = _board_creds_path()
+        if creds_path is None:
+            return
+        creds = {}
+        if creds_path.exists():
+            try:
+                creds = json.loads(creds_path.read_text())
+            except Exception:
+                pass
+        creds[board_id] = {"gateway_url": gateway_url, "token": token}
+        creds_path.parent.mkdir(parents=True, exist_ok=True)
+        creds_path.write_text(json.dumps(creds, indent=2))
+    except Exception:
+        pass
 
 
 def _put_contact_profile(address: str, profile: str) -> dict:
+    from agentmail_tools import _GatewayClient
     config = _load_profile_config()
     if not config:
         return {"success": False, "error": "agentmail not configured for this profile"}
@@ -258,8 +339,15 @@ def _put_contact_profile(address: str, profile: str) -> dict:
 # Single implementation: Hermes webhook preprocess, OpenClaw poll and
 # OpenClaw bridge all call handle_ping_pong() instead of each writing
 # their own copy — trigger conditions stay identical everywhere.
+#
+# PREFIX CONTRACT: gateway send.rs P0 interception matches
+# "__amail_pong__:" (redirects pong to inbound instead of outbound SMTP).
+# Agent-side PONG_PREFIX MUST equal that exact string — otherwise the
+# pong goes out as a normal outbound email and never loops back to the
+# agent preprocess chain. PING_PREFIX is agent-side only (ping enters
+# via SMTP as a normal inbound mail; no gateway-side ping matching).
 PING_PREFIX = "__agentmail_ping__:"
-PONG_PREFIX = "__agentmail_pong__:"
+PONG_PREFIX = "__amail_pong__:"
 
 
 def is_ping(subject: str) -> bool:
@@ -297,8 +385,17 @@ def handle_ping_pong(
     return None
 
 
-def _hermes_pong_sender(body: dict, pong_id_value: str) -> bool:
-    """Hermes-side pong sender: replies via the send_mail tool chain."""
+def send_pong(body: dict, pong_id_value: str) -> bool:
+    """SHARED pong sender — one implementation for every agent platform.
+
+    Sends the pong via the gateway HTTP send API (outbound path), so the
+    gateway's P0 interception (send.rs matches __amail_pong__:) redirects
+    it back as inbound — closing the ping→pong→agent loop. Platform-agnostic:
+    - Hermes:   _CONFIG_LOADER injected → profile config → agentmail_tools
+    - OpenClaw: adapter injects a loader that resolves the agent config
+      (CLI/subprocess path handled by the injected loader, not here)
+    No platform-specific code lives in this function.
+    """
     try:
         from agentmail_tools import send_mail
         to = body.get("from", "")
@@ -311,9 +408,80 @@ def _hermes_pong_sender(body: dict, pong_id_value: str) -> bool:
             % (pong_id_value, body.get("mail_id", "")),
             message_id=str(body.get("mail_id", "")) or None,
         )
+        _log_ping_event("pong_sent", pong_id_value, body,
+                        "ok" if res.get("success") else str(res.get("error", "?")))
         return bool(res.get("success"))
-    except Exception:
+    except Exception as e:
+        _log_ping_event("pong_sent", pong_id_value, body, str(e))
         return False
+
+
+def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str = ""):
+    """Append a JSON line to agentmail.log for ping-pong loop tracking.
+
+    Shared by all platforms — same file layout, same three dir values:
+    ping_intercepted / pong_sent / pong_returned. Written at the gateway
+    (webhook.py Hermes) or poll/bridge (OpenClaw) intercept point.
+    """
+    try:
+        import sys as _sys
+        _entry = {
+            "ts": datetime.now().astimezone().isoformat(),
+            "dir": dir_, "ping_id": ping_id,
+            "from": payload.get("from", ""),
+            "to": payload.get("to", ""),
+        }
+        if pong_status:
+            _entry["pong_status"] = pong_status
+        # Resolve log dir: AGENTMAIL_HOME env > recipient email (payload.to,
+        # the agent's own address — platform-independent) > agent pointer
+        _log_dir = os.environ.get("AGENTMAIL_HOME", "")
+        if not _log_dir:
+            _email = ""
+            _to = payload.get("to") or payload.get("recipients") or []
+            if isinstance(_to, str):
+                _to = [_to]
+            if _to:
+                _first = str(_to[0]).strip()
+                if "@" in _first:
+                    _email = _first
+            if not _email:
+                _from = payload.get("from", "")
+                if isinstance(_from, str) and "@" in _from:
+                    _email = _from
+            if not _email:
+                # Try common agent pointers (Hermes profile, OpenClaw, AGENT_HOME)
+                _candidates = [
+                    os.environ.get("AGENT_MAIL_POINTER", ""),
+                    os.environ.get("HERMES_PROFILE_DIR", ""),
+                ]
+                if not any(_candidates):
+                    _home = os.environ.get("AGENT_HOME", "")
+                    if _home:
+                        _candidates.append(os.path.join(_home, ".agentmail"))
+                for _ptr in _candidates:
+                    if not _ptr:
+                        continue
+                    _p = Path(_ptr)
+                    if _p.is_dir():
+                        _p = _p / ".agentmail"
+                    if _p.is_file():
+                        try:
+                            _email = json.loads(_p.read_text()).get("email", "")
+                        except Exception:
+                            pass
+                        if _email:
+                            break
+            if _email:
+                _log_dir = os.path.expanduser("~/.agentmail/mail/" + _email.replace("@", "_"))
+        if not _log_dir:
+            _log_dir = os.path.expanduser("~/.agentmail/mail/default")
+        _log_path = os.path.join(_log_dir, "agentmail.log")
+        os.makedirs(_log_dir, exist_ok=True)
+        with open(_log_path, "a") as _f:
+            _f.write(json.dumps(_entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def process_inbound_mail(payload: dict, headers: dict) -> Optional[dict]:
@@ -326,11 +494,23 @@ def process_inbound_mail(payload: dict, headers: dict) -> Optional[dict]:
     every step worked — maximizing E2E verification of the pipeline
     (if any middle step breaks, no pong comes back).
     """
+    pong_sender = _PONG_SENDER if _PONG_SENDER is not None else send_pong
     enriched = preprocess_mail_payload(payload, headers)
-    if enriched is None:
-        return None
-    # ── LAST: ping/pong interception (after every preprocessing step) ──
-    if handle_ping_pong(enriched, _hermes_pong_sender) is not None:
+    # ── LAST: ping/pong interception ──
+    # Detection is subject-based (no enriched fields needed), so it runs
+    # even when preprocess returned None (e.g. pull-mode batch without an
+    # agent context): a ping must still be swallowed + logged + ponged.
+    # Use the RAW payload for detection AND logging — preprocess's enriched
+    # copy drops to/cc, which would break agentmail.log dir resolution
+    # (falls back to sender → wrong mail dir).
+    subject = payload.get("subject", "")
+    intercept = handle_ping_pong(payload, pong_sender)
+    if intercept is not None:
+        _log_ping_event(
+            "ping_intercepted" if intercept == "ping" else "pong_returned",
+            subject.split(":", 1)[1].strip() if ":" in subject else "",
+            payload,
+        )
         logger.info("[agentmail_gateway] ping/pong intercepted — swallowed at the last step")
         return None
     return enriched
@@ -513,8 +693,24 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
             logger.warning("[agentmail_gateway] Cannot download attachments: no gateway config")
             return result
 
+        from agentmail_tools import _GatewayClient
         client = _GatewayClient(config["gateway_url"], agent_key)
         local_paths = []
+
+        # Attachments land beside the email JSON snapshot (sibling dir keyed by
+        # message). The agent reads these files directly from here — this is the
+        # primary landing, not a cache; a per-message dir removes cross-message
+        # filename collisions. Function-level import breaks the base<->tools
+        # import cycle (resolved at call time, after both modules load).
+        from agentmail_tools import _agentmail_dir, _sanitize_message_id
+        attch_dir = (
+            _agentmail_dir()
+            / datetime.now().strftime("%Y%m")
+            / "attch"
+            / _sanitize_message_id(result.get("message_id", "") or "unknown")
+        )
+        attch_dir.mkdir(parents=True, exist_ok=True)
+
         for att in attachments:
             if not isinstance(att, dict):
                 continue
@@ -527,17 +723,9 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
             if content is None:
                 continue
 
-            # Save to cache directory
-            cache_dir = Path.home() / ".hermes" / "cache" / "attachments"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            local_path = cache_dir / fname
-            # Avoid overwriting -- append counter if needed
-            if local_path.exists():
-                stem, suffix = local_path.stem, local_path.suffix
-                counter = 1
-                while local_path.exists():
-                    local_path = cache_dir / f"{stem}_{counter}{suffix}"
-                    counter += 1
+            # Save beside the email JSON snapshot (see attch_dir above).
+            safe_name = Path(fname).name or "unnamed_attachment"
+            local_path = attch_dir / safe_name
             local_path.write_bytes(content)
             local_paths.append(str(local_path))
 
@@ -548,7 +736,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
                     from markitdown import MarkItDown
                     md_text = MarkItDown().convert(str(local_path)).text_content
                     if md_text.strip():
-                        md_path = cache_dir / f"{Path(fname).stem}.md"
+                        md_path = attch_dir / f"{Path(fname).stem}.md"
                         md_path.write_text(md_text)
                         local_paths.append(str(md_path))
                 except Exception:
@@ -565,6 +753,7 @@ def preprocess_mail_payload(payload: dict, headers: dict) -> Optional[dict]:
     refs = result.get("references", [])
     my_addr = result.get("my_amail_addr", "")
     if mid and my_addr:
+        from agentmail_tools import store_inbound_message, _log_amail
         store_inbound_message(mid, refs, my_addr, preprocessed_payload=result)
         # Lightweight log entry
         _from = raw_headers.get("from", payload.get("from", ""))
@@ -792,16 +981,4 @@ def deregister_agent_email(client, system_id: str, email: str,
         out["whitelist"] = f"err:{e}"
 
     return out
-
-
-# ── 跨模块引用兜底（适配层注入之外的保险）────────────────────────
-# preprocess/工具链引用 agentmail_tools 的 3 个符号（模块级名字查找）。
-# 双平台适配层（agentmail_hermes / amail_base）会显式注入；此处兜底保证
-# 任何入口（直接 import base 的脚本等）也不因加载顺序触发 NameError。
-# 循环依赖注意：若 tools 正在初始化（部分加载），from-import 会 ImportError，
-# 交给适配层注入兜住；若 base 先加载完成，这里直接成功。
-try:
-    from agentmail_tools import _GatewayClient, store_inbound_message, _log_amail  # noqa: F401,E402
-except ImportError:
-    pass
 

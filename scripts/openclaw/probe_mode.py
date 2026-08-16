@@ -2,7 +2,7 @@
 """probe_mode.py — 探测 push/pull 模式（步骤 5）。
 
 判定：amail-gateway（云端）能否直连 OpenClaw 主机 bridge 端口。
-本机为内网/NAT 时必然 pull。结果写 ~/.agentmail/{sid}/mode.json。
+本机为内网/NAT 时必然 pull。结果写进 agentmail_gateway.json 的 mode 字段。
 
 用法:
   python3 probe_mode.py [--system-id SID] [--bridge-port 8799] [--ssh-target root@host]
@@ -75,7 +75,7 @@ def main() -> int:
         "checked_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
     }
     _base.save_mode(system_id, mode_cfg)
-    print(f"mode={mode} ({detail}) -> ~/.agentmail/{system_id}/mode.json")
+    print(f"mode={mode} ({detail}) -> agentmail_gateway.json[mode] ({system_id})")
     return 0
 
 

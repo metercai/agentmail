@@ -10,7 +10,7 @@ def load_gateway_config():
     # Use SYSTEM_ID env var to locate config directly
     sid = os.environ.get("SYSTEM_ID", "")
     if sid:
-        sub = os.path.join(os.path.expanduser("~/.agentmail"), sid, "agentmail_gateway.json")
+        sub = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid, "agentmail_gateway.json")
         if os.path.isfile(sub):
             try:
                 with open(sub) as f:
@@ -27,7 +27,6 @@ def register_emails():
 
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools"))
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "hermes"))
-    from agentmail_base import _agentmail_system_dir
     from agentmail_hermes import _auto_register_email
 
     system_id = config.get("system_id", "")
@@ -37,13 +36,12 @@ def register_emails():
     count = 0
 
     # Default profile (root ~/.hermes/)
-    # Use centralized ~/.agentmail/{system_id}/agentmail.json as registration marker
-    default_central = str(_agentmail_system_dir(system_id) / "agentmail.json") if system_id else ""
-    if default_central and os.path.exists(default_central):
+    # Use .agentmail pointer as registration marker
+    default_pointer = os.path.join(home, ".agentmail")
+    if os.path.isfile(default_pointer):
         try:
-            with open(default_central) as f:
-                pf = json.load(f)
-            if pf.get("system_id") == system_id:
+            pd = json.load(open(default_pointer))
+            if pd.get("system_id") == system_id:
                 pass  # already registered, skip
         except:
             pass
@@ -61,13 +59,12 @@ def register_emails():
             profile_dir = os.path.join(profiles_dir, name)
             if not os.path.isdir(profile_dir):
                 continue
-            # Use centralized path as registration marker
-            named_central = str(_agentmail_system_dir(system_id) / "profiles" / name / "agentmail.json") if system_id else ""
-            if named_central and os.path.exists(named_central):
+            # Use .agentmail pointer as registration marker
+            named_pointer = os.path.join(profile_dir, ".agentmail")
+            if os.path.isfile(named_pointer):
                 try:
-                    with open(named_central) as f:
-                        pf = json.load(f)
-                    if pf.get("system_id") == system_id:
+                    pd = json.load(open(named_pointer))
+                    if pd.get("system_id") == system_id:
                         continue  # same system, skip
                     print(f"  Re-registering {name} (system changed)", file=sys.stderr)
                 except:

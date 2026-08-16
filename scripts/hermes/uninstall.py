@@ -162,11 +162,11 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str):
                 _pd = _json.load(open(_pointer))
                 _email = _pd.get("email", "")
                 if _email:
-                    _log_dir = _os.path.expanduser("~/.agentmail/" + _email.replace("@", "_"))
+                    _log_dir = _os.path.expanduser("~/.agentmail/mail/" + _email.replace("@", "_"))
             except:
                 pass
     if not _log_dir:
-        _log_dir = _os.path.expanduser("~/.agentmail/default")
+        _log_dir = _os.path.expanduser("~/.agentmail/mail/default")
     log_path = _os.path.join(_log_dir, "agentmail.log")
     try:
         _os.makedirs(_log_dir, exist_ok=True)
@@ -369,7 +369,7 @@ def main():
     print("    - config.yaml                 → remove amail from platform_toolsets")
     print("")
     print("  [no file deletion]")
-    print("    Config already in ~/.agentmail/ — preserving for reinstall")
+    print("    Config already in ~/.agentmail/systems/ — preserving for reinstall")
     print("")
 
     # ── 1/6: Stop processes ──
@@ -455,7 +455,7 @@ def main():
   ✓ Gateway restarted (port {gw_port})
 
   ℹ  No files deleted — full idempotent reinstall supported
-  ℹ  Config preserved in ~/.agentmail/ under system-*/
+  ℹ  Config preserved in ~/.agentmail/systems/ under system-*/
   ℹ  config.yaml platforms.webhook kept (base Hermes feature)
   ℹ  All other file changes preserved (Hermes updates, user edits)
 """)

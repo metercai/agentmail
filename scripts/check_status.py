@@ -28,6 +28,14 @@ CROSS  = '\u2717'
 # ── Path constants ─────────────────────────────────────────────
 AGENT_HOME = Path(os.environ.get("AGENT_HOME", str(Path.home() / ".hermes")))
 AGENTMAIL_HOME = Path.home() / ".agentmail"
+SYSTEMS_DIR = AGENTMAIL_HOME / "systems"
+MAIL_DIR    = AGENTMAIL_HOME / "mail"
+BRIDGE_DIR  = AGENTMAIL_HOME / "bridge"
+LOGS_DIR    = AGENTMAIL_HOME / "logs"
+
+def _clean_agent_dir_name(addr: str) -> str:
+    """agent 地址 → 目录名（与 tools/agentmail_base._clean_agent_dir_name 一致）。"""
+    return re.sub(r"[^\w.\-]", "_", addr)
 
 def _resolve_system_id(args: list[str] | None = None) -> str:
     """Determine system_id: --system-id arg > AGENT_HOME/.agentmail > env."""
@@ -43,14 +51,22 @@ def _resolve_system_id(args: list[str] | None = None) -> str:
             pass
     return os.environ.get("SYSTEM_ID", "")
 
-def _system_agent_path(sid: str) -> Path:
-    return AGENTMAIL_HOME / sid / "agentmail_gateway.json"
+def _resolve_agent_email() -> str:
+    """Read email from AGENT_HOME/.agentmail pointer."""
+    pointer = AGENT_HOME / ".agentmail"
+    if pointer.is_file():
+        try:
+            return json.loads(pointer.read_text()).get("email", "")
+        except Exception:
+            pass
+    return ""
 
-def _agent_path(sid: str) -> Path:
-    return AGENTMAIL_HOME / sid / "agentmail.json"
-BRIDGE_CFG  = AGENTMAIL_HOME / "amail_bridge.toml"
-BRIDGE_PID  = AGENTMAIL_HOME / "bridge.pid"
-BRIDGE_LOG  = AGENTMAIL_HOME / "amail-bridge.log"
+def _system_agent_path(sid: str) -> Path:
+    return SYSTEMS_DIR / sid / "agentmail_gateway.json"
+
+BRIDGE_CFG  = BRIDGE_DIR / "amail_bridge.toml"
+BRIDGE_PID  = BRIDGE_DIR / "bridge.pid"
+BRIDGE_LOG  = LOGS_DIR / "amail-bridge.log"
 AGENT_CFG   = AGENT_HOME / "config.yaml"
 # --agent 指定 profile 时,读该 profile 的 config.yaml(端口随 profile)
 if "--agent" in sys.argv:
@@ -64,7 +80,7 @@ if "--agent" in sys.argv:
         pass
 SUBS_FILE   = AGENT_HOME / "webhook_subscriptions.json"
 PROFILES_DIR = AGENT_HOME / "profiles"
-ROUTES_FILE = AGENTMAIL_HOME / "amail_routes.toml"
+ROUTES_FILE = BRIDGE_DIR / "amail_routes.toml"
 
 # Agent-scoped paths (require --agent argument for per-agent data)
 _AGENT_DIR: Path | None = None
@@ -73,24 +89,17 @@ def _agentmail_log() -> Path:
     global _AGENT_DIR
     if _AGENT_DIR:
         return _AGENT_DIR / "agentmail.log"
-    # Fallback: scan system dir for agentmail.json to find email
-    sid = _resolve_system_id(sys.argv)
-    if sid:
-        aj = AGENTMAIL_HOME / sid / "agentmail.json"
-        if aj.is_file():
-            try:
-                email = json.loads(aj.read_text()).get("email", "")
-                if email:
-                    _AGENT_DIR = AGENTMAIL_HOME / email.replace("@", "_")
-                    return _AGENT_DIR / "agentmail.log"
-            except Exception:
-                pass
-    return Path.home() / ".agentmail" / "default" / "agentmail.log"
+    # Fallback: read email from pointer to find mail dir
+    email = _resolve_agent_email()
+    if email:
+        _AGENT_DIR = MAIL_DIR / _clean_agent_dir_name(email)
+        return _AGENT_DIR / "agentmail.log"
+    return MAIL_DIR / "default" / "agentmail.log"
 
 def _agentmail_raw() -> Path:
     if _AGENT_DIR:
         return _AGENT_DIR
-    return Path.home() / ".agentmail" / "default"
+    return MAIL_DIR / "default"
 
 # ── TOML-like parser (bare keys + sections) ────────────────────
 def _parse_toml(text: str) -> dict[str, dict[str, str]]:
@@ -177,7 +186,7 @@ def _read_gw_cfg(sid: str = "") -> dict | None:
     """Load ~/.agentmail/system-{sid}/agentmail_gateway.json, return None on failure."""
     if not sid:
         sid = _resolve_system_id(sys.argv)
-    p = _system_agent_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
+    p = _system_agent_path(sid) if sid else SYSTEMS_DIR / "agentmail_gateway.json"
     if not p.exists() or not p.is_file():
         return None
     try:
@@ -681,37 +690,22 @@ def check_profiles(c: Check):
     profiles_ok = 0
     details = []
 
-    # Scan ~/.agentmail/{system_id}/ for root + named profiles
-    sysdir = AGENTMAIL_HOME / system_id
+    # Scan ~/.agentmail/systems/{system_id}/ for address-keyed configs
+    sysdir = SYSTEMS_DIR / system_id
     if sysdir.is_dir():
-        # Root profile: agentmail.json
-        root_aj = sysdir / "agentmail.json"
-        if root_aj.is_file():
+        for name in sorted(os.listdir(str(sysdir))):
+            aj = sysdir / name / "agentmail.json"
+            if not aj.is_file():
+                continue
             profiles_found += 1
             try:
-                pf = json.loads(root_aj.read_text())
+                pf = json.loads(aj.read_text())
                 email = pf.get("email", "")
                 if email:
                     profiles_ok += 1
-                    details.append(f"default: {email}")
+                    details.append(f"{name}: {email}")
             except Exception:
-                details.append("default: unparseable")
-        # Named profiles: profiles/*/agentmail.json
-        prof_dir = sysdir / "profiles"
-        if prof_dir.is_dir():
-            for name in sorted(os.listdir(str(prof_dir))):
-                aj = prof_dir / name / "agentmail.json"
-                if not aj.is_file():
-                    continue
-                profiles_found += 1
-                try:
-                    pf = json.loads(aj.read_text())
-                    email = pf.get("email", "")
-                    if email:
-                        profiles_ok += 1
-                        details.append(f"{name}: {email}")
-                except Exception:
-                    details.append(f"{name}: unparseable")
+                details.append(f"{name}: unparseable")
 
     detail = f"{profiles_ok}/{profiles_found} registered" if profiles_found > 0 else "none found"
     if details:
@@ -778,176 +772,32 @@ def _check_recent_email_activity(c: Check):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Ping-Pong End-to-End Test
+#  Ping-Pong End-to-End Test (delegated to shared scripts/ping_test.py)
 # ═══════════════════════════════════════════════════════════════
 def _run_ping_test() -> int:
-    """Send a ping email via SMTP and verify the pong returns."""
-    import uuid, time, json, socket, base64
-    from pathlib import Path
+    """Delegate to the shared, agent-agnostic ping test script.
 
-    global _AGENT_DIR
-
-    # Resolve system_id from gateway config then find paths
-    cfg0 = _read_gw_cfg()
-    if not cfg0:
-        print("✗ agentmail_gateway.json not found")
-        return 1
-    sid = cfg0.get("system_id", "")
-    config_path = _system_agent_path(sid) if sid else AGENTMAIL_HOME / "agentmail_gateway.json"
-    if not config_path.exists():
-        print("✗ agentmail_gateway.json not found")
-        return 1
-
-    cfg = json.loads(config_path.read_text())
-    gw_url = cfg.get("gateway_url", "")
-    ak = cfg.get("admin_key", "")
-    amail_path = config_path.parent / "agentmail.json"
-    agent_email = ""
-    if amail_path.exists():
-        acfg = json.loads(amail_path.read_text())
-        agent_email = acfg.get("email", "")
-    if not agent_email:
-        agent_email = f"{cfg.get('system_name','tow')}@{cfg.get('domain','')}"
-    # Auto-set agent dir from resolved email
-    if _AGENT_DIR is None:
-        _AGENT_DIR = Path.home() / ".agentmail" / agent_email.replace("@", "_")
-    manager = cfg.get("manager_address", "")
-
-    if not all([gw_url, ak, agent_email, manager]):
-        print("✗ Missing required config fields")
-        return 1
-
-    ping_id = uuid.uuid4().hex[:12]
-    host = gw_url.replace("https://", "").replace("http://", "").split("/")[0]
-
-    # Send ping via SMTP auth (same mechanism as send_welcome.py)
-    key_bytes = bytes.fromhex(ak)
-    b64_key = base64.b64encode(key_bytes).decode().rstrip("=")
-    encoded_manager = manager.replace("@", "=")
-    auth_from = f"{b64_key}={encoded_manager}@auth.local"
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(15)
-        s.connect((host, 25))
-        def cmd(c):
-            s.sendall(f"{c}\r\n".encode())
-            return s.recv(4096).decode().strip()
-
-        cmd("EHLO amail-ping-test")
-        resp = cmd(f"MAIL FROM:<{auth_from}>")
-        assert resp.startswith("250"), f"MAIL FROM failed: {resp}"
-        resp = cmd(f"RCPT TO:<{agent_email}>")
-        assert resp.startswith("250"), f"RCPT TO failed: {resp}"
-        resp = cmd("DATA")
-        assert resp.startswith("354"), f"DATA failed: {resp}"
-
-        body = (f"From: {manager}\nTo: {agent_email}\n"
-                f"Subject: __agentmail_ping__:{ping_id}\n"
-                f"Message-ID: <ping-{ping_id}@amail.token.tm>\n"
-                f"\nPing test message\n.")
-        s.sendall(body.replace("\n", "\r\n").encode() + b"\r\n.\r\n")
-        resp = s.recv(4096).decode().strip()
-        s.sendall(b"QUIT\r\n")
-        s.close()
-        assert resp.startswith("250"), f"DATA end failed: {resp}"
-        t_sent = time.time()
-        print(f"  Ping sent: __agentmail_ping__:{ping_id}")
-    except Exception as e:
-        print(f"✗ SMTP send failed: {e}")
-        return 1
-
-    # Poll agentmail.log for pong_returned — append results incrementally
-    amail_log = _agentmail_log()
-    deadline = time.time() + 60
-    found_ping = found_pong = found_sent = False
-
-    def _parse_ts(s):
-        for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
-            try:
-                dt = datetime.strptime(s[:26], fmt[:len(s[:26])])
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-            except: pass
-        return None
-
-    def _fmt_secs(ts_str, t0):
-        dt = _parse_ts(ts_str)
-        return (dt - t0).total_seconds() if dt else 0
-
-    dt_sent = datetime.fromtimestamp(t_sent, tz=timezone.utc)
-
-    while time.time() < deadline:
-        if amail_log.exists():
-            for line in reversed(amail_log.read_text().splitlines()):
-                if ping_id not in line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    d = entry.get("dir", "")
-                    ts = entry.get("ts", "")
-                    if d == "ping_intercepted" and not found_ping:
-                        found_ping = True
-                        sec = _fmt_secs(ts, dt_sent)
-                        print(f"  +{sec:5.1f}s    Webhook Receive (ping)         ✓")
-                    if d == "pong_sent" and found_ping and not found_sent:
-                        found_sent = True
-                        sec = _fmt_secs(ts, dt_sent)
-                        print(f"  +{sec:5.1f}s    Pong Sent (send_mail)          ✓")
-                    if d == "pong_returned" and found_ping and not found_pong:
-                        found_pong = True
-                        sec = _fmt_secs(ts, dt_sent)
-                        print(f"  +{sec:5.1f}s    Webhook Return (pong)          ✓")
-                        print(f"  +{sec:5.1f}s    Total round-trip: {sec:.1f}s")
-                except Exception:
-                    pass
-        if found_ping and found_pong:
-            break
-        time.sleep(3)
-
-    if not (found_ping and found_pong):
-        if found_ping:
-            print("  ✓ Ping intercepted, but pong not returned within 60s")
-            return 1
-        print("  ✗ No ping or pong detected within 60s")
-        return 1
-
-    # Verify raw email snapshots were saved
-    raw_dir = _agentmail_raw()
-    snap_ok = 0
-    snap_total = 0
-    snap_check_msg = ""
-    if raw_dir.exists():
-        now_ts = time.time()
-        def _walk_raw(d):
-            nonlocal snap_total, snap_ok
-            for entry in d.iterdir():
-                if entry.is_dir():
-                    _walk_raw(entry)
-                elif entry.is_file():
-                    snap_total += 1
-                    if now_ts - entry.stat().st_mtime < 300:
-                        snap_ok += 1
-        _walk_raw(raw_dir)
-        if snap_ok > 0:
-            snap_check_msg = f"✓ Snapshots: {snap_ok} new file(s) in raw_email/ (total {snap_total})"
-        else:
-            snap_check_msg = f"⚠ Snapshots: {snap_total} total file(s) in raw_email/, none from last 5min"
-    else:
+    The implementation moved to scripts/ping_test.py (SMTP auth inbound +
+    agentmail.log three-stage assertion) so every agent system
+    (Hermes/OpenClaw/DeerFlow/dsh) uses the SAME ping/pong verification.
+    """
+    import subprocess
+    script = Path(__file__).resolve().parent / "ping_test.py"
+    cmd = [sys.executable, str(script)]
+    if "--system-id" in sys.argv:
         try:
-            cfg = json.loads((config_path.parent / "agentmail.json").read_text())
-            enabled = cfg.get("save_raw_snapshots", False)
-        except Exception:
-            enabled = False
-        if enabled:
-            snap_check_msg = "⚠ Snapshots enabled in config but raw_email/ directory not found"
-        else:
-            snap_check_msg = "⚠ Snapshots disabled in config — set save_raw_snapshots=true"
-    print(f"  {snap_check_msg}")
-
-    print(f"  ✓ Full pipeline verified — ping_id={ping_id}")
-    return 0
+            i = sys.argv.index("--system-id")
+            cmd += ["--system-id", sys.argv[i + 1]]
+        except (ValueError, IndexError):
+            pass
+    if "--agent" in sys.argv:
+        try:
+            i = sys.argv.index("--agent")
+            cmd += ["--agent", sys.argv[i + 1]]
+        except (ValueError, IndexError):
+            pass
+    cmd += ["--agent-home", str(AGENT_HOME)]
+    return subprocess.call(cmd)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -959,7 +809,7 @@ def main():
         try:
             ia = sys.argv.index("--agent")
             agent = sys.argv[ia + 1]
-            _AGENT_DIR = Path.home() / ".agentmail" / agent.replace("@", "_")
+            _AGENT_DIR = MAIL_DIR / _clean_agent_dir_name(agent)
         except (ValueError, IndexError):
             pass
     if "--ping" in sys.argv:

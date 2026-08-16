@@ -5,11 +5,9 @@
 scripts/gateway_api.py（标准 amail API 客户端），仅替换 config 加载与
 目录约定为 OpenClaw 形态：
 
-  ~/.agentmail/{system_id}/                  ← 独立激活产生的系统目录
-      agentmail_gateway.json               ← 网关配置（激活时写入）
-      mode.json                              ← push/pull 模式（探测时写入）
-      agents.json                            ← {email → agentId} 路由注册表
-      agents/<agentId>/config.json           ← 每 agent 配置（api_key 等）
+  ~/.agentmail/systems/{system_id}/        ← 独立激活产生的系统目录
+      agentmail_gateway.json               ← 网关配置（激活时写入，含 mode/bridge_port）
+      {cleaned_addr}/agentmail.json        ← 每 agent 配置（api_key + agent_id，地址键）
 
 不修改 amail-gateway，不修改 Hermes 代码 —— 只做运行时配置源替换。
 """
@@ -37,7 +35,6 @@ for _p in (_TOOLS, _SCRIPTS):
         sys.path.insert(0, _p)
 
 import agentmail_base as _ab          # noqa: E402  (Hermes 复用层)
-import agentmail_tools as _tools      # noqa: E402  (6 工具函数体)
 import gateway_api as _gw             # noqa: E402  (标准 API 客户端)
 
 # ── 平台注入（公共核心注入点；Hermes → tools/hermes/agentmail_hermes.py 对称）──
@@ -47,12 +44,8 @@ def _openclaw_profile_dir() -> Optional[str]:
     return str(system_dir(sid)) if sid else None
 
 
-# 公共核心隐含依赖补齐（store_inbound_message/_log_amail/_GatewayClient 定义于
-# agentmail_tools，公共 agentmail_base 的 preprocess 内部按模块级名字查找——
-# Hermes 侧 agentmail_hermes.py 对称注入）
-_ab.store_inbound_message = _tools.store_inbound_message
-_ab._log_amail = _tools._log_amail
-_ab._GatewayClient = _tools._GatewayClient
+# 公共核心隐含依赖（store_inbound_message/_log_amail/_GatewayClient）已由
+# agentmail_base 函数级 import 自解析，无需适配层注入。
 # 注入点设置（OpenClaw 平台实现；personas 用公共默认空）
 _ab._PROFILE_DIR_RESOLVER = _openclaw_profile_dir
 # ── 系统能力声明（跨系统共享开关，Hermes 默认 True 不变）────────
@@ -62,10 +55,7 @@ _ab.PERSONA_SUPPORTED = False
 
 # ── 目录与配置 ─────────────────────────────────────────────────
 
-def system_dir(system_id: str = "") -> Path:
-    """~/.agentmail/{system_id}/（无 system_id 时为 ~/.agentmail/）。"""
-    base = Path.home() / ".agentmail"
-    return base / system_id if system_id else base
+system_dir = _ab._agentmail_system_dir   # 目录约定统一：共享核心同一 helper
 
 
 def load_gateway_config(system_id: str = "") -> Optional[dict]:
@@ -73,40 +63,57 @@ def load_gateway_config(system_id: str = "") -> Optional[dict]:
     return _gw.load_gateway_config(system_id)
 
 
+agent_config_path = _ab._agent_config_path  # 地址键 per-agent 配置路径（共享）
+
+
 def load_agents_registry(system_id: str) -> dict:
-    """读取 agents.json 注册表 {email → agentId}。"""
-    p = system_dir(system_id) / "agents.json"
-    if p.is_file():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {}
-
-
-def save_agents_registry(system_id: str, registry: dict) -> None:
-    p = system_dir(system_id) / "agents.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
+    """扫描地址键 agentmail.json，重建 {email → agent_id} 路由映射。"""
+    registry = {}
+    sys_dir = system_dir(system_id)
+    if sys_dir.is_dir():
+        for addr_dir in sys_dir.iterdir():
+            aj = addr_dir / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                cfg = json.loads(aj.read_text())
+                email = cfg.get("email", "")
+                agent_id = cfg.get("agent_id", "")
+                if email and agent_id:
+                    registry[email] = agent_id
+            except Exception:
+                pass
+    return registry
 
 
 def load_agent_config(agent_id: str, system_id: str = "") -> Optional[dict]:
-    """读取 agents/<agentId>/config.json（{gateway_url, api_key, email, system_name, mx_domain}）。"""
+    """按 agentId 找地址键 config（agentmail.json 中 agent_id 匹配）。"""
     if not system_id:
         system_id = detect_system_id()
-    p = system_dir(system_id) / "agents" / agent_id / "config.json"
-    if p.is_file():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
+    sys_dir = system_dir(system_id)
+    if sys_dir.is_dir():
+        for addr_dir in sys_dir.iterdir():
+            aj = addr_dir / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                cfg = json.loads(aj.read_text())
+                if cfg.get("agent_id") == agent_id:
+                    return cfg
+            except Exception:
+                pass
     return None
 
 
 def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
     if not system_id:
         system_id = config.get("system_id", detect_system_id())
-    p = system_dir(system_id) / "agents" / agent_id / "config.json"
+    email = config.get("email", "")
+    if not email:
+        raise ValueError("save_agent_config requires config['email']")
+    config = dict(config)
+    config["agent_id"] = agent_id
+    p = agent_config_path(system_id, email)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
 
@@ -118,11 +125,7 @@ def write_system_pointer(system_id: str, email: str = "") -> None:
     whenever a new system is activated, otherwise MCP keeps resolving a
     stale (deleted) system_id.
     """
-    pointer = Path.home() / ".openclaw" / ".agentmail"
-    pointer.parent.mkdir(parents=True, exist_ok=True)
-    pointer.write_text(
-        json.dumps({"system_id": system_id, "email": email}, indent=2, ensure_ascii=False) + "\n"
-    )
+    _ab._write_pointer(Path.home() / ".openclaw" / ".agentmail", system_id, email)
 
 
 def detect_system_id() -> str:
@@ -136,12 +139,9 @@ def detect_system_id() -> str:
     before, e.g. OpenClaw replying as agent.vfy@).
     """
     pointer = Path.home() / ".openclaw" / ".agentmail"
-    if pointer.is_file():
-        try:
-            data = json.loads(pointer.read_text())
-            return data.get("system_id", "")
-        except Exception:
-            pass
+    sid = _ab._read_pointer(pointer).get("system_id", "")
+    if sid:
+        return sid
     raise SystemExit(
         "no .agentmail pointer at "
         + str(pointer)
@@ -150,22 +150,32 @@ def detect_system_id() -> str:
 
 
 def load_mode(system_id: str = "") -> dict:
-    """读取 mode.json（{"mode": "push"|"pull", ...}）。"""
+    """读取 push/pull 模式（合并进 agentmail_gateway.json 的 mode/bridge_port 字段）。"""
     if not system_id:
         system_id = detect_system_id()
-    p = system_dir(system_id) / "mode.json"
-    if p.is_file():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {"mode": "pull"}
+    gw = load_gateway_config(system_id) or {}
+    mode = gw.get("mode", "pull")
+    bridge_port = gw.get("bridge_port", 8799)
+    return {
+        "mode": mode,
+        "bridge_port": bridge_port,
+        "bridge_url": f"http://127.0.0.1:{bridge_port}/hook" if mode == "push" else "",
+    }
 
 
 def save_mode(system_id: str, mode: dict) -> None:
-    p = system_dir(system_id) / "mode.json"
+    """把 push/pull 模式写进 agentmail_gateway.json（mode/bridge_port 字段）。"""
+    p = system_dir(system_id) / "agentmail_gateway.json"
+    cfg = {}
+    if p.is_file():
+        try:
+            cfg = json.loads(p.read_text())
+        except Exception:
+            pass
+    cfg["mode"] = mode.get("mode", "pull")
+    cfg["bridge_port"] = mode.get("bridge_port", 8799)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(mode, indent=2, ensure_ascii=False) + "\n")
+    p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
 
 
 def load_openclaw_hooks() -> Optional[dict]:
@@ -212,6 +222,7 @@ def set_agent_context(agent_id: str, system_id: str = "") -> None:
 
 # ── 从 agentmail_base 转发（复用面）────────────────────────────
 preprocess_mail_payload = _ab.preprocess_mail_payload
+process_inbound_mail = _ab.process_inbound_mail
 parse_amail_persona = _ab.parse_amail_persona
 _extract_board_gateway = _ab._extract_board_gateway
 register_board_gateway = _ab._register_board_gateway
@@ -271,15 +282,7 @@ def load_board_module():
     return board
 
 
-def build_message(payload: dict) -> str:
-    """把富化后的 amail payload 组装成 agent 输入 message（C2/C5 共用）。
-
-    ⚠ 核心业务逻辑对齐 Hermes：Hermes webhook.py `_render_prompt` 空模板
-    fallback 为 `json.dumps(payload, indent=2)[:4000]`（富化 payload 全量
-    JSON，ensure_ascii 默认 True）。OpenClaw 必须保持同一渲染语义——
-    修订此处时须对照 Hermes 侧确认一致。
-    """
-    return json.dumps(payload, indent=2)[:4000]
+build_message = _ab.render_message  # 渲染语义对齐 Hermes webhook.py（共享）
 
 
 # ── 共享运行时（C2/C5/CLI/MCP 统一入口，修订一处即全局生效）──────
@@ -308,16 +311,7 @@ def http_post(url: str, body: dict, api_key: str = "", token: str = "",
         return {"status": 0, "error": str(e)}
 
 
-def agent_for_email(registry: dict, email: str) -> str:
-    """收件地址 → agentId（精确匹配 + persona 前缀剥离：support.alice@… → alice@…）。"""
-    if email in registry:
-        return registry[email]
-    local = email.split("@")[0]
-    for addr, agent_id in registry.items():
-        base_local = addr.split("@")[0]
-        if local and local.endswith("." + base_local):
-            return agent_id
-    return ""
+agent_for_email = _ab.route_agent_for_email  # 多收件人入站路由（共享）
 
 
 # is_ping/is_pong/ping_id/handle_ping_pong come from agentmail_base
@@ -336,22 +330,10 @@ handle_ping_pong = _ab.handle_ping_pong
 # handle_ping_pong is imported from agentmail_base (shared impl).
 
 
-def send_pong(payload: dict, pong_id_value: str) -> bool:
-    """ping → pong：调 amail.py send 回发（对齐 Hermes webhook.py 补丁）。"""
-    import subprocess
-    to = payload.get("from", "")
-    body = json.dumps({"ping_id": pong_id_value,
-                       "event": {"mail_id": payload.get("mail_id", "")}})
-    amail_cli = os.path.join(os.path.dirname(os.path.abspath(__file__)), "amail.py")
-    r = subprocess.run(
-        [sys.executable, amail_cli,
-         "send", "--to", to, "--subject", f"{PONG_PREFIX}{pong_id_value}",
-         "--body", body, "--message-id", str(payload.get("mail_id", ""))],
-        capture_output=True, text=True, timeout=30)
-    try:
-        return json.loads(r.stdout).get("success", False)
-    except Exception:
-        return False
+# send_pong is SHARED (agentmail_base.send_pong) — no platform-specific
+# pong sender. Hermes and OpenClaw both reply via the gateway HTTP send
+# API; the injected _CONFIG_LOADER resolves each platform's agent config.
+send_pong = _ab.send_pong
 
 
 def dispatch_to_hooks(hooks_url: str, hooks_token: str, agent_id: str,

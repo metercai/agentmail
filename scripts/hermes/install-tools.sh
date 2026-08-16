@@ -74,7 +74,7 @@ fi
 
 # ── Install a2a_board role files ──
 ROLE_SRC="$PROJECT_ROOT/board/role_prompt_en"
-ROLE_DST="$HOME/.agentmail/${SYSTEM_ID:-default}/board/role_prompt"
+ROLE_DST="$HOME/.agentmail/systems/${SYSTEM_ID:-default}/board/role_prompt"
 mkdir -p "$ROLE_DST"
 if [ -d "$ROLE_SRC" ]; then
     for f in "$ROLE_SRC"/*.md; do

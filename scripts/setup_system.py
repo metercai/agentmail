@@ -196,7 +196,7 @@ def _save_gateway_config(
 ) -> None:
     """Save amail gateway connection config to standalone JSON file.
 
-    Writes to ~/.agentmail/{system_id}/agentmail_gateway.json.
+    Writes to ~/.agentmail/systems/{system_id}/agentmail_gateway.json.
     """
     cfg = {
         "gateway_url": gateway_url,
