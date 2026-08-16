@@ -152,28 +152,6 @@ def _smtp_send_ping(gw_url: str, admin_key: str, email: str,
         s.close()
 
 
-def _api_get(gw_url: str, admin_key: str, path: str) -> dict:
-    req = urllib.request.Request(f"{gw_url}{path}",
-                                 headers={"X-Api-Key": admin_key})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def _api_post(gw_url: str, admin_key: str, path: str, body: dict) -> dict:
-    req = urllib.request.Request(f"{gw_url}{path}",
-                                 data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          "X-Api-Key": admin_key})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        return {"error": str(e)}
-
-
 def _detect_edition(gateway_url: str) -> str:
     """GET /health → version → 'advanced' | 'base'。失败默认 advanced
     (auth.local 认证发送;若 base 版返回 550 可 --mode 不强求,由
@@ -245,12 +223,6 @@ def main() -> int:
         print("✗ agent api_key 未找到(需 systems/{sid}/{agent}/agentmail.json)——auth.local 只接受 agent key")
         return 1
 
-    # ── pending 队列检测/ack key:系统管理 key ──────────────────────
-    # /api/v1/admin/pending 需要 system/bridge scope,agent scope 无权限。
-    # 这里用 gateway config 的 admin_key(系统级),与 SMTP auth 的
-    # agent key 职责分离。
-    admin_ak = cfg.get("admin_key", "")
-
     if not all([gw_url, ak, email, manager]):
         print("✗ Missing required config fields(gateway_url/admin_key/email/manager)")
         return 1
@@ -294,9 +266,6 @@ def main() -> int:
         dt = _parse_ts(ts_str)
         return (dt - t0).total_seconds() if dt else 0.0
 
-    pull_observed = 0   # pending 中出现 ping 的次数
-    pull_acked = 0      # pending 清空(ping 被拉取拦截)的次数
-
     while time.time() < deadline:
         # ── 三阶段事件:agentmail.log(唯一权威判定,用户定调)──
         if amail_log.exists():
@@ -319,19 +288,6 @@ def main() -> int:
                         print(f"  +{_fmt_secs(ts, dt_sent):5.1f}s    Total round-trip: {_fmt_secs(ts, dt_sent):.1f}s")
                 except Exception:
                     pass
-        # ── pull 模式:pending 队列出现 ping → 清空(被 poll 拉取拦截)──
-        pend = _api_post(gw_url, admin_ak, "/api/v1/admin/pending",
-                         {"limit": 20, "filter": [cfg.get("domain", "")]})
-        batches = pend.get("batches") or []
-        ping_here = any(PING_PREFIX in (b.get("body") or {}).get("subject", "")
-                        for b in batches)
-        if ping_here and not pull_observed:
-            pull_observed = 1
-            print(f"  +{time.time() - t_sent:5.1f}s    Pending queue (ping received)    ✓")
-        if pull_observed and not batches and not pull_acked:
-            # 队列曾含 ping,现已清空 = poll 拉取并拦截
-            pull_acked = 1
-            print(f"  +{time.time() - t_sent:5.1f}s    Pending drained (poll intercepted) ✓")
 
         if found_ping and found_pong:
             break
