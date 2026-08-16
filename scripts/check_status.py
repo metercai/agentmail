@@ -62,11 +62,16 @@ def _split_host_port(addr: str) -> tuple[str, str]:
     return host, port
 
 def _resolve_system_id(args: list[str] | None = None) -> str:
-    """Determine system_id: --system-id arg > AGENT_HOME/.agentmail > env."""
-    if args:
-        for i, a in enumerate(args):
-            if a == "--system-id" and i + 1 < len(args):
-                return args[i + 1]
+    """Determine system_id: --system-id arg > AGENT_HOME/.agentmail > env.
+
+    无参调用时也回退扫描 sys.argv 的 --system-id(2026-08-16 修复:
+    Hermes adapter 无参调用,而 AGENT_HOME 可能是平台根,指针在
+    profile 目录——argv 显式 sid 必须生效)。"""
+    if args is None:
+        args = sys.argv
+    for i, a in enumerate(args):
+        if a == "--system-id" and i + 1 < len(args):
+            return args[i + 1]
     pointer = AGENT_HOME / ".agentmail"
     if pointer.is_file():
         try:
@@ -175,22 +180,15 @@ def _detect_agent_type() -> str:
     """Probe the host for a supported agent platform. Returns id or 'unknown'.
 
     探测优先级(2026-08-16 双平台共存机器实测):
-    ① --agent-home 被显式指定(非默认 ~/.hermes)→ 视为 Hermes 意图
-       (Hermes 是唯一用 agent-home 定位的平台;OpenClaw 固定 ~/.openclaw)
+    ① --agent-home 被显式指定(出现在 argv)→ 视为 Hermes 意图
+       (Hermes 是唯一用 agent-home 定位的平台;OpenClaw 固定 ~/.openclaw)。
+       注意:即使值恰是默认 ~/.hermes 也算显式(agentmail CLI 的 check
+       传 --home 平台根时会落到这里)——只看参数是否出现,不看值。
     ② ~/.openclaw/openclaw.json 存在 → openclaw
     ③ AGENT_HOME 下有 hermes-agent 或 profiles/ → hermes
     ④ unknown
     """
-    explicit_home = False
     if "--agent-home" in sys.argv:
-        try:
-            ai = sys.argv.index("--agent-home")
-            v = sys.argv[ai + 1]
-            if v and Path(v).expanduser() != Path.home() / ".hermes":
-                explicit_home = True
-        except (ValueError, IndexError):
-            pass
-    if explicit_home:
         return "hermes"
     if (Path.home() / ".openclaw" / "openclaw.json").is_file():
         return "openclaw"
@@ -242,7 +240,9 @@ def _hermes_list_agents() -> list[dict]:
             })
         except Exception:
             pass
-    # Named profiles
+    # Named profiles — 只保留有 amail 标记的(与 ensure_webhook_config 的
+    # is_amail_profile 同逻辑):.agentmail 指针或 config 有 agentmail 痕迹;
+    # 无关 profile(erp/qlbio 等)不报 MISSING 噪音(2026-08-16 实测 22 issue)。
     profiles_dir = AGENT_HOME / "profiles"
     if profiles_dir.is_dir():
         for pdir in sorted(profiles_dir.iterdir()):
@@ -254,6 +254,22 @@ def _hermes_list_agents() -> list[dict]:
                 email = json.loads(ptr.read_text()).get("email", "")
             except Exception:
                 pass
+            if not email:
+                # 无指针:检查 config 是否有 agentmail 痕迹
+                cfg_p = pdir / "config.yaml"
+                if cfg_p.exists():
+                    try:
+                        import yaml
+                        pt = (yaml.safe_load(cfg_p.read_text()) or {}).get("platform_toolsets", {})
+                        for seg in ("webhook", "cli"):
+                            tools = pt.get(seg) or []
+                            if "agentmail" in (tools if isinstance(tools, list) else []):
+                                email = "?"  # 有 agentmail 工具标记,列入
+                                break
+                    except Exception:
+                        pass
+                if not email:
+                    continue  # 无关 profile,跳过
             agents.append({
                 "name": pdir.name, "email": email,
                 "profile_dir": pdir,
@@ -423,14 +439,15 @@ def _openclaw_check_config(c: Check, agent: dict):
     name = agent.get("name", "?")
     email = agent.get("email", "")
 
-    # 3.1 name & api_key(用 OpenClaw 指针的 sid,同 list_agents)
-    sid = ""
-    ptr = Path.home() / ".openclaw" / ".agentmail"
-    if ptr.is_file():
-        try:
-            sid = json.loads(ptr.read_text()).get("system_id", "")
-        except Exception:
-            pass
+    # 3.1 name & api_key(sid 解析:argv 显式 > OpenClaw 指针 > 默认)
+    sid = _resolve_system_id()
+    if not sid or sid == os.environ.get("SYSTEM_ID", ""):
+        ptr = Path.home() / ".openclaw" / ".agentmail"
+        if ptr.is_file():
+            try:
+                sid = json.loads(ptr.read_text()).get("system_id", "")
+            except Exception:
+                pass
     if not sid:
         sid = _resolve_system_id()
     aj_path = (SYSTEMS_DIR / sid / _clean_agent_dir_name(email) / "agentmail.json") if (sid and email) else None

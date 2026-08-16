@@ -193,10 +193,14 @@ def _save_gateway_config(
     save_raw_snapshots: bool = False,
     manager_address: str = "",
     webhook_host: str = "",
+    system_home: str = "",
 ) -> None:
     """Save amail gateway connection config to standalone JSON file.
 
     Writes to ~/.agentmail/systems/{system_id}/agentmail_gateway.json.
+    system_home = 系统/平台根(hermes=~/.hermes, openclaw=~/.openclaw),
+    用于 CLI 平台反查(2026-08-16 用户定调;与 agent_home=具体 agent home
+    语义区分)。
     """
     cfg = {
         "gateway_url": gateway_url,
@@ -211,6 +215,8 @@ def _save_gateway_config(
         cfg["manager_address"] = manager_address
     if webhook_host:
         cfg["webhook_host"] = webhook_host
+    if system_home:
+        cfg["system_home"] = system_home
 
     gateway_path = gateway_config_path(system_id)
     gateway_path.parent.mkdir(parents=True, exist_ok=True)
@@ -231,6 +237,7 @@ def init_system(
     save_raw_snapshots: bool = False,
     manager_address: str = "",
     webhook_host: str = "",
+    system_home: str = "",
 ) -> dict:
     """Initialize a system using a product activation code.
 
@@ -273,6 +280,7 @@ def init_system(
         save_raw_snapshots=save_raw_snapshots,
         manager_address=manager_address,
         webhook_host=webhook_host,
+        system_home=system_home,
     )
     logger.info("[amail_setup] Gateway config saved to %s", gateway_config_path())
     # Downgrade to agent_admin key
@@ -305,6 +313,7 @@ def setup(
     webhook_host: str = "",
     webhook_base_url: str = "",
     webhook_secret: str = "",
+    system_home: str = "",
 ) -> dict:
     """Unified integration entry point.
 
@@ -327,7 +336,7 @@ def setup(
             gateway_url=gateway_url, admin_key=admin_key, system_id=system_id,
             domain=domain or "admin.local", system_name=system_name,
             save_raw_snapshots=save_raw_snapshots, manager_address=manager_address,
-            webhook_host=webhook_host,
+            webhook_host=webhook_host, system_home=system_home,
         )
         agent_key = _downgrade_to_agent_admin_key(
             gateway_url, admin_key, system_id, manager_address,
@@ -340,7 +349,7 @@ def setup(
             product_code=product_code, system_id=system_id, system_name=system_name,
             domain=domain, gateway_url=gateway_url,
             save_raw_snapshots=save_raw_snapshots, manager_address=manager_address,
-            webhook_host=webhook_host,
+            webhook_host=webhook_host, system_home=system_home,
         )
         if result.get("success"):
             result["path"] = "activation"
@@ -362,6 +371,7 @@ if __name__ == "__main__":
         manager_address=os.environ.get("INTEGRATE_MANAGER_ADDRESS", "") or "",
         webhook_host=os.environ.get("INTEGRATE_WEBHOOK_HOST", "") or "",
         system_name=os.environ.get("INTEGRATE_SYSTEM_NAME", "") or "",
+        system_home=os.environ.get("INTEGRATE_SYSTEM_HOME", "") or "",
     )
     if os.environ.get("INTEGRATE_USE_PRODUCT_CODE", "") == "true":
         kwargs["product_code"] = os.environ.get("INTEGRATE_PRODUCT_CODE", "")

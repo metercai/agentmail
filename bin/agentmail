@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""agentmail — 统一的 agentmail 维护工具 CLI。
+
+子命令:
+  install  [--home 平台根] [--system-id] [--product-code] 集成脚本到 check 前
+  reset    [--home 平台根] [--system-id]                  只走 admin-key 重置配置
+  check    [--system-id] [--home]                          通用状态检查(check_status)
+  ping     [--system-id] [--manager]                       ping-pong 闭环测试
+  welcome  [--system-id] [--manager]                       welcome 端到端测试
+  mailname [--system-id] [--default NAME]                  查看/修改默认主 agent 映射
+
+平台事实推断(无 --agent-type,用户定调 2026-08-16):
+  1. --home 指定 → 目录特征(hermes-agent/profiles=hermes, openclaw.json=openclaw)
+  2. --system-id → 配置 system_home 反查 → 目录特征(旧系统回退指针归属)
+  3. 都没有 → 自动探测第一个有 agentmail 指针的平台
+home 语义:system_home=系统/平台根(hermes=~/.hermes, openclaw=~/.openclaw);
+          agent_home=具体 agent home(adapter 内部派生,非子命令入参)
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+AGENTMAIL_HOME = HOME / ".agentmail"
+SYSTEMS_DIR = AGENTMAIL_HOME / "systems"
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+
+GREEN, RED, YELLOW, NC = "\033[0;32m", "\033[0;31m", "\033[1;33m", "\033[0m"
+
+
+def _ok(msg): print(f"  {GREEN}✓{NC} {msg}")
+def _warn(msg): print(f"  {YELLOW}⚠{NC} {msg}")
+def _fail(msg):
+    print(f"  {RED}✗{NC} {msg}")
+    sys.exit(1)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  平台事实推断
+# ═══════════════════════════════════════════════════════════════
+
+def detect_platform_from_home(system_home: Path) -> str:
+    """按 home 目录特征判断平台。返回 'hermes'/'openclaw'/'unknown'。"""
+    if (system_home / "hermes-agent").exists() or (system_home / "profiles").is_dir():
+        return "hermes"
+    if (system_home / "openclaw.json").is_file():
+        return "openclaw"
+    return "unknown"
+
+
+def _platform_ptr(platform: str) -> Path:
+    """平台指针(.agentmail)路径。
+
+    Hermes 指针可能在 ~/.hermes/.agentmail(根)或
+    ~/.hermes/profiles/*/.agentmail(profile 目录,agentmail CLI 传
+    --home 平台根时根指针可能不存在)——返回已存在的那个;都没有则
+    返回根路径(调用方按空 sid 处理)。
+    """
+    if platform == "openclaw":
+        return HOME / ".openclaw" / ".agentmail"
+    root_ptr = HOME / ".hermes" / ".agentmail"
+    if root_ptr.is_file():
+        return root_ptr
+    # 找第一个 profile 级指针
+    profiles = HOME / ".hermes" / "profiles"
+    if profiles.is_dir():
+        for p in sorted(profiles.glob("*/.agentmail")):
+            if p.is_file():
+                return p
+    return root_ptr
+
+
+def _ptr_sid(ptr: Path) -> str:
+    try:
+        return json.loads(ptr.read_text()).get("system_id", "")
+    except Exception:
+        return ""
+
+
+def resolve_system_id(system_home: Path, explicit_sid: str = "") -> tuple[str, str]:
+    """解析 system_id 与平台。返回 (sid, platform)。
+
+    优先级:显式 --system-id > 配置 system_home 反查 > 指针归属 > 自动探测。
+    """
+    platform = detect_platform_from_home(system_home) if system_home else ""
+
+    # 1) 显式 sid:优先配置反查,回退指针
+    if explicit_sid:
+        sid = explicit_sid
+        # 配置反查:该 sid 的 agentmail_gateway.json 里有 system_home
+        cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+        if cfg_path.is_file():
+            try:
+                cfg_sh = json.loads(cfg_path.read_text()).get("system_home", "")
+                if cfg_sh:
+                    p = detect_platform_from_home(Path(cfg_sh))
+                    if p != "unknown":
+                        return sid, p
+            except Exception:
+                pass
+        # 回退:哪个平台指针指向该 sid
+        for p in ("openclaw", "hermes"):
+            if _ptr_sid(_platform_ptr(p)) == sid:
+                return sid, p
+        return sid, platform  # 平台未知也不阻塞(可能新装)
+    return "", platform
+
+
+def resolve_platform(system_home: Path) -> str:
+    """解析平台:home 特征优先,回退自动探测。"""
+    p = detect_platform_from_home(system_home) if system_home else ""
+    if p != "unknown":
+        return p
+    # 自动探测:第一个有 agentmail 指针的平台
+    for plat in ("openclaw", "hermes"):
+        if _ptr_sid(_platform_ptr(plat)):
+            return plat
+    return ""
+
+
+# ═══════════════════════════════════════════════════════════════
+#  子命令
+# ═══════════════════════════════════════════════════════════════
+
+def cmd_check(args) -> int:
+    """通用状态检查 → check_status.py。"""
+    sid = args.system_id or ""
+    cmd = [sys.executable, str(SCRIPTS_DIR / "check_status.py")]
+    if sid:
+        cmd += ["--system-id", sid]
+    if args.home:
+        # check_status 的 --agent-home 语义 = 平台根(通用化后自动适配)
+        cmd += ["--agent-home", str(Path(args.home).expanduser())]
+    return subprocess.call(cmd)
+
+
+def cmd_ping(args) -> int:
+    """ping-pong 闭环 → ping_test.py。"""
+    sid = args.system_id or ""
+    cmd = [sys.executable, str(SCRIPTS_DIR / "ping_test.py")]
+    if sid:
+        cmd += ["--system-id", sid]
+    if args.manager:
+        cmd += ["--manager", args.manager]
+    if args.timeout:
+        cmd += ["--timeout", str(args.timeout)]
+    return subprocess.call(cmd)
+
+
+def cmd_welcome(args) -> int:
+    """welcome 端到端 → send_welcome.py。"""
+    sid = args.system_id or ""
+    cmd = [sys.executable, str(SCRIPTS_DIR / "send_welcome.py")]
+    if sid:
+        cmd += ["--system-id", sid]
+    if args.manager:
+        cmd += ["--manager", args.manager]
+    if args.no_wait:
+        cmd += ["--no-wait"]
+    return subprocess.call(cmd)
+
+
+def cmd_install(args) -> int:
+    """安装:集成脚本到 check 前的全部步骤(非交互化)。"""
+    system_home = Path(args.home).expanduser() if args.home else Path()
+    if not args.home:
+        _fail("install 需要 --home(系统 home/平台根)")
+    if not system_home.exists():
+        _fail(f"home 目录不存在: {system_home}")
+    platform = resolve_platform(system_home)
+    if not platform:
+        _fail(f"无法确定平台:{system_home} 目录无特征且无 agentmail 指针")
+    print(f"  install platform={platform} system_home={system_home}")
+
+    # 1) 激活/复用系统 → setup_system.py(env 契约)
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    from gateway_api import load_gateway_config
+    env = dict(os.environ)
+    env["INTEGRATE_GATEWAY_URL"] = args.gateway_url or ""
+    env["INTEGRATE_SYSTEM_ID"] = args.system_id or ""
+    env["INTEGRATE_SYSTEM_NAME"] = args.system_name or ""
+    env["INTEGRATE_SYSTEM_HOME"] = str(system_home)
+    env["INTEGRATE_MANAGER_ADDRESS"] = args.manager or ""
+    if args.product_code:
+        env["INTEGRATE_USE_PRODUCT_CODE"] = "true"
+        env["INTEGRATE_PRODUCT_CODE"] = args.product_code
+    elif args.admin_key:
+        env["INTEGRATE_ADMIN_KEY"] = args.admin_key
+    # 无显式凭据 → 从已有配置/指针复用
+    elif args.system_id:
+        cfg = load_gateway_config(args.system_id)
+        if cfg and cfg.get("admin_key"):
+            env["INTEGRATE_ADMIN_KEY"] = cfg["admin_key"]
+            env["INTEGRATE_SYSTEM_ID"] = args.system_id
+
+    r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "setup_system.py")], env=env)
+    if r != 0:
+        _fail("setup_system 失败")
+    _ok("system configured")
+
+    # 2) 部署 bridge(单实例多系统合并)
+    env2 = dict(os.environ)
+    env2["GATEWAY_URL"] = env["INTEGRATE_GATEWAY_URL"]
+    env2["ADMIN_KEY"] = env.get("INTEGRATE_ADMIN_KEY", "")
+    env2["SYSTEM_ID"] = env["INTEGRATE_SYSTEM_ID"]
+    r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "deploy_bridge.py")], env=env2)
+    _ok("bridge deployed" if r == 0 else "bridge: see warnings")
+
+    # 3) 平台适配
+    if platform == "hermes":
+        # install-tools.sh + configure.sh(工具拷贝/注册/配置补全/gateway)
+        for sh in ("install-tools.sh", "configure.sh"):
+            script = SCRIPTS_DIR / "hermes" / sh
+            env3 = dict(os.environ)
+            env3["HERMES_DIR"] = str(system_home / "hermes-agent")
+            env3["SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
+            env3["PROJECT_ROOT"] = str(SCRIPTS_DIR.parent)
+            r = subprocess.call(["bash", str(script)], env=env3)
+            if r != 0:
+                _warn(f"{sh} exit {r}")
+    else:  # openclaw
+        env3 = dict(os.environ)
+        env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
+        r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "openclaw" / "register_agent.py"),
+                             "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
+                            env=env3)
+        if r == 0:
+            subprocess.call(["bash", str(SCRIPTS_DIR / "openclaw" / "install-skill.sh")], env=env3)
+        _ok("openclaw agents registered + skill installed")
+
+    print(f"  install done. 建议: agentmail check {'--system-id ' + args.system_id if args.system_id else ''}".rstrip())
+    return 0
+
+
+def cmd_reset(args) -> int:
+    """重置:只走 admin-key 路径,重置所有配置参数(不重激活、不碰 key)。"""
+    system_home = Path(args.home).expanduser() if args.home else Path()
+    if not args.home:
+        _fail("reset 需要 --home(系统 home/平台根)")
+    if not system_home.exists():
+        _fail(f"home 目录不存在: {system_home}")
+    platform = resolve_platform(system_home)
+    if not platform:
+        _fail("无法确定平台")
+    sid = args.system_id or _ptr_sid(_platform_ptr(platform))
+    if not sid:
+        _fail("无法确定 system_id(用 --system-id 指定)")
+
+    # 读 admin-key(.system_raw_key 或已有配置)——只读,不写
+    raw_key_path = AGENTMAIL_HOME / ".system_raw_key" / f"{sid}_admin.key"
+    admin_key = ""
+    if raw_key_path.is_file():
+        try:
+            admin_key = raw_key_path.read_text().strip()
+        except Exception:
+            pass
+    if not admin_key:
+        cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+        if cfg_path.is_file():
+            try:
+                admin_key = json.loads(cfg_path.read_text()).get("admin_key", "")
+            except Exception:
+                pass
+    if not admin_key:
+        _fail(f"无 admin-key({raw_key_path} 或配置)——reset 只走 admin-key 路径")
+
+    print(f"  reset platform={platform} system_id={sid}")
+    env = dict(os.environ)
+    env["INTEGRATE_GATEWAY_URL"] = args.gateway_url or ""
+    env["INTEGRATE_SYSTEM_ID"] = sid
+    env["INTEGRATE_SYSTEM_NAME"] = args.system_name or ""
+    env["INTEGRATE_SYSTEM_HOME"] = str(system_home) if system_home else ""
+    env["INTEGRATE_MANAGER_ADDRESS"] = args.manager or ""
+    env["INTEGRATE_ADMIN_KEY"] = admin_key
+    r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "setup_system.py")], env=env)
+    if r != 0:
+        _fail("setup_system(reset) 失败")
+    _ok("config parameters reset (admin-key path, key untouched)")
+
+    # 平台注册链幂等重跑(配置补全)
+    if platform == "hermes":
+        env3 = dict(os.environ)
+        env3["SYSTEM_ID"] = sid
+        subprocess.call([sys.executable, str(SCRIPTS_DIR / "hermes" / "register_profiles.py")], env=env3)
+    else:
+        env3 = dict(os.environ)
+        env3["AMAIL_SYSTEM_ID"] = sid
+        subprocess.call([sys.executable, str(SCRIPTS_DIR / "openclaw" / "register_agent.py"),
+                         "--all", "--system-id", sid], env=env3)
+    _ok("registration chain re-run (idempotent)")
+    print(f"  建议: agentmail check --system-id {sid}")
+    return 0
+
+
+def cmd_mailname(args) -> int:
+    """查看/修改默认主 agent 名字映射(冲突检测)。"""
+    sid = args.system_id or ""
+    if not sid:
+        _fail("mailname 需要 --system-id")
+    cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+    if not cfg_path.is_file():
+        _fail(f"无系统配置: {cfg_path}")
+    cfg = json.loads(cfg_path.read_text())
+    current = cfg.get("default_agent_name", "agent")
+
+    if not args.default:
+        # 查看
+        platform = ""
+        sh = cfg.get("system_home", "")
+        if sh:
+            platform = detect_platform_from_home(Path(sh))
+        if platform in ("", "unknown"):
+            for p in ("openclaw", "hermes"):
+                if _ptr_sid(_platform_ptr(p)) == sid:
+                    platform = p
+                    break
+        if not platform:
+            platform = "?"
+        print(f"  system: {sid} ({platform})")
+        print(f"  默认主 agent 名: {current}")
+        print(f"  (默认映射: hermes default→{current}, openclaw main→{current})")
+        return 0
+
+    new_name = args.default
+    # 合法性:atext-no-dot(与 email_for_agent 清洗一致)
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]+", new_name):
+        _fail(f"非法名字 '{new_name}':须为 atext-no-dot 字符(不能含点/空格/@)")
+    if new_name == current:
+        print(f"  已是当前默认名: {current}")
+        return 0
+
+    # 冲突检测:domain_addr_meta 已有同名非默认 agent 地址
+    # 通过网关 API 查询该系统的已注册地址(_GatewayClient 带完整方法集)
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    sys.path.insert(0, str(SCRIPTS_DIR.parent / "tools"))
+    from agentmail_tools import _GatewayClient
+    gw = cfg.get("gateway_url", "").rstrip("/")
+    ak = cfg.get("admin_key", "")
+    if gw and ak:
+        try:
+            client = _GatewayClient(gw, ak)
+            domains = client.list_system_domains(sid)
+            occupied = []
+            # domain 字段可能是注册地址(如 agent.xianlin@amail.token.tm)
+            # 或 anchor(xianlin@amail.token.tm)——检查新默认名是否与已有
+            # 地址的 base 段冲突(用户定调:改前检测与其他 agent 名字冲突)
+            for d in domains if isinstance(domains, list) else []:
+                addr = d.get("domain") or ""
+                base = addr.split("@")[0] if "@" in addr else ""
+                if base == new_name:
+                    occupied.append(addr)
+            if occupied:
+                _fail(f"名字 '{new_name}' 已占用: {occupied}")
+        except Exception as e:
+            _warn(f"冲突检测失败(仅本地校验): {e}")
+
+    # 写入配置
+    cfg["default_agent_name"] = new_name
+    tmp = cfg_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+    tmp.replace(cfg_path)
+    _ok(f"默认主 agent 名: {current} → {new_name}")
+    print(f"  生效方式:agent 地址将变为 {new_name}@{cfg.get('domain','')}(共享域加 .{cfg.get('system_name','')} 后缀)")
+    print(f"  需重注册:agentmail reset --system-id {sid} 或 agentmail install")
+    return 0
+
+
+# ═══════════════════════════════════════════════════════════════
+#  main
+# ═══════════════════════════════════════════════════════════════
+
+def main():
+    ap = argparse.ArgumentParser(prog="agentmail", description="agentmail 维护工具")
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    p_install = sub.add_parser("install", help="安装(集成脚本到 check 前)")
+    p_install.add_argument("--home", help="系统 home(平台根:hermes=~/.hermes, openclaw=~/.openclaw)")
+    p_install.add_argument("--system-id")
+    p_install.add_argument("--product-code", help="激活码(新系统)")
+    p_install.add_argument("--admin-key", help="已激活系统的 admin key")
+    p_install.add_argument("--gateway-url", default="https://amail.token.tm")
+    p_install.add_argument("--system-name")
+    p_install.add_argument("--manager")
+    p_install.set_defaults(func=cmd_install)
+
+    p_reset = sub.add_parser("reset", help="重置配置(admin-key 路径,不重激活)")
+    p_reset.add_argument("--home")
+    p_reset.add_argument("--system-id")
+    p_reset.add_argument("--gateway-url", default="")
+    p_reset.add_argument("--system-name")
+    p_reset.add_argument("--manager")
+    p_reset.set_defaults(func=cmd_reset)
+
+    p_check = sub.add_parser("check", help="状态检查")
+    p_check.add_argument("--system-id")
+    p_check.add_argument("--home", help="系统 home(平台根)")
+    p_check.set_defaults(func=cmd_check)
+
+    p_ping = sub.add_parser("ping", help="ping-pong 闭环测试")
+    p_ping.add_argument("--system-id")
+    p_ping.add_argument("--manager")
+    p_ping.add_argument("--timeout", type=int, default=120)
+    p_ping.set_defaults(func=cmd_ping)
+
+    p_welcome = sub.add_parser("welcome", help="welcome 端到端测试")
+    p_welcome.add_argument("--system-id")
+    p_welcome.add_argument("--manager")
+    p_welcome.add_argument("--no-wait", action="store_true")
+    p_welcome.set_defaults(func=cmd_welcome)
+
+    p_mn = sub.add_parser("mailname", help="查看/修改默认主 agent 名映射")
+    p_mn.add_argument("--system-id")
+    p_mn.add_argument("--default", help="新的默认主 agent 名")
+    p_mn.set_defaults(func=cmd_mailname)
+
+    args = ap.parse_args()
+    sys.exit(args.func(args) or 0)
+
+
+if __name__ == "__main__":
+    main()
