@@ -356,6 +356,11 @@ class _GatewayClient:
 # Different agent systems are detected (and versioned) differently.
 # Add a new entry to extend support; explicit config/env always wins
 # over automatic detection (see _agent_identity).
+# 显式身份覆盖:多 agent 共存机器上"目录存在"检测会误判(Hermes 目录在
+# OpenClaw 机器也存在,registry 顺序导致 OpenClaw 进程被检测为 hermes)。
+# 平台适配层(amail_base/hermes adapter)在 import 时注入自己的身份。
+_AGENT_IDENTITY_OVERRIDE = None    # 由适配层设置,如 "openclaw/2026.7.1"
+
 _AGENT_DETECTORS = [
     {
         "name": "hermes",
@@ -375,6 +380,8 @@ _AGENT_DETECTORS = [
 
 def _detect_agent_identity() -> str:
     """Auto-detect {platform}/{version} by walking the detector registry."""
+    if _AGENT_IDENTITY_OVERRIDE:
+        return _AGENT_IDENTITY_OVERRIDE
     home = os.path.expanduser("~")
     for det in _AGENT_DETECTORS:
         try:

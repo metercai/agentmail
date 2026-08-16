@@ -36,6 +36,24 @@ for _p in (_TOOLS, _SCRIPTS):
 
 import agentmail_base as _ab          # noqa: E402  (Hermes 复用层)
 import gateway_api as _gw             # noqa: E402  (标准 API 客户端)
+import agentmail_tools as _tools      # noqa: E402  (X-Agentmail-Agent 身份注入)
+
+# ── X-Agentmail-Agent 身份注入 ───────────────────────────────────
+# 多 agent 共存机器上,agentmail_tools 的"目录存在"自动检测会把
+# OpenClaw 进程误判为 hermes(~/.hermes 目录同样存在且 registry 在前)。
+# 适配层显式注入 OpenClaw 身份:openclaw/{CLI 版本}。
+_oc_ver = "unknown"
+try:
+    import subprocess as _sp
+    _r = _sp.run(["openclaw", "--version"], capture_output=True, text=True, timeout=5)
+    _out = (_r.stdout or _r.stderr).strip()
+    import re as _re
+    _m = _re.search(r"([0-9][0-9.]*-?[0-9]*)", _out)
+    if _m:
+        _oc_ver = _m.group(1)
+except Exception:
+    pass
+_tools._AGENT_IDENTITY_OVERRIDE = f"openclaw/{_oc_ver}"
 
 # ── 平台注入（公共核心注入点；Hermes → tools/hermes/agentmail_hermes.py 对称）──
 def _openclaw_profile_dir() -> Optional[str]:
@@ -355,6 +373,16 @@ def dispatch_to_hooks(hooks_url: str, hooks_token: str, agent_id: str,
         "message": build_message(enriched),
         "agentId": agent_id,
         "idempotencyKey": idempotency_key,
+        # 显式 sessionKey:复用固定 hook 会话而非 isolated 新建。
+        # OpenClaw 2026.7 起,isolated 会话的 delivery 目标无法从 shared
+        # main 桶继承 → 拒绝("Refusing implicit isolated cron delivery")。
+        # allowRequestSessionKey=true 时请求可携带 sessionKey,固定前缀
+        # 使所有入站邮件汇聚到同一 agent 会话(线程按 idempotencyKey 幂等)。
+        "sessionKey": f"agent:{agent_id}:hook:amail",
+        # deliver=false:agentmail 的回复经 send_mail 工具回发,不依赖
+        # OpenClaw 的聊天渠道投递(delivery 目标解析会因无 previous
+        # recipient 拒绝 isolated run)。
+        "deliver": False,
     }
     if extra_system_prompt:
         req["extraSystemPrompt"] = extra_system_prompt
