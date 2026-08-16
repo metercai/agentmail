@@ -226,6 +226,9 @@ def set_agent_context(agent_id: str, system_id: str = "") -> None:
     preprocess_mail_payload()（agentmail_base）与 6 工具函数
     （agentmail_tools）内部都调用 _load_profile_config() —— 公共版读
     _CONFIG_LOADER 注入点，此处设置后两处同时生效（同一函数对象）。
+    同时设 AMAIL_AGENT_EMAIL（共享 _resolve_agent_email 的第一优先
+    来源）——日志 agentmail.{email}.log 按 agent 落位；不设则 email
+    解析为空，日志落 agentmail.default.log（OpenClaw 接收端曾踩此坑）。
     所有 OpenClaw 侧消费者（amail.py / MCP server / poll / bridge）
     统一走此入口，避免各份重复 patch。
     """
@@ -235,6 +238,8 @@ def set_agent_context(agent_id: str, system_id: str = "") -> None:
         raise RuntimeError(f"agent '{agent_id}' not registered — run register_agent.py first")
     _ACTIVE_AGENT_CONFIG = cfg
     _ab._CONFIG_LOADER = _openclaw_profile_config
+    if cfg.get("email"):
+        os.environ["AMAIL_AGENT_EMAIL"] = cfg["email"]
     os.environ.setdefault("AMAIL_AGENT_ID", agent_id)
     os.environ.setdefault("AMAIL_SYSTEM_ID", cfg.get("system_id", system_id))
 
