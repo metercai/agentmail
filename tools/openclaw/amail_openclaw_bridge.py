@@ -78,6 +78,20 @@ class BridgeHandler(BaseHTTPRequestHandler):
         # 身份解析 → persona → 富化 → 存储,最后一步 ping/pong 拦截。
         # 拦截(ping/pong)返回 None → 200 吞掉,不触发 agent;
         # pong 由共享 send_pong 出站,回环走完整入站链(设计意图)。
+        # 预处理需要 agent 配置注入(set_agent_context)——先按收件地址
+        # 解析 agent,再调共享链(与 amail-poll.py 批级调用同入口)。
+        email = payload.get("to", "")
+        if isinstance(email, list):
+            email = email[0] if email else ""
+        agent_id = _base.agent_for_email(self.bridge["registry"], email)
+        if not agent_id:
+            self._send_json(200, {"status": "no_agent", "email": email})
+            return
+        try:
+            _base.set_agent_context(agent_id, self.bridge["system_id"])
+        except Exception as e:
+            self._send_json(200, {"status": "no_local_config", "agent": agent_id, "detail": str(e)})
+            return
         try:
             enriched = _base.process_inbound_mail(payload, dict(self.headers))
         except Exception as e:
@@ -87,14 +101,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "intercepted"})
             return
 
-        # ── 3. 路由 + 共享投递链(传原始 body,富化由投递链内部完成)──
-        email = payload.get("to", "")
-        if isinstance(email, list):
-            email = email[0] if email else ""
-        agent_id = _base.agent_for_email(self.bridge["registry"], email)
-        if not agent_id:
-            self._send_json(200, {"status": "no_agent", "email": email})
-            return
+        # ── 3. 共享投递链(传原始 body,富化由投递链内部完成)──
         try:
             resp = _base.dispatch_to_hooks(
                 self.bridge["hooks_url"], self.bridge["hooks_token"], agent_id,
