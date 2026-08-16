@@ -8,6 +8,7 @@
   ping     [--system-id] [--manager]                       ping-pong 闭环测试
   welcome  [--system-id] [--manager]                       welcome 端到端测试
   mailname [--system-id] [--default NAME]                  查看/修改默认主 agent 映射
+  bridge   [--system-id] [--home] [--restart]               本机 bridge 维护(状态/重刷路由/重启)
 
 平台事实推断(无 --agent-type,用户定调 2026-08-16):
   1. --home 指定 → 目录特征(hermes-agent/profiles=hermes, openclaw.json=openclaw)
@@ -21,6 +22,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 HOME = Path.home()
@@ -370,6 +373,222 @@ def cmd_mailname(args) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  bridge 维护子命令
+# ═══════════════════════════════════════════════════════════════
+
+BRIDGE_DIR = AGENTMAIL_HOME / "bridge"
+BRIDGE_CFG = BRIDGE_DIR / "amail_bridge.toml"
+BRIDGE_PID = BRIDGE_DIR / "bridge.pid"
+BRIDGE_LOG = AGENTMAIL_HOME / "logs" / "amail-bridge.log"
+ROUTES_FILE = BRIDGE_DIR / "amail_routes.toml"
+BRIDGE_ADDR = "127.0.0.1:38081"
+
+
+def _bridge_pids() -> list[int]:
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-f", r"amail-bridge.*--config|amail-bridge.*\.toml"],
+            text=True, timeout=5)
+        return [int(l.strip()) for l in out.splitlines() if l.strip().isdigit()]
+    except subprocess.CalledProcessError:
+        return []
+
+
+def _read_routes() -> dict:
+    """读 amail_routes.toml(email → target URL)。"""
+    routes = {}
+    if not ROUTES_FILE.exists():
+        return routes
+    try:
+        for line in ROUTES_FILE.read_text().splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            routes[k.strip().strip('"')] = v.strip().strip('"')
+    except Exception:
+        pass
+    return routes
+
+
+def cmd_bridge(args) -> int:
+    """bridge 维护:状态查看 / 按系统重刷转发路由 / 重启。"""
+    pids = _bridge_pids()
+    running = len(pids) > 0
+
+    # ── --restart:重启 bridge(单实例,精确杀)──
+    if args.restart:
+        if not BRIDGE_CFG.exists():
+            _fail(f"bridge 配置不存在: {BRIDGE_CFG}(未部署?)")
+        sys.path.insert(0, str(SCRIPTS_DIR))
+        from deploy_bridge import start_bridge
+        bin_path = BRIDGE_DIR / "bin" / "amail-bridge"
+        if not bin_path.exists():
+            _fail(f"bridge 二进制不存在: {bin_path}")
+        ok = start_bridge(str(bin_path), str(BRIDGE_CFG), str(BRIDGE_PID))
+        if ok:
+            _ok(f"bridge restarted (pid={open(BRIDGE_PID).read().strip() if BRIDGE_PID.exists() else '?'})")
+        else:
+            _fail("bridge 启动失败——查日志 " + str(BRIDGE_LOG))
+        return 0
+
+    # ── 状态查看(无 --system-id/--home)──
+    if not args.system_id and not args.home:
+        print("  bridge 状态:")
+        # 进程
+        if running:
+            _ok(f"进程: {len(pids)} 个 ({', '.join(map(str, pids))})")
+        else:
+            _warn("进程: 未运行")
+        # 配置
+        if BRIDGE_CFG.exists():
+            try:
+                import tomllib
+                with open(BRIDGE_CFG, "rb") as f:
+                    td = tomllib.load(f)
+                pull = td.get("pull", {})
+                systems = pull.get("systems") or []
+                sys_ids = [s.get("system_id", "?")[-12:] for s in systems]
+                _ok(f"配置: mode={td.get('mode','?')} addr={td.get('addr','?')} "
+                    f"systems={sys_ids}")
+            except Exception as e:
+                _warn(f"配置读取失败: {e}")
+        else:
+            _warn("配置: amail_bridge.toml 不存在")
+        # 路由表
+        routes = _read_routes()
+        if routes:
+            _ok(f"路由: {len(routes)} 条")
+            for email, target in sorted(routes.items()):
+                print(f"       {email} → {target}")
+        else:
+            _warn("路由表为空(amail_routes.toml)")
+        # 日志新鲜度
+        if BRIDGE_LOG.exists():
+            try:
+                age = time.time() - BRIDGE_LOG.stat().st_mtime
+                _ok(f"日志: {int(age)}s 前更新 ({BRIDGE_LOG})")
+            except Exception:
+                pass
+        return 0
+
+    # ── 重刷转发路由:指定系统 home 或 id ──
+    # 1) 解析系统 + 平台
+    system_home = Path(args.home).expanduser() if args.home else Path()
+    sid, platform = resolve_system_id(system_home, args.system_id or "")
+    if not sid:
+        _fail("无法确定 system_id(用 --system-id 或 --home 指定)")
+    if not platform:
+        platform = resolve_platform(system_home)
+    if not platform:
+        _fail(f"无法确定平台(system {sid})")
+
+    cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+    if not cfg_path.is_file():
+        _fail(f"系统配置不存在: {cfg_path}")
+    gw = json.loads(cfg_path.read_text())
+    if not running:
+        _warn("bridge 未运行——仅更新本地路由表,不会热加载(先 --restart)")
+
+    # 2) 计算该系统所有 agent 的期望路由(平台专属接收端)
+    domain = gw.get("domain", "")
+    system_name = gw.get("system_name", "")
+    routes = _read_routes()
+    refreshed = []
+    missing = []
+
+    agents = _system_agents(sid)
+    for email, recv_url in agents:
+        # 校验 agentmail.json 存在(注册完备)
+        if not email:
+            continue
+        target = recv_url
+        old = routes.get(email)
+        try:
+            req = urllib.request.Request(
+                f"http://{BRIDGE_ADDR}/api/v1/routes",
+                data=json.dumps({"email": email, "host": target, "port": 80}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                resp = json.loads(r.read().decode())
+            refreshed.append(email)
+            if old != target:
+                print(f"  ↻ {email}: {old or '(无)'} → {target}")
+            else:
+                print(f"  ✓ {email}: {target}(unchanged)")
+        except Exception as e:
+            missing.append(email)
+            _warn(f"  ✗ {email} 路由注册失败: {e}")
+
+    # 3) 汇总
+    if refreshed:
+        _ok(f"重刷完成: {len(refreshed)} 条路由已注册/确认")
+    if missing:
+        _warn(f"{len(missing)} 条失败(检查 bridge 是否运行)")
+        return 1
+    return 0
+
+
+def _system_agents(sid: str) -> list[tuple[str, str]]:
+    """该系统所有 agent 的 (email, 接收端 URL)。平台适配:读取各平台
+    接收端配置。返回 [(email, target_url), ...]。"""
+    sysdir = SYSTEMS_DIR / sid
+    if not sysdir.is_dir():
+        return []
+    result = []
+    # 每个 agent 的 agentmail.json(含 email)
+    for sub in sorted(sysdir.iterdir()):
+        aj = sub / "agentmail.json"
+        if not aj.is_file():
+            continue
+        try:
+            d = json.loads(aj.read_text())
+            email = d.get("email", "")
+            if not email:
+                continue
+        except Exception:
+            continue
+        # 接收端 URL 由平台决定:Hermes=webhook 端口,OpenClaw=/hook 接收端
+        # 优先读已有路由表(幂等),否则按平台默认
+        routes = _read_routes()
+        existing = routes.get(email)
+        if existing:
+            result.append((email, existing))
+            continue
+        # 从系统配置推断接收端
+        result.append((email, _default_recv_url(sid, email)))
+    return result
+
+
+def _default_recv_url(sid: str, email: str) -> str:
+    """推断该 agent 的接收端 URL:bridge_port 优先(OpenClaw=/hook),
+    Hermes 用 webhook 端口 + /webhooks/agentmail-inbound。"""
+    cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+    port = 8799
+    try:
+        gw = json.loads(cfg_path.read_text())
+        port = int(gw.get("bridge_port") or 8799)
+        # Hermes:bridge_port 字段存在但实际 webhook 端口在 profile config
+        system_home = gw.get("system_home", "")
+        if system_home and (Path(system_home) / "hermes-agent").exists():
+            try:
+                import yaml
+                cfg_p = Path(system_home) / "profiles" / (email.split("@")[0].split(".")[-1]) / "config.yaml"
+                if not cfg_p.exists():
+                    cfg_p = Path(system_home) / "config.yaml"
+                if cfg_p.exists():
+                    wh = (yaml.safe_load(cfg_p.read_text()) or {}).get("platforms", {}).get("webhook", {})
+                    port = int(wh.get("port") or wh.get("extra", {}).get("port") or 8646)
+            except Exception:
+                pass
+            return f"http://127.0.0.1:{port}/webhooks/agentmail-inbound"
+    except Exception:
+        pass
+    return f"http://127.0.0.1:{port}/hook"
+
+
+# ═══════════════════════════════════════════════════════════════
 #  main
 # ═══════════════════════════════════════════════════════════════
 
@@ -416,6 +635,12 @@ def main():
     p_mn.add_argument("--system-id")
     p_mn.add_argument("--default", help="新的默认主 agent 名")
     p_mn.set_defaults(func=cmd_mailname)
+
+    p_br = sub.add_parser("bridge", help="本机 bridge 维护(状态/重刷路由/重启)")
+    p_br.add_argument("--system-id", help="重刷该系统的转发路由")
+    p_br.add_argument("--home", help="系统 home(平台根),配合重刷")
+    p_br.add_argument("--restart", action="store_true", help="重启 bridge(单实例)")
+    p_br.set_defaults(func=cmd_bridge)
 
     args = ap.parse_args()
     sys.exit(args.func(args) or 0)
