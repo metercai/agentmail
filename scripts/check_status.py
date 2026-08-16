@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-check_status.py — One-shot amail pipeline runtime status check
+check_status.py — One-shot amail pipeline runtime status check (generic)
 
-Covers the full chain: amail-gateway → amail-bridge → agent-gateway → agent-profile
-Each layer ≤3 key checkpoints with path verification. Output: formatted table or JSON.
+Covers the full chain: amail-gateway → amail-bridge → agent config →
+agent hook interface → ping-pong. Platform-agnostic: works for any
+agent system (Hermes/OpenClaw/DeerFlow/dsh) via a per-platform adapter
+(L3/L4 vary by platform; L1/L2/L5 are shared).
 
 Usage:
-    python3 lib/check_status.py              # table output
-    python3 lib/check_status.py --json       # JSON output
-    python3 lib/check_status.py --verbose    # with fix suggestions
+    python3 scripts/check_status.py [--agent-type hermes|openclaw|auto]
+    python3 scripts/check_status.py --json       # JSON output
+    python3 scripts/check_status.py --verbose    # with fix suggestions
+    python3 scripts/check_status.py --ping       # run ping-pong test only
 """
 import sys, os, json, subprocess, time, re, socket
 from pathlib import Path
@@ -161,6 +164,7 @@ class Check:
         groups = [
             ("amail-gateway (external mail gateway)", [c for c in self.checks if c["level"] == "gateway"]),
             ("amail-bridge (local NAT traversal bridge)",  [c for c in self.checks if c["level"] == "bridge"]),
+            ("agent (platform config + hook interface)",  [c for c in self.checks if c["level"] == "agent"]),
             ("agent-gateway (Hermes gateway)",  [c for c in self.checks if c["level"] == "agent-gw"]),
             ("agent-profile (agent entity)",   [c for c in self.checks if c["level"] == "profile"]),
         ]
@@ -183,6 +187,373 @@ class Check:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Platform adapters (generic check tool — L3/L4 vary per platform)
+# ═══════════════════════════════════════════════════════════════
+# Each adapter provides:
+#   name()                    → platform id ("hermes"/"openclaw"/...)
+#   detect()                  → bool: is this platform present on this host?
+#   list_agents()             → [{name, email, cfg, api_key, ...}] agents to check
+#   check_config(c, agent)    → L3: name&apikey/webhook/skill/toolset/register
+#   check_hook(c, agent)      → L4: inbound mail hook interface probe
+# Shared L1 gateway / L2 bridge / L5 ping-pong are platform-independent.
+
+def _detect_agent_type() -> str:
+    """Probe the host for a supported agent platform. Returns id or 'unknown'.
+
+    探测优先级(2026-08-16 双平台共存机器实测):
+    ① --agent-home 被显式指定(非默认 ~/.hermes)→ 视为 Hermes 意图
+       (Hermes 是唯一用 agent-home 定位的平台;OpenClaw 固定 ~/.openclaw)
+    ② ~/.openclaw/openclaw.json 存在 → openclaw
+    ③ AGENT_HOME 下有 hermes-agent 或 profiles/ → hermes
+    ④ unknown
+    """
+    explicit_home = False
+    if "--agent-home" in sys.argv:
+        try:
+            ai = sys.argv.index("--agent-home")
+            v = sys.argv[ai + 1]
+            if v and Path(v).expanduser() != Path.home() / ".hermes":
+                explicit_home = True
+        except (ValueError, IndexError):
+            pass
+    if explicit_home:
+        return "hermes"
+    if (Path.home() / ".openclaw" / "openclaw.json").is_file():
+        return "openclaw"
+    if (AGENT_HOME / "hermes-agent").exists() or (AGENT_HOME / "profiles").is_dir():
+        return "hermes"
+    return "unknown"
+
+
+# ── Hermes adapter ─────────────────────────────────────────────
+def _hermes_detect() -> bool:
+    return (AGENT_HOME / "hermes-agent").exists() or (AGENT_HOME / "profiles").is_dir()
+
+
+def _hermes_list_agents() -> list[dict]:
+    """Hermes: one agent per profile (+ default root profile).
+
+    两种布局:
+    - AGENT_HOME = Hermes 根(~/.hermes):default 根 profile + profiles/*/
+    - AGENT_HOME = 某 profile 目录(如 ~/.hermes/profiles/agentmail,
+      check_status --agent-home 常用):该目录自身即 agent
+    """
+    agents = []
+    is_profile_dir = (AGENT_HOME / ".agentmail").is_file() and not (AGENT_HOME / "profiles").is_dir()
+
+    if is_profile_dir:
+        # AGENT_HOME 即 profile:自身是一个 agent
+        ptr = AGENT_HOME / ".agentmail"
+        email = ""
+        try:
+            email = json.loads(ptr.read_text()).get("email", "")
+        except Exception:
+            pass
+        agents.append({
+            "name": AGENT_HOME.name, "email": email,
+            "profile_dir": AGENT_HOME,
+            "config": AGENT_HOME / "config.yaml",
+        })
+        return agents
+
+    # Hermes 根布局:default 根 profile
+    ptr = AGENT_HOME / ".agentmail"
+    if ptr.is_file():
+        try:
+            d = json.loads(ptr.read_text())
+            agents.append({
+                "name": "default", "email": d.get("email", ""),
+                "profile_dir": AGENT_HOME,
+                "config": AGENT_HOME / "config.yaml",
+            })
+        except Exception:
+            pass
+    # Named profiles
+    profiles_dir = AGENT_HOME / "profiles"
+    if profiles_dir.is_dir():
+        for pdir in sorted(profiles_dir.iterdir()):
+            if not pdir.is_dir():
+                continue
+            ptr = pdir / ".agentmail"
+            email = ""
+            try:
+                email = json.loads(ptr.read_text()).get("email", "")
+            except Exception:
+                pass
+            agents.append({
+                "name": pdir.name, "email": email,
+                "profile_dir": pdir,
+                "config": pdir / "config.yaml",
+            })
+    return agents
+
+
+def _hermes_check_config(c: Check, agent: dict):
+    """L3 Hermes: name&apikey / webhook / skill / toolset / register."""
+    name = agent.get("name", "?")
+    pd = agent.get("profile_dir")
+    cfg = agent.get("config")
+    email = agent.get("email", "")
+
+    # 3.1 name & api_key: 该 agent 的 agentmail.json
+    sid = _resolve_system_id()
+    aj_path = (SYSTEMS_DIR / sid / _clean_agent_dir_name(email) / "agentmail.json") if (sid and email) else None
+    api_key = ""
+    if aj_path and aj_path.is_file():
+        try:
+            api_key = json.loads(aj_path.read_text()).get("api_key", "")
+        except Exception:
+            pass
+    ok = bool(email and api_key)
+    c.add("agent", "name_apikey", ok,
+          f"{name}: {email or 'no email'}" + (", api_key ✓" if api_key else ", api_key MISSING"),
+          "Run register_profiles.py to register the profile")
+
+    # 3.2 webhook: profile config platforms.webhook + route secret
+    wh_ok = False
+    try:
+        import yaml
+        if cfg and cfg.exists():
+            wh = (yaml.safe_load(cfg.read_text()) or {}).get("platforms", {}).get("webhook", {})
+            wh_ok = bool(wh.get("enabled") and wh.get("extra", {}).get("secret"))
+    except Exception:
+        pass
+    c.add("agent", "webhook", wh_ok,
+          f"{name}: webhook " + ("enabled + secret ✓" if wh_ok else "MISSING (platforms.webhook)"),
+          "Run ensure_webhook_config.py / configure.sh")
+
+    # 3.3 skill: profile skills/agentmail/
+    skill_dir = pd / "skills" / "agentmail" if pd else None
+    skill_ok = bool(skill_dir and skill_dir.is_dir())
+    c.add("agent", "skill", skill_ok,
+          f"{name}: skills/agentmail " + ("✓" if skill_ok else "MISSING"),
+          "Run install-skill or copy skills/SKILL.md")
+
+    # 3.4 toolset: platform_toolsets.webhook/cli 含 agentmail
+    ts_ok = False
+    try:
+        import yaml
+        if cfg and cfg.exists():
+            pt = (yaml.safe_load(cfg.read_text()) or {}).get("platform_toolsets", {})
+            for seg in ("webhook", "cli"):
+                tools = pt.get(seg) or []
+                if "agentmail" in tools:
+                    ts_ok = True
+                    break
+    except Exception:
+        pass
+    c.add("agent", "toolset", ts_ok,
+          f"{name}: platform_toolsets " + ("含 agentmail ✓" if ts_ok else "MISSING"),
+          "Run ensure_webhook_config.py")
+
+    # 3.5 register: 云端注册(api_key 存在 + webhook route 存在)
+    route_ok = False
+    subs = pd / "webhook_subscriptions.json" if pd else None
+    if subs and subs.exists():
+        try:
+            routes = json.loads(subs.read_text())
+            route_ok = any("agentmail" in k.lower() for k in (routes or {}))
+        except Exception:
+            pass
+    reg_ok = bool(api_key and route_ok)
+    c.add("agent", "register", reg_ok,
+          f"{name}: " + ("registered ✓" if reg_ok else "api_key/route 不全"),
+          "Run register_profiles.py")
+
+
+def _hermes_check_hook(c: Check, agent: dict):
+    """L4 Hermes: POST /webhooks/agentmail-inbound — route registered & responsive."""
+    port = 8646
+    try:
+        import yaml
+        cfg = agent.get("config")
+        if cfg and cfg.exists():
+            wh = (yaml.safe_load(cfg.read_text()) or {}).get("platforms", {}).get("webhook", {})
+            port = int(wh.get("port") or wh.get("extra", {}).get("port") or 8646)
+    except Exception:
+        pass
+    route_name = "agentmail-inbound"
+    url = f"http://127.0.0.1:{port}/webhooks/{route_name}"
+    payload = json.dumps({
+        "message": "status-check",
+        "from": "check_status@localhost",
+        "subject": "amail connectivity probe",
+    }).encode()
+    try:
+        req = urllib.request.Request(url, data=payload,
+                                     headers={"Content-Type": "application/json"},
+                                     method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            c.add("agent", "hook", True, f"POST {route_name} → HTTP {r.status}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):  # route 存在 + 验签保护
+            c.add("agent", "hook", True,
+                  f"POST {route_name} → {e.code} (route active, HMAC required)")
+        elif e.code == 404:
+            c.add("agent", "hook", False, f"POST {route_name} → 404 route missing",
+                  "Run register_profiles.py to create the route")
+        else:
+            c.add("agent", "hook", False, f"POST {route_name} → HTTP {e.code}")
+    except Exception as e:
+        c.add("agent", "hook", False, f"Cannot reach {url}: {e}",
+              "Start Hermes gateway with --accept-hooks")
+
+
+# ── OpenClaw adapter ───────────────────────────────────────────
+def _openclaw_detect() -> bool:
+    return (Path.home() / ".openclaw" / "openclaw.json").is_file()
+
+
+def _openclaw_list_agents() -> list[dict]:
+    """OpenClaw: one agent per ~/.openclaw/agents/{id}."""
+    agents = []
+    agents_dir = Path.home() / ".openclaw" / "agents"
+    # OpenClaw 系统指针在 ~/.openclaw/.agentmail(不依赖 AGENT_HOME)
+    sid = ""
+    ptr = Path.home() / ".openclaw" / ".agentmail"
+    if ptr.is_file():
+        try:
+            sid = json.loads(ptr.read_text()).get("system_id", "")
+        except Exception:
+            pass
+    if not sid:
+        sid = _resolve_system_id()
+    if agents_dir.is_dir():
+        for adir in sorted(agents_dir.iterdir()):
+            if not adir.is_dir():
+                continue
+            email = ""
+            # amail email 从系统 agentmail.json 反查(agent_id 匹配)
+            sysdir = SYSTEMS_DIR / sid
+            if sysdir.is_dir():
+                for sub in sysdir.iterdir():
+                    aj = sub / "agentmail.json"
+                    if aj.is_file():
+                        try:
+                            d = json.loads(aj.read_text())
+                            if d.get("agent_id") == adir.name:
+                                email = d.get("email", "")
+                                break
+                        except Exception:
+                            pass
+            agents.append({
+                "name": adir.name, "email": email,
+                "agent_dir": adir,
+                "config": Path.home() / ".openclaw" / "openclaw.json",
+            })
+    return agents
+
+
+def _openclaw_check_config(c: Check, agent: dict):
+    """L3 OpenClaw: name&apikey / webhook / skill / toolset / register."""
+    name = agent.get("name", "?")
+    email = agent.get("email", "")
+
+    # 3.1 name & api_key(用 OpenClaw 指针的 sid,同 list_agents)
+    sid = ""
+    ptr = Path.home() / ".openclaw" / ".agentmail"
+    if ptr.is_file():
+        try:
+            sid = json.loads(ptr.read_text()).get("system_id", "")
+        except Exception:
+            pass
+    if not sid:
+        sid = _resolve_system_id()
+    aj_path = (SYSTEMS_DIR / sid / _clean_agent_dir_name(email) / "agentmail.json") if (sid and email) else None
+    api_key = ""
+    if aj_path and aj_path.is_file():
+        try:
+            api_key = json.loads(aj_path.read_text()).get("api_key", "")
+        except Exception:
+            pass
+    ok = bool(email and api_key)
+    c.add("agent", "name_apikey", ok,
+          f"{name}: {email or 'no email'}" + (", api_key ✓" if api_key else ", api_key MISSING"),
+          "Run register_agent.py --all")
+
+    # 3.2 webhook: agentmail.json webhook_secret
+    wh_ok = False
+    if aj_path and aj_path.is_file():
+        try:
+            wh_ok = bool(json.loads(aj_path.read_text()).get("webhook_secret"))
+        except Exception:
+            pass
+    c.add("agent", "webhook", wh_ok,
+          f"{name}: webhook_secret " + ("✓" if wh_ok else "MISSING"),
+          "Re-run register_agent.py (persists webhook_secret)")
+
+    # 3.3 skill: ~/.openclaw/skills/agentmail/
+    skill_ok = (Path.home() / ".openclaw" / "skills" / "agentmail").is_dir()
+    c.add("agent", "skill", skill_ok,
+          f"{name}: skills/agentmail " + ("✓" if skill_ok else "MISSING"),
+          "Run install-skill.sh")
+
+    # 3.4 toolset: openclaw.json mcp.servers.amail
+    ts_ok = False
+    try:
+        oc_path = agent.get("config")
+        if oc_path and oc_path.exists():
+            oc = json.loads(oc_path.read_text())
+            mcp = oc.get("mcp", {})
+            servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
+            ts_ok = "amail" in servers
+    except Exception:
+        pass
+    c.add("agent", "toolset", ts_ok,
+          f"{name}: mcp.servers.amail " + ("✓" if ts_ok else "MISSING"),
+          "Add amail MCP server to openclaw.json")
+
+    # 3.5 register
+    reg_ok = bool(api_key)
+    c.add("agent", "register", reg_ok,
+          f"{name}: " + ("registered ✓" if reg_ok else "api_key MISSING"),
+          "Run register_agent.py --all")
+
+
+def _openclaw_check_hook(c: Check, agent: dict):
+    """L4 OpenClaw: receiver endpoint (amail_openclaw_bridge.py) probe."""
+    url = "http://127.0.0.1:8799/hook"
+    payload = json.dumps({
+        "message": "status-check",
+        "from": "check_status@localhost",
+        "subject": "amail connectivity probe",
+    }).encode()
+    try:
+        req = urllib.request.Request(url, data=payload,
+                                     headers={"Content-Type": "application/json"},
+                                     method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            c.add("agent", "hook", True, f"POST /hook → HTTP {r.status}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            c.add("agent", "hook", True, f"POST /hook → {e.code} (receiver active)")
+        elif e.code == 404:
+            c.add("agent", "hook", False, f"POST /hook → 404",
+                  "Start amail_openclaw_bridge.py on port 8799")
+        else:
+            c.add("agent", "hook", False, f"POST /hook → HTTP {e.code}")
+    except Exception as e:
+        c.add("agent", "hook", False, f"Cannot reach {url}: {e}",
+              "Start amail_openclaw_bridge.py on port 8799")
+
+
+PLATFORMS = {
+    "hermes": {
+        "detect": _hermes_detect,
+        "list_agents": _hermes_list_agents,
+        "check_config": _hermes_check_config,
+        "check_hook": _hermes_check_hook,
+    },
+    "openclaw": {
+        "detect": _openclaw_detect,
+        "list_agents": _openclaw_list_agents,
+        "check_config": _openclaw_check_config,
+        "check_hook": _openclaw_check_hook,
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Helpers
 # ═══════════════════════════════════════════════════════════════
 def _json_req(url: str, headers: dict | None = None,
@@ -201,6 +572,28 @@ def _json_req(url: str, headers: dict | None = None,
             return e.code, {}
     except Exception as e:
         return 0, {"error": str(e)}
+
+
+def _resolve_platform_sid(agent_type: str) -> str:
+    """平台相关 system_id:Hermes = AGENT_HOME 指针;OpenClaw =
+    ~/.openclaw/.agentmail 指针。--system-id 显式指定优先。"""
+    if "--system-id" in sys.argv:
+        try:
+            ai = sys.argv.index("--system-id")
+            if ai + 1 < len(sys.argv):
+                return sys.argv[ai + 1]
+        except (ValueError, IndexError):
+            pass
+    if agent_type == "openclaw":
+        ptr = Path.home() / ".openclaw" / ".agentmail"
+    else:
+        ptr = AGENT_HOME / ".agentmail"
+    if ptr.is_file():
+        try:
+            return json.loads(ptr.read_text()).get("system_id", "")
+        except Exception:
+            pass
+    return os.environ.get("SYSTEM_ID", "")
 
 
 def _read_gw_cfg(sid: str = "") -> dict | None:
@@ -233,9 +626,9 @@ def _get_webhook_port() -> int:
 # ═══════════════════════════════════════════════════════════════
 #  Level 1: amail-gateway (external mail gateway)
 # ═══════════════════════════════════════════════════════════════
-def check_gateway(c: Check):
+def check_gateway(c: Check, sid: str = ""):
     """amail-gateway: health + SMTP port + API credentials"""
-    cfg = _read_gw_cfg()
+    cfg = _read_gw_cfg(sid)
     if not cfg:
         c.add("gateway", "config", False,
               "agentmail_gateway.json not found",
@@ -883,13 +1276,51 @@ def main():
     verbose = "--verbose" in sys.argv or "-v" in sys.argv
     json_out = "--json" in sys.argv
 
+    # 平台识别:--agent-type 显式指定,否则自动探测
+    agent_type = "auto"
+    if "--agent-type" in sys.argv:
+        try:
+            ai = sys.argv.index("--agent-type")
+            agent_type = sys.argv[ai + 1]
+        except (ValueError, IndexError):
+            pass
+    if agent_type == "auto":
+        agent_type = _detect_agent_type()
+    adapter = PLATFORMS.get(agent_type)
+    if not adapter:
+        print(f"{YELLOW}⚠ Unknown agent platform: {agent_type} (auto-detect → {_detect_agent_type()}){NC}")
+
+    # 平台相关 sid(Hermes=AGENT_HOME 指针 / OpenClaw=~/.openclaw 指针)
+    platform_sid = _resolve_platform_sid(agent_type)
+
     c = Check()
     c.verbose = verbose
 
-    check_gateway(c)
+    # L1 gateway(通用)
+    check_gateway(c, platform_sid)
+    # L2 bridge(通用,未部署自动跳过)
     check_bridge(c)
-    check_agent_gateway(c)
-    check_profiles(c)
+
+    # L3/L4 agent 配置完整性 + hook 接口(平台适配)
+    if adapter:
+        agents = adapter["list_agents"]()
+        if not agents:
+            c.add("agent", "discovery", False,
+                  f"no agents found for platform '{agent_type}'",
+                  "Check the platform home dir / agents registry")
+        for a in agents:
+            try:
+                adapter["check_config"](c, a)
+            except Exception as e:
+                c.add("agent", "config", False, f"{a.get('name')}: {e}")
+            try:
+                adapter["check_hook"](c, a)
+            except Exception as e:
+                c.add("agent", "hook", False, f"{a.get('name')}: {e}")
+    else:
+        # 未知平台:回退旧 Hermes 专用检查(兼容)
+        check_agent_gateway(c)
+        check_profiles(c)
 
     if json_out:
         c.print_json()
@@ -897,7 +1328,7 @@ def main():
         c.print_table()
         print()
         if c.all_pass():
-            print(f"  {GREEN}{BOLD}✓ All clear — amail-gateway → agent-profile ready{NC}")
+            print(f"  {GREEN}{BOLD}✓ All clear — amail-gateway → agent-platform ready{NC}")
         else:
             fail = sum(1 for ch in c.checks if not ch["pass"])
             print(f"  {YELLOW}{BOLD}⚠ {fail}  issue(s) — check items marked  {CROSS} {NC}")
