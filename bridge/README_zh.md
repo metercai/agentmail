@@ -117,24 +117,28 @@ gateway (公网)                              NAT/防火墙内
 
 ```bash
 # 解压对应平台的 zip 文件
-unzip amail-bridge-v0.6-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+unzip amail-bridge-v0.6.1-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 chmod +x amail-bridge
 
 # Push 模式（一个端口，所有 agent）
 cat > amail_bridge.toml << 'EOF'
 mode = "push"
-[push]
 addr = "0.0.0.0:38080"
 hostname = "bridge.example.com"     # 启用 TLS + ACME 自动证书
+admin_allowed_ips = ["127.0.0.1", "::1"]
+
+[push]
 allowed_ips = ["10.0.0.0/8"]
 EOF
 
 # Pull 模式（零端口，纯出站）
 cat > amail_bridge.toml << 'EOF'
 mode = "pull"
+addr = "127.0.0.1:38080"
+
 [pull]
 amail_url = "http://gateway.example.com:38080"
-admin_key = "sk-xxxxxxxx"
+admin_key = "sk-xxxxxxxx"           # system 级 key（pending 按 key 所属系统过滤）
 system_id = "admin"
 EOF
 
@@ -143,7 +147,7 @@ EOF
 
 # 检查健康状态
 curl http://localhost:38080/health
-# {"status":"ok","uptime_secs":42,"version":"0.6.0"}
+# {"status":"ok","uptime_secs":42,"version":"0.6.1"}
 ```
 ## 配置参考
 
@@ -151,15 +155,23 @@ curl http://localhost:38080/health
 
 ```toml
 mode = "push"
-
-[push]
 addr = "0.0.0.0:38080"                # 监听地址（默认："0.0.0.0:38080"）
-hostname = "bridge.example.com"       # 启用 TLS + ACME 自动证书
+hostname = "bridge.example.com"       # 公网域名 — 启用 TLS（见下）
+admin_allowed_ips = ["127.0.0.1", "::1"]   # admin API 白名单（默认：仅本机）
+
+# TLS 三种方式，选一
+# 1) hostname + 无证书         → ACME 自动证书（Let's Encrypt HTTP-01）
+# 2) hostname + 静态证书       → 用下面的 tls_cert / tls_key
+# 3) 无 hostname / IP hostname → 纯 HTTP
 # tls_cert = "/etc/ssl/bridge.crt"   # 静态 TLS 证书（可选）
 # tls_key  = "/etc/ssl/bridge.key"   # 静态 TLS 私钥（可选）
-# acme_cache = "./acme_cache"        # ACME 缓存目录（默认：./acme_cache）
-blacklist_ips = ["1.2.3.4"]          # 永久封禁 IP（默认：[]）
+# acme_email = "admin@example.com"   # ACME 联系邮箱（可选）
+# acme_challenge_path = "/var/www/"  # 外部 web 服务器的挑战目录
+                                     # （不设 → bridge 自己监听 80 端口）
+
+[push]
 allowed_ips = ["10.0.0.0/8"]         # IP 白名单，空 = 全部放行（默认：[]）
+blacklist_ips = ["1.2.3.4"]          # 永久封禁 IP（默认：[]）
 rate_limit = 30                       # 每源 IP req/sec，0 = 禁用（默认：30）
 body_limit_mb = 20                    # 请求体最大 MB（默认：20）
 ```
@@ -168,10 +180,12 @@ body_limit_mb = 20                    # 请求体最大 MB（默认：20）
 
 ```toml
 mode = "pull"
+addr = "127.0.0.1:38080"              # 监听地址（仅 admin API）
 
 [pull]
 amail_url = "http://gateway.example.com:38080"
-admin_key = "sk-xxxxxxxx"            # gateway 的 system admin API key
+admin_key = "sk-xxxxxxxx"            # system 级 key — 必须与 pending 投递
+                                     # 记录属于同一系统
 system_id = "admin"                  # pending 查询用的系统 ID（默认："admin"）
 poll_interval_sec = 10               # 轮询间隔秒（默认：10）
 ```
@@ -191,7 +205,7 @@ file = "/var/log/amail-bridge.log"   # 日志文件路径，不设则 stdout
 | 变量 | 对应配置 |
 |---|---|
 | `AMAIL_BRIDGE_MODE` | `mode` |
-| `AMAIL_BRIDGE_HOSTNAME` | `push.hostname` |
+| `AMAIL_BRIDGE_HOSTNAME` | `hostname`（顶层） |
 | `AMAIL_GATEWAY_URL` | `pull.amail_url` |
 | `AMAIL_BRIDGE_ADMIN_KEY` | `pull.admin_key` |
 | `AMAIL_BRIDGE_SYSTEM_ID` | `pull.system_id` |

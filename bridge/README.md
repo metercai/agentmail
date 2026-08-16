@@ -121,24 +121,28 @@ gateway (public)                              behind NAT/firewall
 
 ```bash
 # Unzip the appropriate zip for your platform
-unzip amail-bridge-v0.6-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+unzip amail-bridge-v0.6.1-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 chmod +x amail-bridge
 
 # Push mode (single port, all agents)
 cat > amail_bridge.toml << 'EOF'
 mode = "push"
-[push]
 addr = "0.0.0.0:38080"
 hostname = "bridge.example.com"     # enables TLS + ACME auto-cert
+admin_allowed_ips = ["127.0.0.1", "::1"]
+
+[push]
 allowed_ips = ["10.0.0.0/8"]
 EOF
 
 # Pull mode (zero ports, outbound only)
 cat > amail_bridge.toml << 'EOF'
 mode = "pull"
+addr = "127.0.0.1:38080"
+
 [pull]
 amail_url = "http://gateway.example.com:38080"
-admin_key = "sk-xxxxxxxx"
+admin_key = "sk-xxxxxxxx"           # system-scope key (pending filtered by key's system)
 system_id = "admin"
 EOF
 
@@ -147,7 +151,7 @@ EOF
 
 # Check health
 curl http://localhost:38080/health
-# {"status":"ok","uptime_secs":42,"version":"0.6.0"}
+# {"status":"ok","uptime_secs":42,"version":"0.6.1"}
 ```
 ## Configuration
 
@@ -155,15 +159,23 @@ curl http://localhost:38080/health
 
 ```toml
 mode = "push"
-
-[push]
 addr = "0.0.0.0:38080"                # listen address (default: "0.0.0.0:38080")
-hostname = "bridge.example.com"       # enables TLS + ACME auto-cert
+hostname = "bridge.example.com"       # public domain — enables TLS (see below)
+admin_allowed_ips = ["127.0.0.1", "::1"]   # admin API whitelist (default: localhost)
+
+# TLS: three ways — pick one
+# 1) hostname + nothing        → ACME auto-cert (Let's Encrypt HTTP-01)
+# 2) hostname + static certs   → use tls_cert / tls_key below
+# 3) no hostname / IP hostname → plain HTTP
 # tls_cert = "/etc/ssl/bridge.crt"   # static TLS cert (optional)
 # tls_key  = "/etc/ssl/bridge.key"   # static TLS key (optional)
-# acme_cache = "./acme_cache"        # ACME cache dir (default: ./acme_cache)
-blacklist_ips = ["1.2.3.4"]          # permanently blocked IPs (default: [])
+# acme_email = "admin@example.com"   # ACME contact (optional)
+# acme_challenge_path = "/var/www/"  # challenge dir for external web server
+                                     # (unset → bridge listens on port 80)
+
+[push]
 allowed_ips = ["10.0.0.0/8"]         # IP allowlist, empty = allow all (default: [])
+blacklist_ips = ["1.2.3.4"]          # permanently blocked IPs (default: [])
 rate_limit = 30                       # req/sec per source IP, 0 = disabled (default: 30)
 body_limit_mb = 20                    # max request body in MB (default: 20)
 ```
@@ -172,10 +184,12 @@ body_limit_mb = 20                    # max request body in MB (default: 20)
 
 ```toml
 mode = "pull"
+addr = "127.0.0.1:38080"              # listen address (admin API only)
 
 [pull]
 amail_url = "http://gateway.example.com:38080"
-admin_key = "sk-xxxxxxxx"            # system admin API key from gateway
+admin_key = "sk-xxxxxxxx"            # system-scope key — must belong to the
+                                     # same system as the pending deliveries
 system_id = "admin"                  # system ID for pending query (default: "admin")
 poll_interval_sec = 10               # poll interval in seconds (default: 10)
 ```
@@ -195,7 +209,7 @@ file = "/var/log/amail-bridge.log"   # log file, stdout if unset (default: none)
 | Variable | Equivalent config |
 |---|---|
 | `AMAIL_BRIDGE_MODE` | `mode` |
-| `AMAIL_BRIDGE_HOSTNAME` | `push.hostname` |
+| `AMAIL_BRIDGE_HOSTNAME` | `hostname` (top-level) |
 | `AMAIL_GATEWAY_URL` | `pull.amail_url` |
 | `AMAIL_BRIDGE_ADMIN_KEY` | `pull.admin_key` |
 | `AMAIL_BRIDGE_SYSTEM_ID` | `pull.system_id` |
