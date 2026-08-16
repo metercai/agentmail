@@ -230,20 +230,21 @@ def main() -> int:
     manager = args.manager or cfg.get("manager_address", "")
     mode = cfg.get("mode", "pull")  # pull|push(8/14 起 mode 合并进 gateway config)
 
-    # ── SMTP auth.local 认证 key:优先用 agent 的 api_key ──────────
-    # 安全语义:auth.local 模拟 manager 发信与 agent 一对一,用 agent key
-    # 最小权限(泄露只影响该 agent 自己的 manager 模拟);admin_key 回退。
-    # agent api_key 也是 64 位 hex(bytes.fromhex 兼容)。
-    ak = cfg.get("admin_key", "")
+    # ── SMTP auth.local 认证 key:只用 agent 的 api_key ─────────────
+    # auth.local 模拟 manager 发信与 agent 一对一,必须用 agent 自己的
+    # api_key(最小权限,无 admin_key 回退——回退会破坏 1:1 语义)。
+    # agent api_key 是 64 位 hex(bytes.fromhex 兼容)。
+    ak = ""
     try:
         agent_cfg_path = SYSTEMS_DIR / sid / _clean_agent_dir_name(email) / "agentmail.json"
         if agent_cfg_path.is_file():
             _acfg = json.loads(agent_cfg_path.read_text())
-            _aak = _acfg.get("api_key", "")
-            if _aak:
-                ak = _aak
+            ak = _acfg.get("api_key", "") or ""
     except Exception:
-        pass
+        ak = ""
+    if not ak:
+        print("✗ agent api_key 未找到(需 systems/{sid}/{agent}/agentmail.json)——auth.local 只接受 agent key")
+        return 1
 
     if not all([gw_url, ak, email, manager]):
         print("✗ Missing required config fields(gateway_url/admin_key/email/manager)")

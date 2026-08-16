@@ -236,26 +236,27 @@ def main() -> int:
         # 主 agent 地址,自适应共享域/非共享域(见 _main_agent_email)
         recipient = _main_agent_email(cfg)
 
-    # ── SMTP auth.local 认证 key:优先用 agent 的 api_key ──────────
-    # 安全语义:auth.local 模拟 manager 发信与 agent 一对一,用 agent key
-    # 最小权限(泄露只影响该 agent 自己的 manager 模拟);admin_key 回退。
-    # agent api_key 也是 64 位 hex(bytes.fromhex 兼容)。
-    ak = cfg.get("admin_key", "")
+    # ── SMTP auth.local 认证 key:只用 agent 的 api_key ─────────────
+    # auth.local 模拟 manager 发信与 agent 一对一,必须用 agent 自己的
+    # api_key(最小权限,无 admin_key 回退——回退会破坏 1:1 语义)。
+    # agent api_key 是 64 位 hex(bytes.fromhex 兼容)。
+    ak = ""
     try:
         agent_cfg_path = SYSTEMS_DIR / sid / _clean_agent_dir_name(recipient) / "agentmail.json"
         if agent_cfg_path.is_file():
             _acfg = json.loads(agent_cfg_path.read_text())
-            _aak = _acfg.get("api_key", "")
-            if _aak:
-                ak = _aak
+            ak = _acfg.get("api_key", "") or ""
     except Exception:
-        pass
+        ak = ""
+    if not ak:
+        print("✗ agent api_key 未找到(需 systems/{sid}/{agent}/agentmail.json)——auth.local 只接受 agent key")
+        return 1
 
     if not manager:
         print("✗ 无 manager 地址(需 --manager 或 config.manager_address)")
         return 1
     if not all([gw_url, ak]):
-        print("✗ Missing gateway_url/admin_key")
+        print("✗ Missing gateway_url/agent api_key")
         return 1
 
     # ── 识别 gateway 版本 → 选择 SMTP 入站方式 ──
