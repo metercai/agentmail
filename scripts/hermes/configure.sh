@@ -40,21 +40,5 @@ else
     info "All profiles already registered"
 fi
 
-# ── 4. 确保 webhook 入站配置就位 ─────────────────────────────
-# 幂等补写:platform_toolsets.webhook 含 agentmail + platforms.webhook
-# enabled + webhook_subscriptions.json 两条路由(agentmail-inbound /
-# amail-inbound)。断链根因曾多次出现:安装链从未写这些配置,全靠
-# 手工补——缺 platform_toolsets.webhook 段 → webhook 会话无 send_mail
-# ("收得到回不出");缺 amail-inbound 路由 → bridge 转发 404 卡 pending。
-# 批量处理 profiles/ 下全部 profile(单 profile 环境同样生效)。
-PROFILES_ROOT="${HERMES_PROFILES_DIR:-$HOME/.hermes/profiles}"
-if [ -d "$PROFILES_ROOT" ]; then
-    ENSURE_OUT=$(python3 "$SCRIPT_DIR/scripts/hermes/ensure_webhook_config.py" \
-        --profiles-dir "$PROFILES_ROOT" 2>&1)
-    echo "$ENSURE_OUT" | sed 's/^/    /'
-else
-    echo "  ⚠ profiles dir not found: $PROFILES_ROOT (skip webhook config ensure)"
-fi
-
-# ── 5. Ensure gateway running ──────────────────────────────────
+# ── 4. Ensure gateway running ──────────────────────────────────
 source "$SCRIPT_DIR/scripts/hermes/gateway.sh"

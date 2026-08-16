@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Register existing Hermes profiles as amail addresses in the current system."""
 import sys, os, json
+from pathlib import Path
 # tools/ is the shared module root (works whether run from repo or copied tree)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "hermes"))
@@ -28,6 +29,20 @@ def register_emails():
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools"))
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "hermes"))
     from agentmail_hermes import _auto_register_email
+    # 配置补全(幂等):platform_toolsets.webhook/cli 加 agentmail +
+    # platforms.webhook enabled。断链根因曾多次出现:安装链从未写这些
+    # 配置,全靠手工补——缺 webhook 段 → webhook 会话无 send_mail
+    # ("收得到回不出");缺 cli 段 → CLI 会话无邮件工具。路由
+    # (agentmail-inbound)由 _auto_register_email → _ensure_webhook_route
+    # 创建,**不需要第二个 amail-inbound**(bridge 全 URL 路由直接指
+    # /webhooks/agentmail-inbound)。
+    import importlib.util
+    _ensure_spec = importlib.util.spec_from_file_location(
+        "ensure_webhook_config",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "ensure_webhook_config.py"))
+    _ensure_mod = importlib.util.module_from_spec(_ensure_spec)
+    _ensure_spec.loader.exec_module(_ensure_mod)
 
     system_id = config.get("system_id", "")
     home = os.path.expanduser(os.environ.get("HERMES_HOME", "~/.hermes"))
@@ -48,6 +63,7 @@ def register_emails():
     else:
         # Register default profile
         try:
+            _ensure_mod.ensure_profile_config(Path(home))
             _auto_register_email("default", home, config)
             count += 1
         except Exception as e:
@@ -70,6 +86,7 @@ def register_emails():
                 except:
                     continue
             try:
+                _ensure_mod.ensure_profile_config(Path(profile_dir))
                 _auto_register_email(name, profile_dir, config)
                 count += 1
             except Exception as e:
