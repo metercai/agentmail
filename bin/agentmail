@@ -270,13 +270,25 @@ def cmd_reset(args) -> int:
     if not admin_key:
         _fail(f"无 admin-key({raw_key_path} 或配置)——reset 只走 admin-key 路径")
 
+    # 从已有配置读默认参数(CLI 显式覆盖)——reset 语义=重置为本机当前实际
+    cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+    prev = {}
+    if cfg_path.is_file():
+        try:
+            prev = json.loads(cfg_path.read_text())
+        except Exception:
+            pass
+    gw_url = args.gateway_url or prev.get("gateway_url", "")
+    sys_name = args.system_name or prev.get("system_name", "")
+    manager = args.manager or prev.get("manager_address", "")
+
     print(f"  reset platform={platform} system_id={sid}")
     env = dict(os.environ)
-    env["INTEGRATE_GATEWAY_URL"] = args.gateway_url or ""
+    env["INTEGRATE_GATEWAY_URL"] = gw_url
     env["INTEGRATE_SYSTEM_ID"] = sid
-    env["INTEGRATE_SYSTEM_NAME"] = args.system_name or ""
-    env["INTEGRATE_SYSTEM_HOME"] = str(system_home) if system_home else ""
-    env["INTEGRATE_MANAGER_ADDRESS"] = args.manager or ""
+    env["INTEGRATE_SYSTEM_NAME"] = sys_name
+    env["INTEGRATE_SYSTEM_HOME"] = str(system_home) if system_home else prev.get("system_home", "")
+    env["INTEGRATE_MANAGER_ADDRESS"] = manager
     env["INTEGRATE_ADMIN_KEY"] = admin_key
     r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "setup_system.py")], env=env)
     if r != 0:

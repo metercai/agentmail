@@ -326,18 +326,59 @@ def setup(
     if not webhook_host:
         webhook_host = os.environ.get("AMAIL_WEBHOOK_HOST", "")
     if not webhook_host:
+        # reset 场景(admin_key 路径 + 已有配置):跳过探测,继承已有值
+        # (实测 2026-08-16:探测出 IPv6 地址覆盖了 NAT 公网 webhook_host)
+        if admin_key:
+            try:
+                _p = gateway_config_path(system_id)
+                if _p.is_file():
+                    webhook_host = json.loads(_p.read_text()).get("webhook_host", "")
+            except Exception:
+                pass
+    if not webhook_host:
         webhook_host = _detect_webhook_host(gateway_url)
 
     # Path A: admin_key provided (already-activated system)
     if admin_key:
         if not system_id:
             return {"success": False, "error": "system_id is required for admin_key path"}
+        # reset 语义(2026-08-16 用户定调):已有配置存在时,空参数继承
+        # 已有值——只重写核心连接参数(gateway_url/admin_key/system_id),
+        # 不覆盖业务字段(domain/bridge_port/mode/save_raw_snapshots/
+        # webhook_host)。实测 bug:此前空参数用默认值(admin.local/False/
+        # 探测 webhook_host)破坏了 reset。
+        prev = {}
+        try:
+            p = gateway_config_path(system_id)
+            if p.is_file():
+                prev = json.loads(p.read_text())
+        except Exception:
+            pass
         _save_gateway_config(
             gateway_url=gateway_url, admin_key=admin_key, system_id=system_id,
-            domain=domain or "admin.local", system_name=system_name,
-            save_raw_snapshots=save_raw_snapshots, manager_address=manager_address,
-            webhook_host=webhook_host, system_home=system_home,
+            domain=domain or prev.get("domain", "admin.local"),
+            system_name=system_name or prev.get("system_name", ""),
+            save_raw_snapshots=save_raw_snapshots if save_raw_snapshots or "save_raw_snapshots" not in prev else prev.get("save_raw_snapshots", False),
+            manager_address=manager_address or prev.get("manager_address", ""),
+            webhook_host=webhook_host or prev.get("webhook_host", ""),
+            system_home=system_home or prev.get("system_home", ""),
         )
+        # _save_gateway_config 只写核心字段——reset 时把 prev 中未覆盖的
+        # 业务字段全补回(通用保护:default_agent_name/bridge_port/mode/
+        # 任意未来新增字段,2026-08-16 实测 default_agent_name 曾丢)
+        _p = gateway_config_path(system_id)
+        try:
+            if _p.is_file():
+                _cfg = json.loads(_p.read_text())
+                _written = {"gateway_url", "admin_key", "system_id", "system_name",
+                            "save_raw_snapshots", "domain", "manager_address",
+                            "webhook_host", "system_home"}
+                for _k, _v in prev.items():
+                    if _k not in _cfg and _k not in _written:
+                        _cfg[_k] = _v
+                _p.write_text(json.dumps(_cfg, indent=2, ensure_ascii=False))
+        except Exception:
+            pass
         agent_key = _downgrade_to_agent_admin_key(
             gateway_url, admin_key, system_id, manager_address,
         )
