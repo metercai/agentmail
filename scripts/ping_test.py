@@ -246,6 +246,12 @@ def main() -> int:
         print("✗ agent api_key 未找到(需 systems/{sid}/{agent}/agentmail.json)——auth.local 只接受 agent key")
         return 1
 
+    # ── pending 队列检测/ack key:系统管理 key ──────────────────────
+    # /api/v1/admin/pending 需要 system/bridge scope,agent scope 无权限。
+    # 这里用 gateway config 的 admin_key(系统级),与 SMTP auth 的
+    # agent key 职责分离。
+    admin_ak = cfg.get("admin_key", "")
+
     if not all([gw_url, ak, email, manager]):
         print("✗ Missing required config fields(gateway_url/admin_key/email/manager)")
         return 1
@@ -316,7 +322,7 @@ def main() -> int:
                 except Exception:
                     pass
         # ── pull 模式:pending 队列出现 ping → 清空(被 poll 拉取拦截)──
-        pend = _api_post(gw_url, ak, "/api/v1/admin/pending",
+        pend = _api_post(gw_url, admin_ak, "/api/v1/admin/pending",
                          {"limit": 20, "filter": [cfg.get("domain", "")]})
         batches = pend.get("batches") or []
         ping_here = any(PING_PREFIX in (b.get("body") or {}).get("subject", "")
