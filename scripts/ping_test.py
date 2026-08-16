@@ -9,20 +9,21 @@ Ping/Pong 语义:ping 邮件走完全部中间链(富化/附件/存储)才在调
 agent 前最后一刻被吞;pong 只在全链路正常时回复 —— 测试通过 =
 进入 agent 之前的所有处理正常。
 
-两种投递模式(按 agentmail_gateway.json 的 mode 字段自动选择):
-  pull : 验证 pending 队列 —— ping 出现 → poll 拉取拦截 → 队列清空
-         (OpenClaw/DeerFlow 默认)
-  push : 验证 agentmail.log 三阶段事件 —— ping_intercepted →
-         pong_sent → pong_returned(Hermes webhook.py 补丁)
+判定口径(用户定调 2026-08-16):**只信 agent 侧 agentmail.log 的
+三阶段事件** —— ping_intercepted → pong_sent → pong_returned。
+这是 agent 预处理链真实执行 + pong 回环的唯一权威证据,与入站
+投递方式(push 直推 / pull 经 bridge 拉取)无关——无论哪种方式,
+邮件最终都到达 agent 侧接收端触发拦截,三阶段事件必然产生。
+不依赖云端 pending 队列观测(那只是外围证据,不证明 agent 真正
+处理),因此无 mode 参数可选。
 
 用法:
   python3 ping_test.py [--system-id SID] [--agent-home DIR] [--timeout 120]
   --agent-home:  agent 系统 home(Hermes=~/.hermes,OpenClaw=~/.openclaw)
-                指针文件 {agent-home}/.agentmail 提供 system_id/email
+                 指针文件 {agent-home}/.agentmail 提供 system_id/email
   --agent:       可选的 agent 标识(定位 mail 目录,默认从指针 email)
   --timeout:     等待处理的秒数(默认 120)
   --no-snapshot: 跳过原始邮件快照检查
-  --mode pull|push: 强制指定模式(默认 auto)
 退出码: 0=通过, 1=失败
 """
 from __future__ import annotations
@@ -194,7 +195,6 @@ def main() -> int:
     ap.add_argument("--agent", default="", help="agent 标识(定位 mail 目录)")
     ap.add_argument("--manager", default="", help="发件人(manager)地址,默认 config.manager_address")
     ap.add_argument("--timeout", type=int, default=120)
-    ap.add_argument("--mode", choices=["auto", "pull", "push"], default="auto")
     ap.add_argument("--no-snapshot", action="store_true")
     args = ap.parse_args()
 
@@ -228,7 +228,6 @@ def main() -> int:
         # 主 agent 地址,自适应共享域/非共享域(见 _main_agent_email)
         email = _main_agent_email(cfg)
     manager = args.manager or cfg.get("manager_address", "")
-    mode = cfg.get("mode", "pull")  # pull|push(8/14 起 mode 合并进 gateway config)
 
     # ── SMTP auth.local 认证 key:只用 agent 的 api_key ─────────────
     # auth.local 模拟 manager 发信与 agent 一对一,必须用 agent 自己的
@@ -256,7 +255,6 @@ def main() -> int:
         print("✗ Missing required config fields(gateway_url/admin_key/email/manager)")
         return 1
 
-    mode = args.mode if args.mode != "auto" else mode
     mail_dir = MAIL_DIR / _clean_agent_dir_name(email)          # 快照目录(mail 数据)
     amail_log = AGENTMAIL_HOME / "logs" / f"agentmail.{_clean_agent_dir_name(email)}.log"
 
@@ -265,7 +263,7 @@ def main() -> int:
     ping_id = uuid.uuid4().hex[:12]
 
     # ── SMTP auth 发送(带 base 回落) ──
-    print(f"  mode={mode} edition={edition} system_id={sid} email={email}")
+    print(f"  edition={edition} system_id={sid} email={email}")
     t_sent = time.time()
     resp = _smtp_send_ping(gw_url, ak, email, manager, ping_id, edition)
     # base 版回落:auth.local 前缀会被当普通发件人拒(550),回落 manager 直发
@@ -300,7 +298,7 @@ def main() -> int:
     pull_acked = 0      # pending 清空(ping 被拉取拦截)的次数
 
     while time.time() < deadline:
-        # ── push 模式:agentmail.log 三阶段事件 ──
+        # ── 三阶段事件:agentmail.log(唯一权威判定,用户定调)──
         if amail_log.exists():
             for line in reversed(amail_log.read_text().splitlines()):
                 if ping_id not in line:
@@ -335,33 +333,20 @@ def main() -> int:
             pull_acked = 1
             print(f"  +{time.time() - t_sent:5.1f}s    Pending drained (poll intercepted) ✓")
 
-        if mode == "push" and found_ping and found_pong:
-            break
-        if mode == "pull" and pull_observed and pull_acked:
+        if found_ping and found_pong:
             break
         time.sleep(3)
 
-    # ── 结果判定 ──
-    if mode == "pull":
-        if pull_observed and pull_acked:
-            print(f"  ✓ Ping intercepted via pull — pipeline OK (ping_id={ping_id})")
-            result_ok = True
-        elif pull_observed:
-            print(f"  ✗ Ping reached pending but was not drained within {args.timeout}s")
-            result_ok = False
-        else:
-            print(f"  ✗ Ping never reached pending within {args.timeout}s")
-            result_ok = False
-    else:  # push
-        if found_ping and found_pong:
-            print(f"  ✓ Full push pipeline verified (ping_id={ping_id})")
-            result_ok = True
-        elif found_ping:
-            print(f"  ✓ Ping intercepted, but pong not returned within {args.timeout}s")
-            result_ok = False
-        else:
-            print(f"  ✗ No ping or pong detected within {args.timeout}s")
-            result_ok = False
+    # ── 结果判定:只信三阶段日志事件(用户定调 2026-08-16)──
+    if found_ping and found_pong:
+        print(f"  ✓ Full pipeline verified — ping intercepted & pong returned (ping_id={ping_id})")
+        result_ok = True
+    elif found_ping:
+        print(f"  ✗ Ping intercepted, but pong not returned within {args.timeout}s")
+        result_ok = False
+    else:
+        print(f"  ✗ No ping/pong events in {amail_log} within {args.timeout}s")
+        result_ok = False
     if not result_ok:
         return 1
 
