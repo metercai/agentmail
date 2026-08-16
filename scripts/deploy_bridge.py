@@ -130,7 +130,7 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
     merged.append(new_entry)
 
     lines = [
-        f'addr = "{addr}"',
+        f'bind = "{addr}"',
         f'mode = "{mode}"',
         '',
         '[logging]',

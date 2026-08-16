@@ -67,7 +67,7 @@ Works for both push and pull modes.
 - **inotify hot-reload** — changes to `amail_routes.toml` are applied immediately
 - **ACME auto-TLS** — set `hostname` → automatic Let's Encrypt certificate
   (HTTP-01 challenge), cached and auto-renewed every ~60 days
-- **Dual-port mode** — `addr` port 80 + `hostname` set → auto 80→443 redirect
+- **Dual-port mode** — `bind` port 80 + `hostname` set → auto 80→443 redirect
 - **Daemon mode** — `--daemon` double-fork, PID file, log file, zero supervision
 
 ---
@@ -90,7 +90,7 @@ gateway ──POST──►      │                                  │
 - Gateway POSTs to a **single port** on bridge; bridge auto-routes by agent email
 - Multiple recipients → gateway sends **one body copy** (batch aggregation)
 - TLS via rustls; automatic Let's Encrypt certificate when `hostname` is set
-- Dual-port mode: `addr = "0.0.0.0:80"` + `hostname = "bridge.example.com"` → auto 80→443
+- Dual-port mode: `bind = "0.0.0.0:80"` + `hostname = "bridge.example.com"` → auto 80→443
 - Real-time: gateway gets immediate HTTP response from agent via bridge
 
 ### Pull — zero ports, email inbound through NAT
@@ -127,7 +127,7 @@ chmod +x amail-bridge
 # Push mode (single port, all agents)
 cat > amail_bridge.toml << 'EOF'
 mode = "push"
-addr = "0.0.0.0:38080"
+bind = "0.0.0.0:38080"
 hostname = "bridge.example.com"     # enables TLS + ACME auto-cert
 admin_allowed_ips = ["127.0.0.1", "::1"]
 
@@ -138,7 +138,7 @@ EOF
 # Pull mode (zero ports, outbound only)
 cat > amail_bridge.toml << 'EOF'
 mode = "pull"
-addr = "127.0.0.1:38080"
+bind = "127.0.0.1:38080"
 
 [pull]
 amail_url = "http://gateway.example.com:38080"
@@ -159,7 +159,7 @@ curl http://localhost:38080/health
 
 ```toml
 mode = "push"
-addr = "0.0.0.0:38080"                # listen address (default: "0.0.0.0:38080")
+bind = "0.0.0.0:38080"                # listen address (default: "0.0.0.0:38080")
 hostname = "bridge.example.com"       # public domain — enables TLS (see below)
 admin_allowed_ips = ["127.0.0.1", "::1"]   # admin API whitelist (default: localhost)
 
@@ -184,7 +184,7 @@ body_limit_mb = 20                    # max request body in MB (default: 20)
 
 ```toml
 mode = "pull"
-addr = "127.0.0.1:38080"              # listen address (admin API only)
+bind = "127.0.0.1:38080"              # listen address (admin API only)
 
 [pull]
 amail_url = "http://gateway.example.com:38080"

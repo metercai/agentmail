@@ -6,7 +6,7 @@
 # ── Top-level ─────────────────────────────────────────────────────
 mode = "push"                        # "push" (bridge receives webhooks) or
                                      # "pull" (bridge polls the gateway)
-addr = "0.0.0.0:38080"               # Listen address (admin API + push webhooks)
+bind = "0.0.0.0:38080"               # Listen address (admin API + push webhooks)
 
 # TLS — choose ONE of the three options below:
 #   1. hostname (domain) + no static certs  → ACME auto-cert (Let's Encrypt)

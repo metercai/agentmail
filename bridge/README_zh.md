@@ -63,7 +63,7 @@ SIGINT/SIGTERM 优雅排空。
 - **inotify 热更新** — 修改 `amail_routes.toml` 即时生效
 - **ACME 自动 TLS** — 设置 `hostname` → 自动 Let's Encrypt 证书（HTTP-01 挑战），
   缓存复用，每 ~60 天自动续期
-- **双端口模式** — `addr` 端口 80 + `hostname` 已设 → 自动 80→443 重定向
+- **双端口模式** — `bind` 端口 80 + `hostname` 已设 → 自动 80→443 重定向
 - **守护模式** — `--daemon` 双 fork，PID 文件、日志文件，无需看管
 
 ---
@@ -86,7 +86,7 @@ gateway ──POST──►      │                                  │
 - gateway 发到 bridge 的**单一端口**，bridge 按 agent 邮箱自动路由
 - 同一封邮件多个收件人 → gateway 只传**一份 body**（批量聚合）
 - TLS 由 rustls 提供；设 `hostname` 即可启用 ACME 自动证书
-- 双端口：`addr = "0.0.0.0:80"` + `hostname` → 自动 80→443
+- 双端口：`bind = "0.0.0.0:80"` + `hostname` → 自动 80→443
 - 实时性：gateway 通过 bridge 即时获取 agent HTTP 响应
 
 ### Pull — 零端口，穿透 NAT 入站
@@ -123,7 +123,7 @@ chmod +x amail-bridge
 # Push 模式（一个端口，所有 agent）
 cat > amail_bridge.toml << 'EOF'
 mode = "push"
-addr = "0.0.0.0:38080"
+bind = "0.0.0.0:38080"
 hostname = "bridge.example.com"     # 启用 TLS + ACME 自动证书
 admin_allowed_ips = ["127.0.0.1", "::1"]
 
@@ -134,7 +134,7 @@ EOF
 # Pull 模式（零端口，纯出站）
 cat > amail_bridge.toml << 'EOF'
 mode = "pull"
-addr = "127.0.0.1:38080"
+bind = "127.0.0.1:38080"
 
 [pull]
 amail_url = "http://gateway.example.com:38080"
@@ -155,7 +155,7 @@ curl http://localhost:38080/health
 
 ```toml
 mode = "push"
-addr = "0.0.0.0:38080"                # 监听地址（默认："0.0.0.0:38080"）
+bind = "0.0.0.0:38080"                # 监听地址（默认："0.0.0.0:38080"）
 hostname = "bridge.example.com"       # 公网域名 — 启用 TLS（见下）
 admin_allowed_ips = ["127.0.0.1", "::1"]   # admin API 白名单（默认：仅本机）
 
@@ -180,7 +180,7 @@ body_limit_mb = 20                    # 请求体最大 MB（默认：20）
 
 ```toml
 mode = "pull"
-addr = "127.0.0.1:38080"              # 监听地址（仅 admin API）
+bind = "127.0.0.1:38080"              # 监听地址（仅 admin API）
 
 [pull]
 amail_url = "http://gateway.example.com:38080"
