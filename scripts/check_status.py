@@ -369,8 +369,23 @@ def _check_bridge_gateway_consistency(c: Check, td: dict):
 
     mismatches = []
 
+    # 用标准 tomllib 重读 bridge 配置(自定义 _parse_toml 不支持数组)
+    try:
+        import tomllib
+        with open(BRIDGE_CFG, "rb") as _f:
+            _td = tomllib.load(_f)
+    except Exception:
+        _td = td
+
     # (A) pull.amail_url vs gateway_url
-    bridge_amail = td.get("pull", {}).get("amail_url", "")
+    pull_cfg = _td.get("pull", {})
+    systems = pull_cfg.get("systems") or []
+    if systems:
+        bridge_amail = systems[0].get("amail_url", "")
+        bridge_sid = systems[0].get("system_id", "")
+    else:
+        bridge_amail = pull_cfg.get("amail_url", "")
+        bridge_sid = pull_cfg.get("system_id", "")
     gw_url = gw.get("gateway_url", "").rstrip("/")
     if bridge_amail and gw_url:
         b_host = bridge_amail.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
@@ -379,21 +394,22 @@ def _check_bridge_gateway_consistency(c: Check, td: dict):
             mismatches.append(f"bridge pulls from '{b_host}' but gateway is '{g_host}'")
 
     # (B) pull.system_id vs gateway system_id
-    bridge_sid = td.get("pull", {}).get("system_id", "")
     gw_sid = gw.get("system_id", "")
     if bridge_sid and gw_sid and bridge_sid != gw_sid:
         mismatches.append(f"bridge system_id differs: '{bridge_sid[:16]}...' vs '{gw_sid[:16]}...'")
 
     # (C) bridge addr vs gateway webhook_host
-    # NAT 部署: bridge 绑定通配地址(0.0.0.0/::)而 webhook_host 是公网映射
-    # 地址,两者必然不同——此时只比较端口;两边都是具体地址才要求完全一致。
-    bridge_addr = td.get("__top__", {}).get("addr", "") or td.get("bridge", {}).get("addr", "")
+    # NAT 部署: bridge 绑定本地地址(127.0.0.1/0.0.0.0/::)而 webhook_host 是
+    # 公网映射地址,两者必然不同——此时只比较端口;两边都是具体公网地址才
+    # 要求完全一致。
+    bridge_addr = _td.get("__top__", {}).get("addr", "") or _td.get("bridge", {}).get("addr", "")
     gw_wh = gw.get("webhook_host", "")
     if bridge_addr and gw_wh and bridge_addr != gw_wh:
         _bhost, _bport = _split_host_port(bridge_addr)
         _ghost, _gport = _split_host_port(gw_wh)
-        if _bhost in ("0.0.0.0", "::", "") and _bport and _bport == _gport:
-            pass  # NAT 通配绑定 + 端口一致 = 配置一致
+        _local_hosts = ("0.0.0.0", "::", "", "127.0.0.1", "localhost", "[::1]")
+        if _bhost in _local_hosts and _bport and _bport == _gport:
+            pass  # 本地绑定 + 端口一致 = 配置一致(NAT 映射到公网同端口)
         else:
             mismatches.append(f"bridge addr '{bridge_addr}' ≠ gateway webhook_host '{gw_wh}'")
 
@@ -442,9 +458,23 @@ def _check_bridge_activity(c: Check):
 
 def _check_bridge_pull_path(c: Check, td: dict) -> bool:
     """P0: Verify bridge credentials can reach amail-gateway pull API. Returns True if pass."""
-    amail_url = td.get("pull", {}).get("amail_url", "")
-    pull_key  = td.get("pull", {}).get("admin_key", "")
-    pull_key  = pull_key or td.get("pull", {}).get("api_key", "")
+    # 多系统支持:pull.systems 数组优先,空则回退单系统扁平字段。
+    # 用标准 tomllib 重读(自定义 _parse_toml 不支持数组)。
+    try:
+        import tomllib
+        with open(BRIDGE_CFG, "rb") as _f:
+            _td = tomllib.load(_f)
+        pull_cfg = _td.get("pull", {})
+    except Exception:
+        pull_cfg = td.get("pull", {})
+    systems = pull_cfg.get("systems") or []
+    if systems:
+        amail_url = systems[0].get("amail_url", "")
+        pull_key = systems[0].get("api_key", "") or systems[0].get("admin_key", "")
+    else:
+        amail_url = pull_cfg.get("amail_url", "")
+        pull_key = pull_cfg.get("admin_key", "")
+        pull_key = pull_key or pull_cfg.get("api_key", "")
     if not amail_url or not pull_key:
         c.add("bridge", "pull_path", False,
               "amail_url or admin_key missing in bridge config",
@@ -626,8 +656,15 @@ def _check_route_targets(c: Check, hermes_port: int):
         target_details = []
 
         for target in unique_targets:
-            host, port_str = target.rsplit(":", 1)
-            port = int(port_str)
+            # 支持全 URL(http://host:port/path)与裸 host:port 两种格式
+            if target.startswith("http://") or target.startswith("https://"):
+                from urllib.parse import urlparse
+                u = urlparse(target)
+                host = u.hostname or "127.0.0.1"
+                port = u.port or (443 if u.scheme == "https" else 80)
+            else:
+                host, port_str = target.rsplit(":", 1)
+                port = int(port_str)
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(2)
