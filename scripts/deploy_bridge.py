@@ -168,34 +168,33 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
         except (ProcessLookupError, PermissionError):
             pass
 
-    # 2) pgrep 兜底:列出全部 amail-bridge 进程按 PID 杀(防模式漏杀)
-    try:
-        out = subprocess.check_output(
-            ["pgrep", "-f", "amail-bridge"], text=True, timeout=5)
-        for line in out.splitlines():
-            pid = line.strip()
-            if pid and pid.isdigit():
-                # 不杀自己(本脚本 python 进程不含该串,安全)
-                try:
-                    os.kill(int(pid), 15)
-                except (ProcessLookupError, PermissionError):
-                    pass
-        time.sleep(1)
-        # 复查残留 → 强杀
+    # 2) pgrep 兜底:列出 amail-bridge 进程按 PID 杀(防模式漏杀)。
+    # ⚠️ 精确匹配:必须匹配 bridge 二进制路径特征(--config 参数或
+    # bridge/bin/amail-bridge),不能裸匹配 "amail-bridge" 字符串——
+    # 否则会误杀命令行含该串的其他进程(如集成脚本自身 shell、测试
+    # 包装进程)。2026-08-16 实测事故:裸匹配曾把生产 bridge 与调用
+    # shell 一并杀掉。
+    def _bridge_pids() -> list:
         try:
-            out2 = subprocess.check_output(
-                ["pgrep", "-f", "amail-bridge"], text=True, timeout=5)
-            for line in out2.splitlines():
-                pid = line.strip()
-                if pid and pid.isdigit():
-                    try:
-                        os.kill(int(pid), 9)
-                    except (ProcessLookupError, PermissionError):
-                        pass
+            out = subprocess.check_output(
+                ["pgrep", "-f", r"amail-bridge.*--config|amail-bridge.*\.toml"],
+                text=True, timeout=5)
+            return [int(l.strip()) for l in out.splitlines() if l.strip().isdigit()]
         except subprocess.CalledProcessError:
-            pass  # 无残留
-    except subprocess.CalledProcessError:
-        pass  # 无 bridge 进程
+            return []
+
+    for pid in _bridge_pids():
+        try:
+            os.kill(pid, 15)
+        except (ProcessLookupError, PermissionError):
+            pass
+    time.sleep(1)
+    # 复查残留 → 强杀(仅剩匹配 bridge 特征的进程)
+    for pid in _bridge_pids():
+        try:
+            os.kill(pid, 9)
+        except (ProcessLookupError, PermissionError):
+            pass
 
     if os.path.exists(pid_path):
         try:
