@@ -916,6 +916,27 @@ def _run_ping_test() -> int:
 # ═══════════════════════════════════════════════════════════════
 #  Main
 # ═══════════════════════════════════════════════════════════════
+def _detect_default_sid() -> str:
+    """默认检测范围:本机实际安装且已集成 agentmail 的第一个平台。
+
+    用户定调 2026-08-16:默认值必须以实际为准——本机装了哪些
+    agent 系统且有 agentmail 指针的第一个,不能扫 ~/.agentmail/systems/
+    目录(里面有历史遗留的过期旧系统,歧义混淆)。
+    按平台注册表顺序探测:平台存在 + 该平台指针(.agentmail)存在且
+    有 system_id → 返回该 sid。全部无 → 空。
+    """
+    for pid, adapter in PLATFORMS.items():
+        try:
+            if not adapter["detect"]():
+                continue
+            sid = _resolve_platform_sid(pid)
+            if sid:
+                return sid
+        except Exception:
+            continue
+    return ""
+
+
 def main():
     if "--ping" in sys.argv:
         return _run_ping_test()
@@ -936,19 +957,17 @@ def main():
     adapter = PLATFORMS.get(agent_type)
 
     # ══ system_id 锚点(用户定调 2026-08-16)══════════════════════
-    # 入参优先(--system-id / 上位传递),无则默认检测到的第一个系统。
+    # 入参优先(--system-id / 上位传递);无则默认 = 本机实际安装且
+    # 已集成 agentmail 的第一平台指针(绝不扫 systems/ 目录——历史
+    # 遗留旧系统会造成歧义)。
     platform_sid = _resolve_platform_sid(agent_type)
     if not platform_sid:
-        # 默认第一个系统:~/.agentmail/systems/ 下第一个目录
-        try:
-            dirs = sorted(d.name for d in SYSTEMS_DIR.iterdir()
-                          if d.is_dir() and (d / "agentmail_gateway.json").is_file())
-            if dirs:
-                platform_sid = dirs[0]
-        except Exception:
-            pass
+        platform_sid = _detect_default_sid()
+        if platform_sid:
+            print(f"  default system_id: {platform_sid} (from {_detect_agent_type()} pointer)")
     if not platform_sid:
-        print(f"{YELLOW}⚠ No system found (~/.agentmail/systems/) — run integrate.sh first{NC}")
+        print(f"{YELLOW}⚠ No system_id resolved — 请用 --system-id 指定"
+              f"(或确认本机已安装 agent 平台且有 agentmail 指针){NC}")
 
     c = Check()
     c.verbose = verbose
