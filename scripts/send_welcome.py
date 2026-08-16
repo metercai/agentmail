@@ -119,38 +119,47 @@ def _smtp_send(gateway_url: str, admin_key: str, agent_email: str,
         s.close()
 
 
-def _poll_reply(gateway_url: str, admin_key: str, agent_email: str,
-                timeout_secs: int) -> tuple:
-    """轮询 stats API 直到 sent 增加(agent 回复)。返回 (ok, sent, recv)。"""
-    url = f"{gateway_url.rstrip('/')}/api/v1/stats/agent/me?email={agent_email}"
+def _agent_log_path(agent_email: str) -> str:
+    """Per-agent processing log: ~/.agentmail/logs/agentmail.{cleaned_addr}.log."""
+    cleaned = re.sub(r"[^\w.\-]", "_", agent_email)
+    return os.path.expanduser(f"~/.agentmail/logs/agentmail.{cleaned}.log")
 
-    def _fetch():
-        try:
-            req = urllib.request.Request(url, headers={"X-Api-Key": admin_key})
-            with urllib.request.urlopen(req, timeout=5) as r:
-                return json.loads(r.read())
-        except Exception:
-            return {}
 
-    before = _fetch()
-    before_sent = before.get("sent", 0)
-    before_recv = before.get("received", 0)
-    print(f"  Stats baseline: sent={before_sent}, received={before_recv}")
+def _poll_reply(agent_email: str, timeout_secs: int) -> tuple:
+    """轮询 agent 侧 agentmail.log,直到 welcome 之后出现新 outbound 记录(agent 回复)。
+
+    取代旧 stats API 轮询:/api/v1/stats/agent/me 是 advanced 独有端点,
+    且 agent 级 key 查他人 stats 必 403(scope 先判 agent)→ 旧逻辑静默
+    返回空 dict,sent/received 恒 0。send_mail 成功后共享核心写
+    dir=outbound(含 email_id)到每个 agent 独立的 agentmail.log,
+    各 agent 类型通用。返回 (ok, email_id, to)。
+    """
+    log_path = _agent_log_path(agent_email)
+    baseline = 0
+    if os.path.isfile(log_path):
+        with open(log_path, encoding="utf-8") as f:
+            baseline = sum(1 for _ in f)
+    print(f"  Polling reply from log: {log_path} (baseline {baseline} lines)")
 
     start = time.time()
-    last_sent, last_recv = before_sent, before_recv
     while time.time() - start < timeout_secs:
         time.sleep(5)
-        now = _fetch()
-        now_sent = now.get("sent", last_sent)
-        now_recv = now.get("received", last_recv)
-        last_sent, last_recv = now_sent, now_recv
-        if now_sent > before_sent:
-            print(f"  ✓ Agent replied (sent={now_sent}, received={now_recv})")
-            return True, now_sent, now_recv
-    print(f"  ⚠ Timeout — email sent but no reply within {timeout_secs}s "
-          f"(last: sent={last_sent}, received={last_recv})")
-    return False, last_sent, last_recv
+        try:
+            with open(log_path, encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            continue
+        for ln in lines[baseline:]:
+            try:
+                e = json.loads(ln)
+            except Exception:
+                continue
+            if e.get("dir") == "outbound":
+                eid = e.get("email_id", "")
+                print(f"  ✓ Agent replied (outbound logged, email_id={eid or '?'})")
+                return True, eid, e.get("to", "")
+    print(f"  ⚠ Timeout — no outbound reply in log within {timeout_secs}s")
+    return False, "", ""
 
 
 def main() -> int:
@@ -240,11 +249,11 @@ This confirms: ✓ SMTP inbound  ✓ Webhook delivery  ✓ Agent processing  ✓
     if args.no_wait:
         return 0
 
-    ok, sent, recv = _poll_reply(gw_url, ak, recipient, args.timeout)
+    ok, email_id, _to = _poll_reply(recipient, args.timeout)
     if ok:
-        print(f"  ✓ Bidirectional send/receive verified (sent={sent}, received={recv})")
+        print(f"  ✓ Bidirectional send/receive verified (email_id={email_id or '?'})")
         return 0
-    print(f"  ✗ No reply within {args.timeout}s (sent={sent}, received={recv})")
+    print(f"  ✗ No reply within {args.timeout}s (log: {_agent_log_path(recipient)})")
     return 1
 
 

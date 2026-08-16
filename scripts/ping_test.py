@@ -208,8 +208,8 @@ def main() -> int:
         return 1
 
     mode = args.mode if args.mode != "auto" else mode
-    mail_dir = MAIL_DIR / _clean_agent_dir_name(email)
-    amail_log = mail_dir / "agentmail.log"
+    mail_dir = MAIL_DIR / _clean_agent_dir_name(email)          # 快照目录(mail 数据)
+    amail_log = AGENTMAIL_HOME / "logs" / f"agentmail.{_clean_agent_dir_name(email)}.log"
 
     # ── 识别 gateway 版本 → 选择 SMTP 入站方式 ──
     edition = _detect_edition(gw_url)

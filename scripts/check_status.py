@@ -27,6 +27,17 @@ CROSS  = '\u2717'
 
 # ── Path constants ─────────────────────────────────────────────
 AGENT_HOME = Path(os.environ.get("AGENT_HOME", str(Path.home() / ".hermes")))
+# --agent-home 直接指定 agent 系统 home(如 Hermes profile 目录),覆盖 env 默认;
+# 影响 AGENT_CFG/SUBS_FILE/PROFILES_DIR 全部派生路径
+if "--agent-home" in sys.argv:
+    try:
+        ai = sys.argv.index("--agent-home")
+        if ai + 1 < len(sys.argv):
+            _ah = Path(sys.argv[ai + 1]).expanduser()
+            if _ah.is_dir():
+                AGENT_HOME = _ah
+    except Exception:
+        pass
 AGENTMAIL_HOME = Path.home() / ".agentmail"
 SYSTEMS_DIR = AGENTMAIL_HOME / "systems"
 MAIL_DIR    = AGENTMAIL_HOME / "mail"
@@ -36,6 +47,16 @@ LOGS_DIR    = AGENTMAIL_HOME / "logs"
 def _clean_agent_dir_name(addr: str) -> str:
     """agent 地址 → 目录名（与 tools/agentmail_base._clean_agent_dir_name 一致）。"""
     return re.sub(r"[^\w.\-]", "_", addr)
+
+
+def _split_host_port(addr: str) -> tuple[str, str]:
+    """host:port 拆分(支持 [ipv6]:port)。"""
+    addr = addr.strip()
+    if addr.startswith("["):
+        host, _, rest = addr[1:].partition("]")
+        return host, rest.lstrip(":")
+    host, _, port = addr.rpartition(":")
+    return host, port
 
 def _resolve_system_id(args: list[str] | None = None) -> str:
     """Determine system_id: --system-id arg > AGENT_HOME/.agentmail > env."""
@@ -88,13 +109,13 @@ _AGENT_DIR: Path | None = None
 def _agentmail_log() -> Path:
     global _AGENT_DIR
     if _AGENT_DIR:
-        return _AGENT_DIR / "agentmail.log"
-    # Fallback: read email from pointer to find mail dir
+        return LOGS_DIR / f"agentmail.{_AGENT_DIR.name}.log"
+    # Fallback: read email from pointer to find the agent
     email = _resolve_agent_email()
     if email:
         _AGENT_DIR = MAIL_DIR / _clean_agent_dir_name(email)
-        return _AGENT_DIR / "agentmail.log"
-    return MAIL_DIR / "default" / "agentmail.log"
+        return LOGS_DIR / f"agentmail.{_clean_agent_dir_name(email)}.log"
+    return LOGS_DIR / "agentmail.default.log"
 
 def _agentmail_raw() -> Path:
     if _AGENT_DIR:
@@ -364,11 +385,17 @@ def _check_bridge_gateway_consistency(c: Check, td: dict):
         mismatches.append(f"bridge system_id differs: '{bridge_sid[:16]}...' vs '{gw_sid[:16]}...'")
 
     # (C) bridge addr vs gateway webhook_host
+    # NAT 部署: bridge 绑定通配地址(0.0.0.0/::)而 webhook_host 是公网映射
+    # 地址,两者必然不同——此时只比较端口;两边都是具体地址才要求完全一致。
     bridge_addr = td.get("__top__", {}).get("addr", "") or td.get("bridge", {}).get("addr", "")
     gw_wh = gw.get("webhook_host", "")
     if bridge_addr and gw_wh and bridge_addr != gw_wh:
-        # Only flag if both are set and they differ
-        mismatches.append(f"bridge addr '{bridge_addr}' ≠ gateway webhook_host '{gw_wh}'")
+        _bhost, _bport = _split_host_port(bridge_addr)
+        _ghost, _gport = _split_host_port(gw_wh)
+        if _bhost in ("0.0.0.0", "::", "") and _bport and _bport == _gport:
+            pass  # NAT 通配绑定 + 端口一致 = 配置一致
+        else:
+            mismatches.append(f"bridge addr '{bridge_addr}' ≠ gateway webhook_host '{gw_wh}'")
 
     if mismatches:
         detail = "; ".join(mismatches)
@@ -493,8 +520,9 @@ def check_agent_gateway(c: Check):
     _check_webhook_routes(c)
 
     # 3.3 PREPROCESS registration
-    hermes_dir = Path(os.environ.get("HERMES_DIR",
-                                     str(AGENT_HOME / "hermes-agent")))
+    # hermes-agent 源码仓位于 hermes 根(profile 目录时上溯两层)
+    _hermes_root = AGENT_HOME.parent.parent if AGENT_HOME.parent.name == "profiles" else AGENT_HOME
+    hermes_dir = Path(os.environ.get("HERMES_DIR", str(_hermes_root / "hermes-agent")))
     webhook_py = hermes_dir / "gateway" / "platforms" / "webhook.py"
     if webhook_py.exists():
         try:
