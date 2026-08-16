@@ -498,7 +498,12 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
                 webhook_url = ""
 
         # Ensure agentmail-inbound route exists (idempotent)
-        _ensure_webhook_route("agentmail-inbound", webhook_secret, profile_dir=profile_dir)
+        # skills=["agentmail"] so webhook sessions get the agentmail skill
+        # (send_mail protocol); without it the agent cannot reply by email.
+        _ensure_webhook_route(
+            "agentmail-inbound", webhook_secret, profile_dir=profile_dir,
+            skills=["agentmail"],
+        )
 
     # Register the email + generate activation code（公共注册链，幂等）
     reg = core.register_agent_email(
@@ -929,6 +934,145 @@ if registry is not None:
         )
     except Exception as _e:
         logger.warning("[a2a_board] tool registration failed: %s", _e)
+
+# 3b.2 邮件工具注册（6 个: send_mail / 联系人 / summary）
+# 与 board 工具同机制: registry.register 在 import 时执行,
+# 名字需与 toolsets.py _HERMES_CORE_TOOLS 中的条目一致。
+try:
+    registry.register(
+        name="send_mail",
+        toolset=_TOOLSET,
+        schema={
+            "name": "send_mail",
+            "description": "Send an email via your agentmail address. For replies, pass the original email's message_id to thread automatically (In-Reply-To/References/persona).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string", "description": "Recipient address(es); comma-separated for multiple"},
+                    "subject": {"type": "string", "description": "Email subject"},
+                    "body": {"type": "string", "description": "Email body (plain text)"},
+                    "cc": {"type": "string", "description": "CC address(es); comma-separated"},
+                    "attachments": {"type": "array", "items": {"type": "string"}, "description": "Local file paths to attach"},
+                    "message_id": {"type": "string", "description": "Original message_id when replying — threads the reply"},
+                },
+                "required": ["to", "subject", "body"],
+            },
+        },
+        handler=_handle_send_mail,
+        emoji="📧",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] send_mail registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="manage_contacts",
+        toolset=_TOOLSET,
+        schema={
+            "name": "manage_contacts",
+            "description": "Manage your address book (whitelist): check/add/remove contacts with direction control.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["check", "add", "remove"], "description": "check/add/remove"},
+                    "address": {"type": "string", "description": "Email address (required for add/remove)"},
+                    "direction": {"type": "string", "enum": ["all", "from", "to"], "description": "Direction filter (default all)"},
+                },
+                "required": ["action"],
+            },
+        },
+        handler=_handle_manage_contacts,
+        emoji="📇",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] manage_contacts registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="contact_profile",
+        toolset=_TOOLSET,
+        schema={
+            "name": "contact_profile",
+            "description": "Look up a contact profile by address or name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {"type": "string", "description": "Exact email address lookup"},
+                    "name": {"type": "string", "description": "Server-side search by name"},
+                },
+                "required": [],
+            },
+        },
+        handler=_handle_contact_profile,
+        emoji="👤",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] contact_profile registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="set_contact_profile",
+        toolset=_TOOLSET,
+        schema={
+            "name": "set_contact_profile",
+            "description": "Store or update a contact profile (JSON string; gateway merges and maintains the name index).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {"type": "string", "description": "Contact email address"},
+                    "profile": {"type": "string", "description": "JSON-formatted profile fields (name/title/location/relationship/focus/close_contacts/style)"},
+                },
+                "required": ["address", "profile"],
+            },
+        },
+        handler=_handle_set_contact_profile,
+        emoji="✍️",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] set_contact_profile registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="email_summary",
+        toolset=_TOOLSET,
+        schema={
+            "name": "email_summary",
+            "description": "Retrieve the stored thread summary for the email thread containing this message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "description": "Message id of any email in the thread"},
+                },
+                "required": ["message_id"],
+            },
+        },
+        handler=_handle_email_summary,
+        emoji="📝",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] email_summary registration failed: %s", _e)
+
+try:
+    registry.register(
+        name="set_email_summary",
+        toolset=_TOOLSET,
+        schema={
+            "name": "set_email_summary",
+            "description": "Save the updated thread summary after replying (status/next steps per active topic).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "description": "Message id of the email just replied to or sent"},
+                    "summary": {"type": "string", "description": "Fresh snapshot of active topics/decisions/pending actions"},
+                },
+                "required": ["message_id", "summary"],
+            },
+        },
+        handler=_handle_set_email_summary,
+        emoji="🗂️",
+    )
+except Exception as _e:
+    logger.warning("[agentmail] set_email_summary registration failed: %s", _e)
 
 # 3c. profile 生命周期钩子（地址自动注册/注销）
 register_profile_hook("profile_created", _auto_register_email)
