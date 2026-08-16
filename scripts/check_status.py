@@ -973,6 +973,41 @@ def main():
         agent_type = _detect_agent_type()
     adapter = PLATFORMS.get(agent_type)
 
+    # ══ sid 归属平台反选(2026-08-16 双平台共存实测)══════════════
+    # 探测顺序在双平台机器上可能选错平台(② ~/.openclaw 存在 → openclaw,
+    # 优先于 ③ Hermes 特征)。显式 --system-id 时,按 sid 在哪个平台的
+    # 指针下归属来覆盖探测结果——与 CLI 层"事实推断"定调一致
+    # (不引入 --agent-type 参数)。
+    if "--system-id" in sys.argv:
+        _sid = _resolve_platform_sid(agent_type)
+        if _sid:
+            sid_platform = None
+            # Hermes 指针:AGENT_HOME/.agentmail + profiles/*/.agentmail
+            ptr_cands = [AGENT_HOME / ".agentmail"]
+            profiles_dir = AGENT_HOME / "profiles"
+            if profiles_dir.is_dir():
+                ptr_cands += [p / ".agentmail" for p in sorted(profiles_dir.iterdir()) if p.is_dir()]
+            for ptr in ptr_cands:
+                if ptr.is_file():
+                    try:
+                        if json.loads(ptr.read_text()).get("system_id") == _sid:
+                            sid_platform = "hermes"
+                            break
+                    except Exception:
+                        pass
+            if not sid_platform:
+                ptr = Path.home() / ".openclaw" / ".agentmail"
+                if ptr.is_file():
+                    try:
+                        if json.loads(ptr.read_text()).get("system_id") == _sid:
+                            sid_platform = "openclaw"
+                    except Exception:
+                        pass
+            if sid_platform and sid_platform != agent_type:
+                print(f"  platform: {agent_type} → {sid_platform} (by system_id {_sid[:8]}…)")
+                agent_type = sid_platform
+                adapter = PLATFORMS.get(agent_type)
+
     # ══ system_id 锚点(用户定调 2026-08-16)══════════════════════
     # 入参优先(--system-id / 上位传递);无则默认 = 本机实际安装且
     # 已集成 agentmail 的第一平台指针(绝不扫 systems/ 目录——历史
