@@ -416,6 +416,18 @@ def send_pong(body: dict, pong_id_value: str) -> bool:
         return False
 
 
+def agentmail_log_path(email: str = "") -> Path:
+    """Canonical per-agent processing log path (user-mandated 2026-08-16).
+
+    All agent logs live under {AGENTMAIL_HOME|~/.agentmail}/logs/, one file
+    per agent: agentmail.{cleaned_addr}.log — NOT inside mail/{addr}/.
+    """
+    cleaned = _clean_agent_dir_name(email) if email else "default"
+    env = os.environ.get("AGENTMAIL_HOME", "")
+    base = Path(env).expanduser() if env else Path.home() / ".agentmail"
+    return base / "logs" / f"agentmail.{cleaned}.log"
+
+
 def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str = ""):
     """Append a JSON line to agentmail.log for ping-pong loop tracking.
 
@@ -433,50 +445,46 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str = "
         }
         if pong_status:
             _entry["pong_status"] = pong_status
-        # Resolve log dir: AGENTMAIL_HOME env > recipient email (payload.to,
-        # the agent's own address — platform-independent) > agent pointer
-        _log_dir = os.environ.get("AGENTMAIL_HOME", "")
-        if not _log_dir:
-            _email = ""
-            _to = payload.get("to") or payload.get("recipients") or []
-            if isinstance(_to, str):
-                _to = [_to]
-            if _to:
-                _first = str(_to[0]).strip()
-                if "@" in _first:
-                    _email = _first
-            if not _email:
-                _from = payload.get("from", "")
-                if isinstance(_from, str) and "@" in _from:
-                    _email = _from
-            if not _email:
-                # Try common agent pointers (Hermes profile, OpenClaw, AGENT_HOME)
-                _candidates = [
-                    os.environ.get("AGENT_MAIL_POINTER", ""),
-                    os.environ.get("HERMES_PROFILE_DIR", ""),
-                ]
-                if not any(_candidates):
-                    _home = os.environ.get("AGENT_HOME", "")
-                    if _home:
-                        _candidates.append(os.path.join(_home, ".agentmail"))
-                for _ptr in _candidates:
-                    if not _ptr:
-                        continue
-                    _p = Path(_ptr)
-                    if _p.is_dir():
-                        _p = _p / ".agentmail"
-                    if _p.is_file():
-                        try:
-                            _email = json.loads(_p.read_text()).get("email", "")
-                        except Exception:
-                            pass
-                        if _email:
-                            break
-            if _email:
-                _log_dir = os.path.expanduser("~/.agentmail/mail/" + _email.replace("@", "_"))
-        if not _log_dir:
-            _log_dir = os.path.expanduser("~/.agentmail/mail/default")
-        _log_path = os.path.join(_log_dir, "agentmail.log")
+        # Resolve agent email: recipient (payload.to, the agent's own address
+        # — platform-independent) > sender > agent pointer
+        _email = ""
+        _to = payload.get("to") or payload.get("recipients") or []
+        if isinstance(_to, str):
+            _to = [_to]
+        if _to:
+            _first = str(_to[0]).strip()
+            if "@" in _first:
+                _email = _first
+        if not _email:
+            _from = payload.get("from", "")
+            if isinstance(_from, str) and "@" in _from:
+                _email = _from
+        if not _email:
+            # Try common agent pointers (Hermes profile, OpenClaw, AGENT_HOME)
+            _candidates = [
+                os.environ.get("AGENT_MAIL_POINTER", ""),
+                os.environ.get("HERMES_PROFILE_DIR", ""),
+            ]
+            if not any(_candidates):
+                _home = os.environ.get("AGENT_HOME", "")
+                if _home:
+                    _candidates.append(os.path.join(_home, ".agentmail"))
+            for _ptr in _candidates:
+                if not _ptr:
+                    continue
+                _p = Path(_ptr)
+                if _p.is_dir():
+                    _p = _p / ".agentmail"
+                if _p.is_file():
+                    try:
+                        _email = json.loads(_p.read_text()).get("email", "")
+                    except Exception:
+                        pass
+                    if _email:
+                        break
+        # Canonical per-agent log: {logs}/agentmail.{cleaned_addr}.log
+        _log_path = agentmail_log_path(_email)
+        _log_dir = _log_path.parent
         os.makedirs(_log_dir, exist_ok=True)
         with open(_log_path, "a") as _f:
             _f.write(json.dumps(_entry, ensure_ascii=False) + "\n")

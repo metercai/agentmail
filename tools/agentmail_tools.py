@@ -563,6 +563,12 @@ def send_mail(
             out["thread_bootstrapped"] = True
         if upload_errors:
             out["note"] = f"Sent, but {len(upload_errors)} attachment(s) had issues: {'; '.join(upload_errors[:3])}"
+        # Log outbound to the per-agent agentmail.log for integration test
+        # verification (send_welcome polls this file instead of the stats API).
+        try:
+            _log_amail("outbound", sender, to, subject, email_id=out_msg_id)
+        except Exception:
+            pass
         return out
     else:
         error = result.get("error", result.get("detail", f"HTTP {status}"))
@@ -913,6 +919,22 @@ def _current_persona_name() -> Optional[str]:
 
 
 
+def _resolve_agent_email() -> str:
+    """Resolve the agent's base email via the pointer file (for log naming)."""
+    import agentmail_base as _abm
+    _resolver = _abm._PROFILE_DIR_RESOLVER
+    pdir = _resolver() if _resolver else ""
+    if pdir:
+        pointer = Path(pdir) / ".agentmail"
+        if pointer.is_file():
+            try:
+                pd = json.loads(pointer.read_text())
+                return pd.get("email", "")
+            except Exception:
+                pass
+    return ""
+
+
 def _agentmail_dir() -> Path:
     """Return the per-agent mail data directory (AGENTMAIL_HOME env or default).
 
@@ -923,19 +945,9 @@ def _agentmail_dir() -> Path:
         return Path(env)
     # Try pointer file first
     import agentmail_base as _abm
-    _resolver = _abm._PROFILE_DIR_RESOLVER
-    pdir = _resolver() if _resolver else ""
-    if pdir:
-        pointer = Path(pdir) / ".agentmail"
-        if pointer.is_file():
-            try:
-                pd = json.loads(pointer.read_text())
-                email = pd.get("email", "")
-                if email:
-                    ag_home = f"~/.agentmail/mail/{_abm._clean_agent_dir_name(email)}"
-                    return Path(ag_home).expanduser()
-            except Exception:
-                pass
+    email = _resolve_agent_email()
+    if email:
+        return Path.home() / ".agentmail" / "mail" / _abm._clean_agent_dir_name(email)
     # Fallback: use default directory
     return Path.home() / ".agentmail" / "mail" / "default"
 
@@ -946,21 +958,25 @@ def _raw_email_dir() -> Path:
 
 
 
-def _log_amail(direction: str, from_addr: str, to_addr: str, subject: str) -> None:
+def _log_amail(direction: str, from_addr: str, to_addr: str, subject: str,
+               email_id: str = "") -> None:
     """Append a lightweight email processing log entry (not dependent on save_raw_snapshots).
-    
+
     Log is written to {AGENTMAIL_HOME}/agentmail.log for integration test verification.
     """
     import json as _json
-    log_path = _agentmail_dir() / "agentmail.log"
+    import agentmail_base as _abm
+    log_path = _abm.agentmail_log_path(_resolve_agent_email())
     entry = _json.dumps({
         "ts": datetime.now().isoformat(),
         "dir": direction,
         "from": from_addr,
         "to": to_addr,
         "subj": subject,
+        **({"email_id": email_id} if email_id else {}),
     }, ensure_ascii=False)
     try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(entry + "\n")
     except Exception:
