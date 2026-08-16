@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""amail_openclaw_bridge.py — OpenClaw 入站 push bridge。
+"""amail_openclaw_bridge.py — OpenClaw 入站接收端(bridge 转发目标)。
 
-amail-gateway 推送（webhook_url 非空时）→ 本服务：
-  1. HMAC 验签（X-Webhook-Signature，webhook_secret）
-  2. 按收件地址路由 agent → dispatch_to_hooks（共享投递链）
-  3. ping-pong 拦截（__agentmail_ping__ → __agentmail_pong__）
+amail-bridge(拉取器,透明转发)→ 本服务:
+  1. HMAC 验签(X-Webhook-Signature,webhook_secret)
+  2. 共享入站预处理 process_inbound_mail(身份/persona/富化/存储,
+     最后一步 ping/pong 拦截——pong 回环走全链末端)
+  3. 未拦截 → 按收件地址路由 agent → dispatch_to_hooks(共享投递链)
 
-仅 push 模式启用（mode.json）。pull 模式部署不启动本服务。
-共享逻辑（富化/组装/投递/ping-pong/http）统一在 amail_base。
+接受路径: /hook 与 /webhooks/amail-inbound(bridge 全 URL 路由可指向
+任意端点,本服务兼容两路径;pull/push 两模式均可用)。
+
+共享逻辑(富化/组装/投递/ping-pong/http)统一在 amail_base。
 
 用法:
   python3 amail_openclaw_bridge.py [--port 8799] [--system-id SID]
@@ -52,7 +55,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self):
-        if self.path != "/hook":
+        if self.path not in ("/hook", "/webhooks/amail-inbound"):
             self._send_json(404, {"error": "not found"})
             return
         try:
@@ -71,10 +74,20 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "bad signature"})
             return
 
-        # 中间预处理(ping/pong 拦截/persona/富化)已由 poll 端共享链
-        # (preprocess_mail_payload)完成——本端点只做结尾投递。
+        # ── 2. 共享入站预处理(与 Hermes preprocess 同一实现)──
+        # 身份解析 → persona → 富化 → 存储,最后一步 ping/pong 拦截。
+        # 拦截(ping/pong)返回 None → 200 吞掉,不触发 agent;
+        # pong 由共享 send_pong 出站,回环走完整入站链(设计意图)。
+        try:
+            enriched = _base.process_inbound_mail(payload, dict(self.headers))
+        except Exception as e:
+            self._send_json(500, {"error": f"preprocess failed: {e}"})
+            return
+        if enriched is None:
+            self._send_json(200, {"status": "intercepted"})
+            return
 
-        # ── 2. 路由 + 共享投递链 ──
+        # ── 3. 路由 + 共享投递链(传原始 body,富化由投递链内部完成)──
         email = payload.get("to", "")
         if isinstance(email, list):
             email = email[0] if email else ""
@@ -85,7 +98,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         try:
             resp = _base.dispatch_to_hooks(
                 self.bridge["hooks_url"], self.bridge["hooks_token"], agent_id,
-                payload, idempotency_key=f"amail:{payload.get('mail_id', '')}",
+                dict(payload), idempotency_key=f"amail:{payload.get('mail_id', '')}",
                 extra_system_prompt=self.bridge.get("extra_system_prompt", ""),
                 headers=dict(self.headers),
                 system_id=self.bridge["system_id"],
@@ -99,6 +112,27 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(502, {"status": "hook_rejected", "detail": resp})
 
 
+def _resolve_webhook_secret(system_id: str, gw: dict) -> str:
+    """解析 webhook_secret: 优先 agentmail.json 落盘值(注册时生成并落盘,
+    与云端一致),回退 gateway config。为空时验签必 401。"""
+    secret = ""
+    try:
+        import glob
+        addr_dir = os.path.expanduser(f"~/.agentmail/systems/{system_id}")
+        for aj in glob.glob(os.path.join(addr_dir, "*", "agentmail.json")):
+            try:
+                data = json.load(open(aj))
+            except Exception:
+                continue
+            s = data.get("webhook_secret", "")
+            if s:
+                secret = s
+                break
+    except Exception:
+        pass
+    return secret or gw.get("webhook_secret", "")
+
+
 def serve(system_id: str, port: int, hooks_url: str) -> None:
     gw = _base.load_gateway_config(system_id)
     if not gw:
@@ -110,15 +144,17 @@ def serve(system_id: str, port: int, hooks_url: str) -> None:
 
     bridge = {
         "system_id": system_id,
-        "webhook_secret": gw.get("webhook_secret", ""),
+        "webhook_secret": _resolve_webhook_secret(system_id, gw),
         "registry": registry,
         "hooks_url": hooks_url,
         "hooks_token": hooks["token"],
         "extra_system_prompt": "",  # board 角色文本注入点（P1 board 接入后填充）
     }
+    if not bridge["webhook_secret"]:
+        print("WARNING: webhook_secret empty — inbound HMAC verification will reject all deliveries")
     BridgeHandler.bridge = bridge
     srv = ThreadingHTTPServer(("127.0.0.1", port), BridgeHandler)
-    print(f"bridge listening on 127.0.0.1:{port} (system {system_id}, mode=push)")
+    print(f"bridge listening on 127.0.0.1:{port} (system {system_id})")
     srv.serve_forever()
 
 

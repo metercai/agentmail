@@ -81,6 +81,9 @@ def _smtp_send(gateway_url: str, admin_key: str, agent_email: str,
     port = 25
 
     if edition == "advanced":
+        # auth.local 认证:网关要求 key 的 scope 含 system/platform
+        # (advanced/strategy.rs resolve_sender)——agent scope 会被拒。
+        # 因此这里必须用系统 admin_key,不能用 agent api_key。
         key_bytes = bytes.fromhex(admin_key)
         b64_key = base64.b64encode(key_bytes).decode().rstrip("=")
         encoded_manager = manager.replace("@", "=")
@@ -207,7 +210,10 @@ def main() -> int:
     # 收件地址:--to > --agent > 指针 email > config 派生
     recipient = args.to or email
     if not recipient:
-        recipient = f"{cfg.get('system_name', 'agent')}@{cfg.get('domain', '')}"
+        # 主 agent 地址派生:Hermes 默认 agent_id=default,OpenClaw 默认
+        # agent_id=main,共享域统一归一为 agent.{system_name}@{domain}
+        # (email_for_agent 规则)——不能直接用 system_name@domain(缺 agent.)
+        recipient = f"agent.{cfg.get('system_name', 'agent')}@{cfg.get('domain', '')}"
     if not manager:
         print("✗ 无 manager 地址(需 --manager 或 config.manager_address)")
         return 1

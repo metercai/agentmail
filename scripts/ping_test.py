@@ -84,6 +84,9 @@ def _smtp_send_ping(gw_url: str, admin_key: str, email: str,
     """
     host = gw_url.replace("https://", "").replace("http://", "").split("/")[0]
     if edition == "advanced":
+        # auth.local 认证:网关要求 key 的 scope 含 system/platform
+        # (advanced/strategy.rs resolve_sender)——agent scope 会被拒。
+        # 因此这里必须用系统 admin_key,不能用 agent api_key。
         key_bytes = bytes.fromhex(admin_key)
         b64_key = base64.b64encode(key_bytes).decode().rstrip("=")
         encoded_manager = manager.replace("@", "=")
@@ -199,7 +202,10 @@ def main() -> int:
     gw_url = cfg.get("gateway_url", "")
     ak = cfg.get("admin_key", "")
     if not email:
-        email = f"{cfg.get('system_name', 'agent')}@{cfg.get('domain', '')}"
+        # 主 agent 地址派生:Hermes 默认 agent_id=default,OpenClaw 默认
+        # agent_id=main,共享域统一归一为 agent.{system_name}@{domain}
+        # (email_for_agent 规则)——不能直接用 system_name@domain(缺 agent.)
+        email = f"agent.{cfg.get('system_name', 'agent')}@{cfg.get('domain', '')}"
     manager = args.manager or cfg.get("manager_address", "")
     mode = cfg.get("mode", "pull")  # pull|push(8/14 起 mode 合并进 gateway config)
 

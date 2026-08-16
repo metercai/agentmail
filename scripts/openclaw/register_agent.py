@@ -71,8 +71,36 @@ def register_one(client, system_id: str, agent_id: str, email: str,
         "manager_address": manager_address,
         "api_key": api_key,
         "mx_domain": domain,
+        # webhook_secret 落盘：接收端(bridge 转发目标)验签需与云端一致。
+        # pull 模式下 webhook_url 为空，但云端 pending 仍用该 secret 签名
+        # (webhook.rs sign_payload)——本地不落盘则接收端验签必 401。
+        "webhook_secret": webhook_secret,
     }
     return cfg
+
+
+def register_bridge_route(system_id: str, email: str, gw: dict) -> None:
+    """注册后向本机 bridge POST 路由(email → 接收端全 URL)。
+
+    bridge admin API: POST /api/v1/routes {email, host, port} —— 新版支持
+    全 URL(host 字段传完整 http://... 含路径,如 /hook)。
+    端口取 agentmail_gateway.json 的 bridge_port(默认 8799)。
+    """
+    import urllib.request
+    port = int(gw.get("bridge_port", 8799))
+    target_url = f"http://127.0.0.1:{port}/hook"
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:38081/api/v1/routes",
+            data=json.dumps({"email": email, "host": target_url, "port": port}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            resp = json.loads(r.read().decode())
+        print(f"  ✓ bridge route: {email} → {target_url} ({resp.get('status', '?')})")
+    except Exception as e:
+        print(f"  ⚠ bridge route registration failed: {e} (bridge may be down; routes can be added later)")
 
 
 def main() -> int:
@@ -120,6 +148,8 @@ def main() -> int:
             _base.save_agent_config(agent_id, cfg, system_id)
             created += 1
             print(f"  ✓ {agent_id} → {email} (api_key ok)")
+            # 注册后向本机 bridge 注册路由(email → 接收端全 URL)
+            register_bridge_route(system_id, email, gw)
         else:
             print(f"  ⚠ {agent_id} → {email} registered but no api_key (activation pending)")
 
