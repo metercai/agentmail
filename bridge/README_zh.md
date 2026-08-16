@@ -117,7 +117,7 @@ gateway (公网)                              NAT/防火墙内
 
 ```bash
 # 解压对应平台的 zip 文件
-unzip amail-bridge-v0.6.1-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+unzip amail-bridge-v0.6.2-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 chmod +x amail-bridge
 
 # Push 模式（一个端口，所有 agent）
@@ -147,7 +147,7 @@ EOF
 
 # 检查健康状态
 curl http://localhost:38080/health
-# {"status":"ok","uptime_secs":42,"version":"0.6.1"}
+# {"status":"ok","uptime_secs":42,"version":"0.6.2"}
 ```
 ## 配置参考
 
@@ -188,6 +188,23 @@ admin_key = "sk-xxxxxxxx"            # system 级 key — 必须与 pending 投�
                                      # 记录属于同一系统
 system_id = "admin"                  # pending 查询用的系统 ID（默认："admin"）
 poll_interval_sec = 10               # 轮询间隔秒（默认：10）
+```
+
+### Pull — 多系统
+
+一个 bridge 服务多个系统（生产形态：同一网关托管多个 `shared-token-*`
+系统）。每个条目用各自的 key 拉取自己系统的 pending；`amail_url` 可省略
+scheme（自动补 `http://`）。
+
+```toml
+mode = "pull"
+bind = "127.0.0.1:38080"
+
+[pull]
+systems = [
+  { amail_url = "https://amail.example.com", admin_key = "sk-aaa", system_id = "shared-token-aaaaaaaa", poll_interval_sec = 2 },
+  { amail_url = "https://amail.example.com", admin_key = "sk-bbb", system_id = "shared-token-bbbbbbbb", poll_interval_sec = 2 },
+]
 ```
 
 ### 日志

@@ -34,6 +34,8 @@ admin_allowed_ips = ["127.0.0.1", "::1"]
 # file = "/var/log/amail-bridge.log"  # log file path (default: stdout)
 
 # ── Pull mode (bridge polls gateway outbound) ─────────────────────
+#
+# Single system (legacy flat fields):
 # [pull]
 # amail_url = "http://gateway.example.com:38080"  # Gateway HTTP API URL
 # admin_key = "sk-..."                            # System-scope API key (must
@@ -42,6 +44,15 @@ admin_allowed_ips = ["127.0.0.1", "::1"]
 #                                                  # filtered by the key's system)
 # system_id = "admin"                             # System ID (default: "admin")
 # poll_interval_sec = 10                          # Poll interval seconds (default: 10)
+
+# Multi-system (one bridge, several systems — the production shape).
+# Each entry pulls its own system's pending deliveries with its own key.
+# amail_url may omit the scheme ("127.0.0.1:38080" → http:// is added).
+# [pull]
+# systems = [
+#   { amail_url = "https://amail.example.com", admin_key = "sk-aaa", system_id = "shared-token-aaaaaaaa", poll_interval_sec = 2 },
+#   { amail_url = "https://amail.example.com", admin_key = "sk-bbb", system_id = "shared-token-bbbbbbbb", poll_interval_sec = 2 },
+# ]
 
 # ── Push mode (bridge receives external POSTs) ────────────────────
 # [push]
