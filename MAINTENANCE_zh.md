@@ -23,9 +23,10 @@
 ├── systems/
 │   └── {system_id}/
 │       ├── agentmail_gateway.json     # 网关连接配置(gateway_url, admin_key, system_id, domain)
-│       ├── board/                     # A2A board 角色 prompt（安装时写入）
+│       ├── board/                     # 系统级 A2A 角色 prompt（回退）
 │       └── {agent_addr}/              # 按地址隔离的目录（清洗后的邮箱）
-│           └── agentmail.json         # agent 配置(email, api_key)
+│           ├── agentmail.json         # agent 配置(email, api_key)
+│           └── role_prompt/           # 地址级角色 prompt（优先）
 ├── mail/
 │   └── {agent_addr}/
 │       ├── agentmail.log              # agent 处理流水日志
@@ -35,8 +36,7 @@
 │   ├── amail_routes.toml              # 路由表(email → 本地 webhook)
 │   ├── bin/amail-bridge               # bridge 二进制
 │   ├── bridge.pid                     # bridge PID
-│   ├── bridge.out                     # bridge stdout 日志
-│   └── backup-deploy-*/               # 部署前备份（旧配置 + 旧二进制）
+│   └── bridge.out                     # bridge stdout 日志
 ├── logs/
 │   ├── amail-bridge.log               # bridge 运行日志
 │   └── agentmail.agent.{addr}.log     # 各 agent 处理日志
