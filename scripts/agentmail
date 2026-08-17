@@ -220,11 +220,16 @@ def cmd_install(args) -> int:
     manager = args.manager or _env_val("AMAIL_MANAGER_ADDRESS")
     prod_code = args.product_code or _env_val("AMAIL_PRODUCT_CODE")
     adm_key = args.admin_key or _env_val("AMAIL_ADMIN_KEY")
+    want_domain = args.domain or _env_val("AMAIL_DOMAIN")
     env["INTEGRATE_GATEWAY_URL"] = gw_url
     env["INTEGRATE_SYSTEM_ID"] = args.system_id or ""
     env["INTEGRATE_SYSTEM_NAME"] = sys_name
     env["INTEGRATE_SYSTEM_HOME"] = str(system_home)
     env["INTEGRATE_MANAGER_ADDRESS"] = manager
+    env["INTEGRATE_AMAIL_DOMAIN"] = want_domain
+    env["INTEGRATE_SAVE_SNAPSHOTS"] = (
+        "true" if _env_val("AMAIL_SAVE_SNAPSHOTS", "no").lower() in ("yes", "true", "1") else "false")
+    env["INTEGRATE_WEBHOOK_HOST"] = _env_val("AMAIL_WEBHOOK_HOST")
     if prod_code:
         env["INTEGRATE_USE_PRODUCT_CODE"] = "true"
         env["INTEGRATE_PRODUCT_CODE"] = prod_code
@@ -237,10 +242,48 @@ def cmd_install(args) -> int:
             env["INTEGRATE_ADMIN_KEY"] = cfg["admin_key"]
             env["INTEGRATE_SYSTEM_ID"] = args.system_id
 
-    r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "setup_system.py")], env=env)
-    if r != 0:
-        _fail("setup_system 失败")
+    try:
+        out = subprocess.check_output(
+            [sys.executable, str(SCRIPTS_DIR / "setup_system.py")],
+            env=env, text=True, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        _fail(f"setup_system 失败: {(e.output or '').strip()[-400:]}")
     _ok("system configured")
+    # 解析激活生成的 system_id(新系统路径 id 由服务器分配)
+    sid2 = args.system_id or ""
+    for line in out.splitlines():
+        if line.startswith("__ERROR__"):
+            _fail(line[len("__ERROR__"):].strip())
+    try:
+        data = json.loads(out)
+        sid2 = data.get("system_id") or sid2
+    except Exception:
+        pass
+    if sid2 and sid2 != (args.system_id or ""):
+        env["INTEGRATE_SYSTEM_ID"] = sid2
+        _ok(f"system_id: {sid2}")
+
+    # 1b) domain 预置/创建:AMAIL_DOMAIN 指定且系统缺失时主动创建
+    if want_domain and sid2:
+        sys.path.insert(0, str(SCRIPTS_DIR.parent / "tools"))
+        try:
+            from agentmail_tools import _GatewayClient
+            client = _GatewayClient(gw_url, env.get("INTEGRATE_ADMIN_KEY") or "")
+            existing = client.list_system_domains(sid2)
+            if isinstance(existing, list):
+                if any((d.get("domain") or "").lower() == want_domain.lower() for d in existing):
+                    _ok(f"domain present: {want_domain}")
+                else:
+                    body = {"id": f"d{int(time.time())}", "domain": want_domain}
+                    res = client._request("POST", f"/api/v1/admin/systems/{sid2}/domains", body=body)
+                    if isinstance(res, dict) and res.get("error"):
+                        _warn(f"domain create failed: {res.get('error')} {res.get('detail') or ''}".strip())
+                    else:
+                        _ok(f"domain created: {want_domain}")
+            else:
+                _warn(f"domain check failed: {existing}")
+        except Exception as e:
+            _warn(f"domain ensure skipped: {e}")
 
     # 2) 部署 bridge(单实例多系统合并)
     env2 = dict(os.environ)
@@ -1346,9 +1389,10 @@ def main():
     p_install.add_argument("--system-id")
     p_install.add_argument("--product-code", help="激活码(新系统)")
     p_install.add_argument("--admin-key", help="已激活系统的 admin key")
-    p_install.add_argument("--gateway-url", default="https://amail.token.tm")
+    p_install.add_argument("--gateway-url", default=None, help="网关地址(默认 AMAIL_URL 或 https://amail.token.tm)")
     p_install.add_argument("--system-name")
     p_install.add_argument("--manager")
+    p_install.add_argument("--domain", help="预置/创建域名(默认取 AMAIL_DOMAIN)")
     p_install.set_defaults(func=cmd_install)
 
     p_mn = sub.add_parser("mailname", help="查看/修改默认主 agent 名映射")
