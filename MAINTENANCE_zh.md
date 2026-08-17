@@ -1,4 +1,4 @@
-# AgentMail 维护手册
+# AgentMail 运维指南
 
 ---
 
@@ -6,10 +6,11 @@
 
 1. [本地存储](#1-本地存储)
 2. [日志](#2-日志)
-3. [check_status 诊断](#3-check_status-诊断)
-4. [amail-bridge 桥接服务](#4-amail-bridge-桥接服务)
-5. [Hermes Gateway](#5-hermes-gateway)
-6. [常见故障处理](#6-常见故障处理)
+3. [诊断（CLI）](#3-诊断cli)
+4. [amail-bridge](#4-amail-bridge)
+5. [Hermes 网关](#5-hermes-网关)
+6. [常见问题](#6-常见问题)
+7. [CLI 参考](#7-cli-参考)
 
 ---
 
@@ -19,37 +20,36 @@
 
 ```
 ~/.agentmail/
-├── {system_id}/
-│   ├── agentmail_gateway.json     # 网关连接配置（gateway_url, admin_key, system_id, domain）
-│   ├── agentmail.json              # 根 profile 的 agent 配置（email, api_key）
-│   └── profiles/
-│       └── {name}/
-│           └── agentmail.json      # 命名 profile 的 agent 配置（含 persona 邮件地址）
-├── .system_raw_key/
-│   └── {system_id}_admin.key  # 系统 admin_key 原始值（仅集成时写入）
-├── amail-bridge.log            # bridge 日志
-├── amail_bridge.toml           # bridge 配置文件
-├── amail_routes.toml           # bridge 路由表
-├── bin/
-│   └── amail-bridge            # bridge 二进制文件
-├── bridge.pid                  # bridge 进程 PID
-├── {email_hash}/
-│   └── agentmail.log           # agent 处理日志（每 email 独立文件）
-│   └── raw_email/              # 原始邮件快照（save_raw_snapshots=true 时）
+├── systems/
+│   └── {system_id}/
+│       ├── agentmail_gateway.json     # 网关连接配置(gateway_url, admin_key, system_id, domain)
+│       └── {agent_addr}/              # 按地址隔离的目录(清洗后的邮箱)
+│           └── agentmail.json         # agent 配置(email, api_key)
+├── mail/
+│   └── {agent_addr}/
+│       ├── agentmail.log              # agent 处理流水日志
+│       └── {yyyymm}/in-*.json         # 按月入站快照
+├── bridge/
+│   ├── amail_bridge.toml              # bridge 配置
+│   ├── amail_routes.toml              # 路由表(email → 本地 webhook)
+│   ├── bin/amail-bridge               # bridge 二进制
+│   └── bridge.pid                     # bridge PID
+├── logs/
+│   └── amail-bridge.log               # bridge 运行日志
+└── .system_raw_key/
+    └── {system_id}_admin.key          # 原始 admin key(仅集成时)
 ```
 
-### 关键文件说明
+### 关键文件
 
-| 文件 | 内容 | 写入时机 |
-|------|------|----------|
-| `agentmail_gateway.json` | gateway_url, admin_key, system_id, domain, system_name, save_raw_snapshots, manager_address, webhook_host | Step 4 `setup_system.py` |
-| `agentmail.json`（根） | email, api_key, gateway_url, domain, system_id, manager_address | `_auto_register_email()` + `_auto_activate_profile()` |
-| `profiles/{name}/agentmail.json` | 同上 + persona 前缀的 email | 同上 |
-| `amail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
+| 文件 | 内容 | 写入方 |
+|------|------|--------|
+| `systems/{sid}/agentmail_gateway.json` | gateway_url, admin_key, system_id, system_name, manager_address, system_home | `agentmail install` / `reset` → `setup_system.py` |
+| `systems/{sid}/{addr}/agentmail.json` | email, api_key, gateway_url, domain, system_id, manager_address | 注册链(`register_profiles.py` / `register_agent.py`) |
+| `bridge/amail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
 
-### 路径迁移
-
-所有配置统一在 `~/.agentmail/{system_id}/` 下。旧版 `~/.hermes/` 下的 `agentmail.json`、`agentmail_gateway.json` 不再使用。如有旧文件，手动清理。
+所有配置都放在 `~/.agentmail/` 下；agent home 中不保存网关配置
+（profile 目录里的 `.agentmail` 指针仅记录 system_id）。
 
 ---
 
@@ -59,9 +59,9 @@
 
 | 文件 | 内容 | 位置 |
 |------|------|------|
-| **agentmail.log** | 邮件处理流水线日志（ping/pong、inbound/outbound、预处理） | `~/.agentmail/{email_hash}/agentmail.log` |
-| **amail-bridge.log** | bridge 运行日志（拉取、转发、路由、健康检查） | `~/.agentmail/amail-bridge.log` |
-| **gateway.log** | Hermes gateway 日志（每个 profile 独立） | `~/.hermes/gateway.log`（根 profile）或 `~/.hermes/profiles/{name}/gateway.log` |
+| **agentmail.log** | 邮件流水日志(ping/pong、入站/出站、预处理) | `~/.agentmail/mail/{agent_addr}/agentmail.log` |
+| **amail-bridge.log** | bridge 运行日志(pull、转发、路由、健康) | `~/.agentmail/logs/amail-bridge.log` |
+| **gateway.log** | Hermes 网关日志(每 profile) | `~/.hermes/gateway.log`(根)或 `~/.hermes/profiles/{name}/gateway.log` |
 
 ### agentmail.log 格式
 
@@ -71,25 +71,25 @@
 {"ts":"2026-06-26T07:18:41Z","dir":"ping_intercepted","ping_id":"54deaff9cacc","from":"925457@qq.com","to":["mike@amail.token.tm"]}
 ```
 
-`dir` 字段取值：
+`dir` 取值：
 - `ping_intercepted` — webhook 收到 ping 邮件
-- `pong_sent` — pong 已通过 send_mail 发送
-- `pong_returned` — pong 邮件回环到 webhook 被识别
+- `pong_sent` — 经 send_mail 发出 pong
+- `pong_returned` — pong 回到 webhook
 - `inbound` — 普通入站邮件
 
 ### 日志轮转
 
-日志文件无自动轮转。建议通过 logrotate 或定时任务管理：
+无自动轮转。可配置 logrotate 或 cron：
 
 ```bash
-# logrotate 配置示例 /etc/logrotate.d/agentmail
-~/.agentmail/*/agentmail.log {
+# /etc/logrotate.d/agentmail
+~/.agentmail/mail/*/agentmail.log {
     daily
     rotate 7
     compress
     missingok
 }
-~/.agentmail/amail-bridge.log {
+~/.agentmail/logs/amail-bridge.log {
     daily
     rotate 7
     compress
@@ -99,80 +99,77 @@
 
 ---
 
-## 3. check_status 诊断
+## 3. 诊断（CLI）
 
-### 运行诊断
+### 运行
 
 ```bash
-# 完整管道诊断
-python3 lib/check_status.py
+# 全链路诊断
+./agentmail check
 
 # 带修复建议
-python3 lib/check_status.py --verbose
+./agentmail check --verbose
 
-# JSON 输出
-python3 lib/check_status.py --json
+# 心跳闭环测试(ping → pong)
+./agentmail ping
 
-# 端到端心跳测试
-python3 lib/check_status.py --ping
+# welcome 端到端(向 manager 发一封欢迎邮件)
+./agentmail welcome
 ```
 
-### 4 层检查
+### check 层级
 
-| 层级 | 检查项 | 说明 |
+| 层级 | 检查项 | 目的 |
 |------|--------|------|
-| **Level 1: gateway** | 健康检查 / whoami / 域名列表 | 验证 amail-gateway 连通性和权限 |
-| **Level 2: bridge** | 进程存活 / 待投递查询 / 日志活动 | 验证 bridge 运行和拉取路径 |
-| **Level 3: agent-gw** | webhook 端口可达 / 路由配置 | 验证 Hermes gateway 就绪 |
-| **Level 4: profile** | 配置文件存在 / email 有效 | 验证 agent profile 配置完整 |
+| **Level 1: gateway** | Health / whoami / 域名列表 | 验证网关连通与权限 |
+| **Level 2: bridge** | 进程存活 / 待处理查询 / 日志活跃 | 验证 bridge 运行与 pull 链路 |
+| **Level 3: agent-gw** | webhook 端口可达 / 路由配置 | 验证 Hermes 网关就绪 |
+| **Level 4: profile** | 配置文件存在 / 邮箱有效 | 验证 agent 配置完整 |
 
-### ping/pong 测试
+### Ping/Pong 测试
 
 ```bash
-python3 lib/check_status.py --ping
+./agentmail ping
 ```
 
-通过 SMTP 发送 ping 邮件 → gateway → bridge → webhook → 识别为 ping → 自动回复 pong（通过 gateway API）→ pong 作为 inbound 回环 → webhook 识别 → 写入 `pong_returned` 日志。
+经 SMTP 发送 ping 到网关 → bridge → webhook，触发自动 pong 回复，验证全链路。预期输出：
 
-预期输出：
 ```
   Ping sent: __agentmail_ping__:a1b2c3d4e5f6
-  +  1.2s    Webhook Receive (ping)         ✓
-  +  2.9s    Pong Sent (send_mail)          ✓
-  +  5.1s    Webhook Return (pong)          ✓
-  ⏱  Total round-trip: 5.1s
-  ✓ Full pipeline verified — ping_id=a1b2c3d4e5f6
+  +  1.2s    Webhook Receive (ping)         OK
+  +  2.9s    Pong Sent (send_mail)          OK
+  +  5.1s    Webhook Return (pong)          OK
+  Total round-trip: 5.1s
+  Full pipeline verified
 ```
 
 ---
 
-## 4. amail-bridge 桥接服务
+## 4. amail-bridge
 
 ### 进程管理
 
 ```bash
-# 查看运行状态
-ps aux | grep amail-bridge
-cat ~/.agentmail/bridge.pid
+# 状态(进程 / 配置 / 路由表 / 日志新鲜度)
+./agentmail bridge
 
-# 重新启动
-kill $(cat ~/.agentmail/bridge.pid)
-python3 lib/deploy_bridge.py
+# 重启(单实例)
+./agentmail bridge --restart
 
-# 查看日志
-tail -f ~/.agentmail/amail-bridge.log
+# 重刷某系统的转发路由
+./agentmail bridge --system-id <sid>
 ```
 
-### 配置文件
+### 配置
 
-`~/.agentmail/amail_bridge.toml`：
+`~/.agentmail/bridge/amail_bridge.toml`：
 
 ```toml
 mode = "pull"
 
 [pull]
 amail_url = "https://amail.token.tm"
-admin_key = "sk-bridge-xxx"
+admin_key = "***"
 system_id = "system-xxxx"
 poll_interval_sec = 5
 
@@ -182,44 +179,31 @@ fail_threshold = 3
 connect_timeout_sec = 3
 ```
 
-### 路由管理
-
-`~/.agentmail/amail_routes.toml` 或通过 bridge API 管理。
-
 ### 双模式
 
 | 模式 | 适用场景 | 说明 |
 |------|----------|------|
-| `pull` | Hermes 在内网，gateway 在外网 | bridge 定期拉取待投递邮件 |
-| `push` | Hermes 与 gateway 在同一网络 | gateway 直接推送 webhook（无需 bridge） |
+| `pull` | Hermes 内网、网关外网 | bridge 轮询待处理邮件 |
+| `push` | Hermes 与网关同网 | 网关直接 webhook 推送(无需 bridge) |
 
 ---
 
-## 5. Hermes Gateway
+## 5. Hermes 网关
 
 ### 进程管理
 
 ```bash
-# 启动根 profile gateway
+# 启动根 profile 网关
 hermes gateway run --accept-hooks --replace
 
-# 启动命名 profile gateway
+# 启动命名 profile 网关
 hermes -p {name} gateway run --accept-hooks --replace
 
-# 查看运行状态
+# 状态
 hermes gateway status
 
-# 查看端口
+# 端口
 grep -A2 'webhook:' ~/.hermes/config.yaml
-grep -A2 'webhook:' ~/.hermes/profiles/{name}/config.yaml
-```
-
-### 多 profile 网关
-
-每个命名 profile 运行独立的 Hermes gateway 进程，使用独立端口和独立 webhook 路由。多 profile 网关由 `lib/hermes_gateway.sh` 统一管理：
-
-```bash
-bash lib/hermes_gateway.sh
 ```
 
 ### 健康检查
@@ -228,73 +212,103 @@ bash lib/hermes_gateway.sh
 curl http://127.0.0.1:{port}/health
 ```
 
-根 profile 默认端口 8644，命名 profile 从 8645 起顺序分配。
+根 profile 默认端口 8644，命名 profile 从 8645 顺序递增。
 
 ---
 
-## 6. 常见故障处理
+## 6. 常见问题
 
-### ping 测试卡在 "pong not returned"
+### ping 卡在 "pong not returned"
 
-**原因：** pong 邮件未回环到 webhook。通常是 API key 与 email 不匹配导致 `send_mail` 失败。
+**原因：** pong 邮件未能回环。通常是 API key / 邮箱不匹配。
 
 **检查：**
 ```bash
-grep pong_status ~/.agentmail/*/agentmail.log
-# 如果看到 "Send failed: Sender mismatch" → key 所属 email 与 config 不一致
+grep pong_status ~/.agentmail/mail/*/agentmail.log
 ```
 
-**修复：** 检查 `~/.agentmail/{system_id}/agentmail.json` 的 email 和 api_key 是否匹配。根 profile 的 key 不能是 persona 的 key。
+**修复：** 核对 `~/.agentmail/systems/{sid}/{addr}/agentmail.json` 中 email 与 api_key 是否一致。
 
-### bridge 无法拉取邮件
+### bridge 拉不到邮件
 
 **检查：**
 ```bash
-# bridge 是否运行
-ps aux | grep amail-bridge
-
-# pull 配置
-cat ~/.agentmail/amail_bridge.toml
-
-# 网关连通性
+./agentmail bridge
 curl https://amail.token.tm/health
-
-# bridge 日志最近错误
-tail -20 ~/.agentmail/amail-bridge.log
+tail -20 ~/.agentmail/logs/amail-bridge.log
 ```
 
-### gateway 无法启动
+### 网关起不来
 
 **检查：**
 ```bash
-# webhook 端口被占用
 ss -tlnp | grep 8644
-
-# 配置语法
 hermes gateway run --dry-run
-
-# 日志
 cat ~/.hermes/gateway.log
 ```
 
 ### 重新集成
 
 ```bash
-# 移除 agentmail 对接(CLI,保留 ~/.agentmail/)
+# 移除 agentmail 对接(CLI,保留 ~/.agentmail/ 本机数据)
 ./agentmail uninstall --system-id <sid> --yes
 
 # 重新安装
 ./agentmail install --home ~/.hermes --system-id <sid>
 ```
 
-`agentmail install` 是幂等的——重复运行会自动跳过已完成步骤。
+`agentmail install` 是幂等的——重复运行自动跳过已完成步骤。
 
 ### API key 更新
 
-如果网关侧 key 轮转或失效：
+网关侧 key 轮换或失效时：
 
 ```bash
 # 方法 1：清空 agentmail.json 的 activation_code 和 api_key，让 agent 下次启动时重新激活
 # 方法 2：直接用新 key 替换 agentmail.json 中的 api_key
 # 方法 3：重新运行 ./agentmail reset --system-id <sid>
 ```
+
+---
+
+## 7. CLI 参考
+
+`./agentmail` 是唯一入口(仓库根 symlink → `scripts/agentmail`)。
+子命令(字母序)：`bridge`、`check`、`domain`、`install`、`mailname`、
+`ping`、`reset`、`stats`、`uninstall`、`welcome`。
+
+### 安装流程（重点）
+
+```bash
+# 新系统——用激活码激活
+./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com
+
+# 已有系统——复用已存配置或传入 admin key
+./agentmail install --home ~/.hermes --system-id <sid>
+./agentmail install --home ~/.openclaw --system-id <sid>
+```
+
+`install` 完成整条链路：系统激活 → bridge 部署 → 工具与 skill 安装 →
+webhook 补丁与 profile 注册。随后验证：
+
+```bash
+./agentmail check                      # 全链路诊断
+./agentmail ping                       # ping-pong 闭环
+./agentmail welcome                    # welcome 端到端(邮件到 manager)
+./agentmail stats                      # 本机总览(系统/agent/邮件统计)
+```
+
+### 日常运维
+
+```bash
+./agentmail stats                      # 本机总览(系统 + agent + 邮件统计)
+./agentmail domain --system-id <sid>   # 查看系统域名
+./agentmail domain --system-id <sid> --add example.com   # 创建域名
+./agentmail mailname --system-id <sid> --default NAME    # 修改主 agent 名
+./agentmail reset --system-id <sid>    # 用已存 admin key 重跑注册链
+./agentmail uninstall --system-id <sid> --yes            # 移除对接
+./agentmail bridge --restart           # 重启本地 bridge
+```
+
+`--home` 定位平台根(`~/.hermes` / `~/.openclaw`)；平台无法自动识别时
+优先用 `--system-id`。

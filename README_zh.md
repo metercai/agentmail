@@ -188,26 +188,23 @@ AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Herme
 | 命名 Profile | `{profile}.{system_name}@{domain}` | `report.meter@amail.token.tm` |
 | Persona | `{persona}.{profile}.{system_name}@{domain}` | `sales.report.meter@amail.token.tm` |
 
-### API Key 与 Profile 的关系
+### API Key 与 Agent 地址的关系
 
-API Key 随 Profile 生成，存储在 `~/.agentmail/{system_id}/agentmail.json`：
-
-- 根 Profile：`~/.agentmail/{system_id}/agentmail.json`
-- 命名 Profile：`~/.agentmail/{system_id}/profiles/{name}/agentmail.json`
+API Key 按 Agent 地址生成，存储在 `~/.agentmail/systems/{system_id}/{addr}/agentmail.json`：
 
 ### 运行时目录
 
 ```
 ~/.agentmail/
-├── {system_id}/
-│   ├── agentmail_gateway.json     # Gateway 连接配置
-│   ├── agentmail.json             # 根 Profile 配置（email + api_key）
-│   ├── profiles/
-│   │   └── {name}/
-│   │       └── agentmail.json     # 命名 Profile 配置
-│   └── board/
-│       └── role_prompt/           # Board 角色 prompt（安装时写入）
-└── .system_raw_key/               # 激活密钥
+├── systems/
+│   └── {system_id}/
+│       ├── agentmail_gateway.json     # Gateway 连接配置
+│       └── {agent_addr}/              # 按地址隔离的目录（清洗后的邮箱）
+│           └── agentmail.json         # email + api_key
+├── mail/
+│   └── {agent_addr}/                  # 各地址收到的邮件
+│       └── {yyyymm}/in-*.json         # 按月快照
+└── .system_raw_key/                   # 激活密钥
 ```
 
 ---

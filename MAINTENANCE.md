@@ -6,10 +6,11 @@
 
 1. [Local Storage](#1-local-storage)
 2. [Logs](#2-logs)
-3. [check_status Diagnostics](#3-check_status-diagnostics)
+3. [Diagnostics (CLI)](#3-diagnostics-cli)
 4. [amail-bridge](#4-amail-bridge)
 5. [Hermes Gateway](#5-hermes-gateway)
 6. [Common Issues](#6-common-issues)
+7. [CLI Reference](#7-cli-reference)
 
 ---
 
@@ -19,40 +20,36 @@
 
 ```
 ~/.agentmail/
-├── {system_id}/
-│   ├── agentmail_gateway.json     # Gateway connection config (gateway_url, admin_key, system_id, domain)
-│   ├── agentmail.json              # Root profile agent config (email, api_key)
-│   ├── board/
-│   │   └── role_prompt/            # Board role prompt files (installed from board/role_prompt_en/)
-│   └── profiles/
-│       └── {name}/
-│           └── agentmail.json      # Named profile agent config (with persona email)
-├── .system_raw_key/
-│   └── {system_id}_admin.key  # System admin_key raw value (integration only)
-├── amail-bridge.log            # Bridge logs
-├── amail_bridge.toml           # Bridge config
-├── amail_routes.toml           # Bridge route table
-├── bin/
-│   └── amail-bridge            # Bridge binary
-├── bridge.pid                  # Bridge process PID
-├── {email_hash}/
-│   ├── agentmail.log           # Agent processing log (per email)
-│   └── raw_email/              # Raw email snapshots (if save_raw_snapshots=true)
+├── systems/
+│   └── {system_id}/
+│       ├── agentmail_gateway.json     # Gateway connection config (gateway_url, admin_key, system_id, domain)
+│       └── {agent_addr}/              # per-address dir (keyed by cleaned email)
+│           └── agentmail.json         # agent config (email, api_key)
+├── mail/
+│   └── {agent_addr}/
+│       ├── agentmail.log              # agent pipeline log
+│       └── {yyyymm}/in-*.json         # monthly inbound snapshots
+├── bridge/
+│   ├── amail_bridge.toml              # bridge config
+│   ├── amail_routes.toml              # route table (email → local webhook)
+│   ├── bin/amail-bridge               # bridge binary
+│   └── bridge.pid                     # bridge PID
+├── logs/
+│   └── amail-bridge.log               # bridge runtime log
+└── .system_raw_key/
+    └── {system_id}_admin.key          # raw admin key (integration only)
 ```
 
 ### Key Files
 
 | File | Content | Written By |
 |------|---------|------------|
-| `agentmail_gateway.json` | gateway_url, admin_key, system_id, domain, system_name, save_raw_snapshots, manager_address, webhook_host | Step 4 `setup_system.py` |
-| `agentmail.json` (root) | email, api_key, gateway_url, domain, system_id, manager_address | `_auto_register_email()` + `_auto_activate_profile()` |
-| `profiles/{name}/agentmail.json` | Same + persona-prefixed email | Same |
-| `amail_bridge.toml` | mode, addr/pull config | `deploy_bridge.py` |
-| `board/role_prompt/*.md` | Role prompt templates | `install-tools.sh` |
+| `systems/{sid}/agentmail_gateway.json` | gateway_url, admin_key, system_id, system_name, manager_address, system_home | `agentmail install` / `reset` → `setup_system.py` |
+| `systems/{sid}/{addr}/agentmail.json` | email, api_key, gateway_url, domain, system_id, manager_address | registration chain (`register_profiles.py` / `register_agent.py`) |
+| `bridge/amail_bridge.toml` | mode, addr/pull config | `deploy_bridge.py` |
 
-### Path Migration
-
-All config consolidated under `~/.agentmail/{system_id}/`. Legacy `~/.hermes/` configs (`agentmail.json`, `agentmail_gateway.json`) no longer used. Clean up manually if present.
+All config lives under `~/.agentmail/`; no gateway config is kept in the agent home
+(pointer files `.agentmail` in profile dirs only reference the system_id).
 
 ---
 
@@ -62,8 +59,8 @@ All config consolidated under `~/.agentmail/{system_id}/`. Legacy `~/.hermes/` c
 
 | File | Content | Location |
 |------|---------|----------|
-| **agentmail.log** | Mail pipeline logs (ping/pong, inbound/outbound, preprocessing) | `~/.agentmail/{email_hash}/agentmail.log` |
-| **amail-bridge.log** | Bridge runtime logs (pull, forward, routing, health) | `~/.agentmail/amail-bridge.log` |
+| **agentmail.log** | Mail pipeline logs (ping/pong, inbound/outbound, preprocessing) | `~/.agentmail/mail/{agent_addr}/agentmail.log` |
+| **amail-bridge.log** | Bridge runtime logs (pull, forward, routing, health) | `~/.agentmail/logs/amail-bridge.log` |
 | **gateway.log** | Hermes gateway log (per profile) | `~/.hermes/gateway.log` (root) or `~/.hermes/profiles/{name}/gateway.log` |
 
 ### agentmail.log Format
@@ -86,13 +83,13 @@ No auto-rotation. Configure logrotate or cron:
 
 ```bash
 # /etc/logrotate.d/agentmail
-~/.agentmail/*/agentmail.log {
+~/.agentmail/mail/*/agentmail.log {
     daily
     rotate 7
     compress
     missingok
 }
-~/.agentmail/amail-bridge.log {
+~/.agentmail/logs/amail-bridge.log {
     daily
     rotate 7
     compress
@@ -102,25 +99,25 @@ No auto-rotation. Configure logrotate or cron:
 
 ---
 
-## 3. check_status Diagnostics
+## 3. Diagnostics (CLI)
 
 ### Run
 
 ```bash
 # Full pipeline diagnostics
-python3 scripts/check_status.py
+./agentmail check
 
 # With repair suggestions
-python3 scripts/check_status.py --verbose
+./agentmail check --verbose
 
-# JSON output
-python3 scripts/check_status.py --json
+# End-to-end heartbeat test (ping → pong loop)
+./agentmail ping
 
-# End-to-end heartbeat test
-python3 scripts/check_status.py --ping
+# Welcome e2e test (send a welcome email to the manager)
+./agentmail welcome
 ```
 
-### 4 Layers
+### check Layers
 
 | Layer | Checks | Purpose |
 |-------|--------|---------|
@@ -132,7 +129,7 @@ python3 scripts/check_status.py --ping
 ### Ping/Pong Test
 
 ```bash
-python3 scripts/check_status.py --ping
+./agentmail ping
 ```
 
 Sends ping via SMTP to gateway to bridge to webhook, triggers auto-pong reply, verifies full loop. Expected output:
@@ -153,21 +150,19 @@ Sends ping via SMTP to gateway to bridge to webhook, triggers auto-pong reply, v
 ### Process Management
 
 ```bash
-# Status
-ps aux | grep amail-bridge
-cat ~/.agentmail/bridge.pid
+# Status (process / config / route table / log freshness)
+./agentmail bridge
 
-# Restart
-kill $(cat ~/.agentmail/bridge.pid)
-python3 scripts/deploy_bridge.py
+# Restart (single instance)
+./agentmail bridge --restart
 
-# Logs
-tail -f ~/.agentmail/amail-bridge.log
+# Refresh forward routes for one system
+./agentmail bridge --system-id <sid>
 ```
 
 ### Config
 
-`~/.agentmail/amail_bridge.toml`:
+`~/.agentmail/bridge/amail_bridge.toml`:
 
 ```toml
 mode = "pull"
@@ -211,14 +206,6 @@ hermes gateway status
 grep -A2 'webhook:' ~/.hermes/config.yaml
 ```
 
-### Multi-Profile Gateway
-
-Each named profile runs an independent Hermes gateway process with separate ports and webhook routes. Managed by `scripts/hermes_gateway.sh`:
-
-```bash
-bash scripts/hermes_gateway.sh
-```
-
 ### Health Check
 
 ```bash
@@ -237,19 +224,18 @@ Root profile default port 8644, named profiles from 8645 sequentially.
 
 **Check:**
 ```bash
-grep pong_status ~/.agentmail/*/agentmail.log
+grep pong_status ~/.agentmail/mail/*/agentmail.log
 ```
 
-**Fix:** Verify email and api_key match in `~/.agentmail/{system_id}/agentmail.json`.
+**Fix:** Verify email and api_key match in `~/.agentmail/systems/{sid}/{addr}/agentmail.json`.
 
 ### Bridge cannot pull emails
 
 **Check:**
 ```bash
-ps aux | grep amail-bridge
-cat ~/.agentmail/amail_bridge.toml
+./agentmail bridge
 curl https://amail.token.tm/health
-tail -20 ~/.agentmail/amail-bridge.log
+tail -20 ~/.agentmail/logs/amail-bridge.log
 ```
 
 ### Gateway won't start
@@ -264,7 +250,7 @@ cat ~/.hermes/gateway.log
 ### Re-integration
 
 ```bash
-# Remove agentmail from the agent system (CLI, preserves ~/.agentmail/)
+# Remove agentmail from the agent system (CLI, preserves ~/.agentmail/ local data)
 ./agentmail uninstall --system-id <sid> --yes
 
 # Re-install
@@ -282,3 +268,47 @@ If gateway-side key is rotated or invalidated:
 # Option 2: Replace api_key directly
 # Option 3: Re-run ./agentmail reset --system-id <sid>
 ```
+
+---
+
+## 7. CLI Reference
+
+`./agentmail` is the single entry point (repo root, symlinked to `scripts/agentmail`).
+Subcommands (alphabetical): `bridge`, `check`, `domain`, `install`, `mailname`,
+`ping`, `reset`, `stats`, `uninstall`, `welcome`.
+
+### Installation (key flow)
+
+```bash
+# New system — activate with a product code
+./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com
+
+# Existing system — reuse the stored config or pass the admin key
+./agentmail install --home ~/.hermes --system-id <sid>
+./agentmail install --home ~/.openclaw --system-id <sid>
+```
+
+`install` runs the whole chain: system activation → bridge deploy → tool & skill
+install → webhook patch & profile registration. Then verify:
+
+```bash
+./agentmail check                      # pipeline diagnostics
+./agentmail ping                       # ping-pong round trip
+./agentmail welcome                    # welcome e2e (mail to manager)
+./agentmail stats                      # machine overview (systems/agents/mail counts)
+```
+
+### Day-to-day operations
+
+```bash
+./agentmail stats                      # systems installed + agents + mail stats
+./agentmail domain --system-id <sid>   # list domains of a system
+./agentmail domain --system-id <sid> --add example.com   # create a domain
+./agentmail mailname --system-id <sid> --default NAME    # rename main agent
+./agentmail reset --system-id <sid>    # re-run registration with stored admin key
+./agentmail uninstall --system-id <sid> --yes            # remove the integration
+./agentmail bridge --restart           # restart the local bridge
+```
+
+`--home` locates the platform root (`~/.hermes` / `~/.openclaw`); `--system-id`
+is preferred when the platform cannot be auto-detected.

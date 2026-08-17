@@ -185,24 +185,21 @@ Use an official activation code with a shared domain. Enter `system_name` (3-8 c
 
 ### API Keys and Profiles
 
-API Keys are generated per Profile, stored in `~/.agentmail/{system_id}/agentmail.json`:
-
-- Root Profile: `~/.agentmail/{system_id}/agentmail.json`
-- Named Profile: `~/.agentmail/{system_id}/profiles/{name}/agentmail.json`
+API Keys are generated per Agent address, stored under `~/.agentmail/systems/{system_id}/{addr}/agentmail.json`:
 
 ### Runtime Directory
 
 ```
 ~/.agentmail/
-├── {system_id}/
-│   ├── agentmail_gateway.json     # Gateway connection config
-│   ├── agentmail.json             # Root Profile config (email + api_key)
-│   ├── profiles/
-│   │   └── {name}/
-│   │       └── agentmail.json     # Named Profile config
-│   └── board/
-│       └── role_prompt/           # Board role prompts (installed at setup)
-└── .system_raw_key/               # Activation keys
+├── systems/
+│   └── {system_id}/
+│       ├── agentmail_gateway.json     # Gateway connection config
+│       └── {agent_addr}/              # per-address dir (keyed by cleaned email)
+│           └── agentmail.json         # email + api_key
+├── mail/
+│   └── {agent_addr}/                  # received mail per address
+│       └── {yyyymm}/in-*.json         # monthly snapshots
+└── .system_raw_key/                   # activation keys
 ```
 
 ---
