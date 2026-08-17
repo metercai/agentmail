@@ -280,14 +280,14 @@ cat ~/.hermes/gateway.log
 ### 重新集成
 
 ```bash
-# 完全清理（保留 ~/.agentmail/）
-bash uninstall.sh
+# 移除 agentmail 对接(CLI,保留 ~/.agentmail/)
+./agentmail uninstall --system-id <sid> --yes
 
-# 重新集成
-bash integrate.sh
+# 重新安装
+./agentmail install --home ~/.hermes --system-id <sid>
 ```
 
-`integrate.sh` 是幂等的——重复运行会自动跳过已完成步骤。
+`agentmail install` 是幂等的——重复运行会自动跳过已完成步骤。
 
 ### API key 更新
 
@@ -296,5 +296,5 @@ bash integrate.sh
 ```bash
 # 方法 1：清空 agentmail.json 的 activation_code 和 api_key，让 agent 下次启动时重新激活
 # 方法 2：直接用新 key 替换 agentmail.json 中的 api_key
-# 方法 3：重新运行 integrate.sh
+# 方法 3：重新运行 ./agentmail reset --system-id <sid>
 ```

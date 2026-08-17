@@ -264,14 +264,14 @@ cat ~/.hermes/gateway.log
 ### Re-integration
 
 ```bash
-# Clean (preserves ~/.agentmail/)
-bash uninstall.sh
+# Remove agentmail from the agent system (CLI, preserves ~/.agentmail/)
+./agentmail uninstall --system-id <sid> --yes
 
-# Re-run
-bash integrate.sh
+# Re-install
+./agentmail install --home ~/.hermes --system-id <sid>
 ```
 
-`integrate.sh` is idempotent — re-runs skip completed steps.
+`agentmail install` is idempotent — re-runs skip completed steps.
 
 ### API Key Update
 
@@ -280,5 +280,5 @@ If gateway-side key is rotated or invalidated:
 ```bash
 # Option 1: Clear activation_code and api_key in agentmail.json
 # Option 2: Replace api_key directly
-# Option 3: Re-run integrate.sh
+# Option 3: Re-run ./agentmail reset --system-id <sid>
 ```

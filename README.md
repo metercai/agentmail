@@ -68,8 +68,8 @@ Webhook Push/Pull dual mode coexists, adapting to diverse Agent types and networ
 7. **Multi-Role Agent Addresses, Dynamic Identity Switching**  
 One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@domain`). Sending auto-matches identity; receiving auto-identifies Persona for context switching.
 
-8. **One-Click Integration & Diagnostics, Low-Barrier Deployment**  
-`integrate.sh` bilingual wizard completes 8 steps — from domain configuration to full-chain heartbeat diagnostics. From zero to operational in minutes.
+8. **One-Click Integration & Diagnostics via `agentmail` CLI**  
+`./agentmail install` sets up the whole chain (activation → bridge → tools/skills → registration); `check`/`ping`/`welcome` diagnose the full loop; `stats`/`domain`/`uninstall` manage the machine from one entry.
 
 ---
 
@@ -86,23 +86,26 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-bash integrate.sh
+./agentmail install --home ~/.hermes [--product-code CODE | --admin-key KEY] [--system-id SID] [--manager admin@example.com]
 ```
 
-The wizard guides you through 8 steps: Gateway check → Domain config (or activation code) → Snapshot & Manager address → Bridge auto-deploy → Tool & Skill install → Webhook patch & Profile registration → Heartbeat diagnostics → Send/receive verification.
+`install` runs the whole chain: system activation → bridge deploy → tool & skill install → webhook patch & profile registration. Then verify with `./agentmail check`, `./agentmail ping`, `./agentmail welcome`.
 
-### Using .env Configuration
+### CLI Parameters
 
-Copy `.env.example` to `.env` and fill in your Gateway details:
+The CLI is the single entry point — no `.env` needed:
 
 ```bash
-cp .env.example .env
-# AMAIL_URL       — Gateway URL. Scripts call APIs for domain registration and key issuance.
-# AMAIL_ADMIN_KEY — Admin key, used to activate the system and create Agent API Keys.
-bash integrate.sh
+./agentmail install --home ~/.hermes --system-id <sid> --manager admin@example.com
+# new system:        --product-code <activation-code>
+# existing system:   --admin-key <key>  (or reuses the stored config)
+
+./agentmail stats                     # machine-wide overview (systems/agents/mail)
+./agentmail domain --system-id <sid>  # list domains
+./agentmail uninstall --system-id <sid> --yes   # remove the integration
 ```
 
-Once configured, `integrate.sh` runs fully automated without interactive input. See `.env.example` for all variables.
+See `./agentmail --help` for all subcommands.
 
 ---
 

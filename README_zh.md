@@ -74,7 +74,7 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 一个 Profile 的 Agent 可绑定多个 Persona（如 `sales.bob@domain` / `support.bob@domain`），发件自动匹配身份，收件自动识别 Persona，自动身份切换。
 
 8. **一键集成和诊断，低门槛部署和运维**  
-`integrate.sh` 中英文向导，8 步完成从域名配置到全链路诊断的集成工具。从零到可用，分钟级集成。
+`./agentmail install` 一条命令完成整条链路（激活 → Bridge → 工具与 Skill → 注册）；`check`/`ping`/`welcome` 全链路诊断；`stats`/`domain`/`uninstall` 一站式本机管理。
 
 ---
 
@@ -91,23 +91,26 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-bash integrate.sh
+./agentmail install --home ~/.hermes [--product-code CODE | --admin-key KEY] [--system-id SID] [--manager admin@example.com]
 ```
 
-向导引导你完成 8 个步骤：Gateway 连通检查 → 域名配置（或激活码） → 快照与 Manager 地址 → Bridge 自动部署 → Tool & Skill 安装 → Webhook 补丁与 Profile 注册 → 全链路心跳诊断 → 收发验证。
+`install` 完成整条链路：系统激活 → Bridge 部署 → Tool & Skill 安装 → Webhook 补丁与 Profile 注册。随后用 `./agentmail check`、`./agentmail ping`、`./agentmail welcome` 验证。
 
-### 通过 .env 文件配置
+### CLI 参数
 
-复制 `.env.example` 为 `.env` 并填入你的 Gateway 信息：
+CLI 是唯一入口，无需 `.env`：
 
 ```bash
-cp .env.example .env
-# AMAIL_URL       — Gateway 地址，脚本用它调用 API 完成域名注册、密钥签发
-# AMAIL_ADMIN_KEY — 管理员密钥，用于激活系统和创建 Agent API Key
-bash integrate.sh
+./agentmail install --home ~/.hermes --system-id <sid> --manager admin@example.com
+# 新系统:        --product-code <激活码>
+# 已有系统:      --admin-key <key>（或复用已存配置）
+
+./agentmail stats                     # 本机总览（系统/agent/邮件统计）
+./agentmail domain --system-id <sid>  # 查看域名
+./agentmail uninstall --system-id <sid> --yes   # 移除对接
 ```
 
-设置后 `integrate.sh` 全自动运行，无需交互输入。`.env.example` 包含所有变量的详细说明。
+全部子命令见 `./agentmail --help`。
 
 ---
 
