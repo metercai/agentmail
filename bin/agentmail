@@ -20,6 +20,8 @@ home 语义:system_home=系统/平台根(hermes=~/.hermes, openclaw=~/.openclaw)
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -601,6 +603,349 @@ def _default_recv_url(sid: str, email: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  stats / uninstall
+# ═══════════════════════════════════════════════════════════════
+
+def _addr_clean(email: str) -> str:
+    """地址 → 目录键(与 agentmail_base._clean_agent_dir_name 一致)。"""
+    return re.sub(r"[^\w.\-]", "_", email)
+
+
+def _mail_stats(email: str) -> tuple[int, int]:
+    """该 agent 邮件目录的 (收件数, 字节数)。"""
+    mail_dir = AGENTMAIL_HOME / "mail" / _addr_clean(email)
+    count, size = 0, 0
+    if mail_dir.is_dir():
+        for root, _dirs, files in os.walk(mail_dir):
+            for fn in files:
+                try:
+                    size += (Path(root) / fn).stat().st_size
+                except OSError:
+                    pass
+                if fn.startswith("in-") and fn.endswith(".json"):
+                    count += 1
+    return count, size
+
+
+def _fmt_size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1024
+    return f"{n} B"
+
+
+def cmd_stats(args) -> int:
+    """本机 agentmail 对接状态(只读):系统列表 + agent 实例 + 邮件统计。"""
+    if not SYSTEMS_DIR.is_dir() or not any(SYSTEMS_DIR.iterdir()):
+        print("  no agentmail systems configured on this machine")
+        return 0
+    print("  Systems installed:")
+    total_agents = 0
+    for sid_dir in sorted(SYSTEMS_DIR.iterdir()):
+        if not sid_dir.is_dir():
+            continue
+        gw_path = sid_dir / "agentmail_gateway.json"
+        if not gw_path.is_file():
+            continue
+        sid = sid_dir.name
+        try:
+            gw = json.loads(gw_path.read_text())
+        except Exception:
+            gw = {}
+        system_home = gw.get("system_home", "")
+        platform = detect_platform_from_home(Path(system_home)) if system_home else ""
+        if platform in ("", "unknown"):
+            platform = "unknown"
+        agents = []
+        for sub in sorted(sid_dir.iterdir()):
+            aj = sub / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                d = json.loads(aj.read_text())
+                email = d.get("email", "")
+            except Exception:
+                continue
+            if not email:
+                continue
+            n, sz = _mail_stats(email)
+            agents.append({
+                "email": email,
+                "manager": d.get("manager_address") or gw.get("manager_address", ""),
+                "emails": n,
+                "size": sz,
+            })
+        total_agents += len(agents)
+        print(f"    {sid}   [{platform}]   agents: {len(agents)}")
+    print(f"  Agents ({total_agents}):")
+    for sid_dir in sorted(SYSTEMS_DIR.iterdir()):
+        if not sid_dir.is_dir():
+            continue
+        if not (sid_dir / "agentmail_gateway.json").is_file():
+            continue
+        try:
+            gw = json.loads((sid_dir / "agentmail_gateway.json").read_text())
+        except Exception:
+            gw = {}
+        system_home = gw.get("system_home", "")
+        platform = detect_platform_from_home(Path(system_home)) if system_home else "?"
+        if platform in ("", "unknown"):
+            platform = "?"
+        for sub in sorted(sid_dir.iterdir()):
+            aj = sub / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                d = json.loads(aj.read_text())
+                email = d.get("email", "")
+            except Exception:
+                continue
+            if not email:
+                continue
+            n, sz = _mail_stats(email)
+            mgr = d.get("manager_address") or gw.get("manager_address", "") or "-"
+            print(f"    {email}   [{platform}]")
+            print(f"        received: {n} emails · storage: {_fmt_size(sz)} · manager: {mgr}")
+    return 0
+
+
+def _confirm(msg: str, args) -> bool:
+    if getattr(args, "yes", False):
+        return True
+    try:
+        ans = input(f"  {msg} [y/N] ").strip().lower()
+    except EOFError:
+        return False
+    return ans in ("y", "yes")
+
+
+def _uninstall_hermes(system_home: Path, sid: str) -> None:
+    """Hermes 侧清理:指针 / skill / tools / toolsets / webhook patch / config。"""
+    if not system_home.is_dir():
+        _warn(f"hermes home 不存在: {system_home}(跳过平台侧清理)")
+        return
+    profiles = system_home / "profiles"
+    # 1. 指针 + skill(逐 profile,仅 sid 匹配指针)
+    if profiles.is_dir():
+        for p in sorted(profiles.iterdir()):
+            if not p.is_dir():
+                continue
+            ptr = p / ".agentmail"
+            if ptr.is_file():
+                try:
+                    if json.loads(ptr.read_text()).get("system_id") == sid:
+                        ptr.unlink()
+                        _ok(f"removed pointer {ptr}")
+                except Exception:
+                    pass
+            sk = p / "skills" / "agentmail"
+            if sk.is_dir():
+                shutil.rmtree(sk)
+                _ok(f"removed skill {sk}")
+            # config.yaml:platform_toolsets 移除 agentmail 条目
+            cfg = p / "config.yaml"
+            if cfg.is_file():
+                try:
+                    content = cfg.read_text()
+                    new = re.sub(r"^[ \t]*-[ \t]*agentmail[ \t]*\r?$\n?", "", content, flags=re.M)
+                    if new != content:
+                        cfg.write_text(new)
+                        _ok(f"config toolset cleaned {cfg}")
+                except Exception as e:
+                    _warn(f"config.yaml clean failed: {e}")
+            # webhook 订阅路由
+            subs = p / "webhook_subscriptions.json"
+            if subs.is_file():
+                try:
+                    data = json.loads(subs.read_text())
+                    if isinstance(data, dict) and "agentmail-inbound" in data:
+                        del data["agentmail-inbound"]
+                        subs.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                        _ok(f"webhook route removed {subs}")
+                except Exception as e:
+                    _warn(f"webhook_subscriptions clean failed: {e}")
+    # 2. hermes-agent:tools 删除 + patch 还原(git 精确还原)
+    ha = system_home / "hermes-agent"
+    if ha.is_dir():
+        if (ha / ".git").exists():
+            try:
+                out = subprocess.check_output(
+                    ["git", "-C", str(ha), "status", "--short"], text=True, timeout=10)
+                modified = [l[3:].strip() for l in out.splitlines() if l.startswith(" M")]
+                if all(m in ("gateway/platforms/webhook.py", "toolsets.py") for m in modified):
+                    for f in modified:
+                        subprocess.call(["git", "-C", str(ha), "checkout", "--", f])
+                        _ok(f"reverted {f} (git)")
+                else:
+                    _warn("hermes-agent 有额外未提交改动——跳过 git 还原,请手动检查 agentmail 痕迹")
+            except Exception as e:
+                _warn(f"git revert failed: {e}")
+        else:
+            _warn("hermes-agent 非 git 仓库——webhook.py/toolsets.py 的 agentmail 痕迹需手动还原")
+        for rel in ("tools/agentmail_tools.py", "tools/agentmail_base.py",
+                    "tools/agentmail_board.py", "tools/hermes"):
+            tgt = ha / rel
+            if tgt.exists():
+                shutil.rmtree(tgt) if tgt.is_dir() else tgt.unlink()
+                _ok(f"removed {rel}")
+        for bak in ha.glob("gateway/platforms/webhook.py.bak-*"):
+            bak.unlink()
+            _ok(f"removed backup {bak.name}")
+
+
+def _uninstall_openclaw(sid: str) -> None:
+    """OpenClaw 侧清理:指针 / skill / MCP / cron / wrapper。"""
+    oc_home = HOME / ".openclaw"
+    if not oc_home.is_dir():
+        _warn(f"openclaw home 不存在: {oc_home}(跳过平台侧清理)")
+        return
+    ptr = oc_home / ".agentmail"
+    if ptr.is_file():
+        try:
+            if json.loads(ptr.read_text()).get("system_id") == sid:
+                ptr.unlink()
+                _ok(f"removed pointer {ptr}")
+        except Exception:
+            pass
+    sk = oc_home / "skills" / "agentmail"
+    if sk.is_dir():
+        shutil.rmtree(sk)
+        _ok(f"removed skill {sk}")
+    # MCP server 段
+    cfg = oc_home / "openclaw.json"
+    if cfg.is_file():
+        try:
+            data = json.loads(cfg.read_text())
+            servers = (data.get("mcp") or {}).get("servers") or {}
+            if "amail" in servers:
+                del servers["amail"]
+                cfg.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+                _ok("removed amail MCP server from openclaw.json")
+        except Exception as e:
+            _warn(f"openclaw.json clean failed: {e}")
+    # cron:amail-poll
+    try:
+        out = subprocess.check_output(["openclaw", "cron", "list", "--json"],
+                                      text=True, timeout=15, stderr=subprocess.DEVNULL)
+        import json as _json
+        items = _json.loads(out)
+        items = items if isinstance(items, list) else items.get("crons", items.get("jobs", []))
+        for c in items:
+            if c.get("name") == "amail-poll":
+                subprocess.call(["openclaw", "cron", "remove", str(c.get("id"))],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                _ok("removed amail-poll cron")
+    except Exception:
+        pass
+    # wrapper + bashrc PATH 行
+    w = oc_home / "bin" / "openclaw"
+    if w.exists():
+        w.unlink()
+        _ok(f"removed wrapper {w}")
+    bashrc = HOME / ".bashrc"
+    if bashrc.exists():
+        content = bashrc.read_text()
+        new = re.sub(
+            r"\n# openclaw agents lifecycle wrapper \(amail integration\)\nexport PATH=\"\$HOME/\.openclaw/bin:\$PATH\"",
+            "", content)
+        if new != content:
+            bashrc.write_text(new)
+            _ok("removed openclaw wrapper PATH from .bashrc")
+
+
+def cmd_uninstall(args) -> int:
+    """卸载:与 install 对等,消除 agentmail 在 agent 系统上的配置。"""
+    system_home = Path(args.home).expanduser() if args.home else Path()
+    sid, platform = resolve_system_id(system_home, args.system_id or "")
+    if not sid:
+        _fail("uninstall 需要 --system-id(或用 --home 定位平台)")
+    # 幂等:系统数据与指针都不存在 → 视为已卸载
+    if not (SYSTEMS_DIR / sid).is_dir() and not any(
+            _ptr_sid(_platform_ptr(p)) == sid for p in ("openclaw", "hermes")):
+        print(f"  system {sid} not installed (already uninstalled?)")
+        return 0
+    if not platform:
+        platform = resolve_platform(system_home)
+    if not platform:
+        _fail(f"无法确定平台(system {sid})——用 --home 指定平台根")
+
+    print(f"  uninstall system={sid} platform={platform}")
+    if not _confirm(f"确认卸载 system {sid} 的 agentmail 对接(含网关注销与本机数据)?", args):
+        print("  cancelled")
+        return 1
+
+    gw = {}
+    gw_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
+    if gw_path.is_file():
+        try:
+            gw = json.loads(gw_path.read_text())
+        except Exception:
+            pass
+
+    # 1. 网关注销(每 agent,公共链:api-key → domain → whitelist)
+    sys.path.insert(0, str(SCRIPTS_DIR.parent / "tools"))
+    try:
+        from agentmail_tools import _GatewayClient
+        from agentmail_base import deregister_agent_email
+        sid_dir = SYSTEMS_DIR / sid
+        if sid_dir.is_dir():
+            for sub in sorted(sid_dir.iterdir()):
+                aj = sub / "agentmail.json"
+                if not aj.is_file():
+                    continue
+                try:
+                    d = json.loads(aj.read_text())
+                    email = d.get("email", "")
+                except Exception:
+                    continue
+                if not email:
+                    continue
+                if gw.get("gateway_url") and gw.get("admin_key"):
+                    try:
+                        client = _GatewayClient(gw["gateway_url"], gw["admin_key"])
+                        st = deregister_agent_email(client, sid, email,
+                                                    manager_address=d.get("manager_address", ""))
+                        _ok(f"gateway deregister {email} (api-key={st.get('api_key')} "
+                            f"domain={st.get('domain')} whitelist={st.get('whitelist')})")
+                    except Exception as e:
+                        _warn(f"gateway deregister {email} failed: {e}")
+                else:
+                    _warn(f"no gateway credentials — skip gateway deregister for {email}")
+    except ImportError as e:
+        _warn(f"tools import failed: {e}(跳过网关注销)")
+
+    # 2. 平台侧清理
+    if platform == "hermes":
+        _uninstall_hermes(system_home if system_home.is_dir() else Path(gw.get("system_home", "")), sid)
+    elif platform == "openclaw":
+        _uninstall_openclaw(sid)
+
+    # 3. 本机数据
+    sid_dir = SYSTEMS_DIR / sid
+    if sid_dir.is_dir():
+        for sub in sid_dir.glob("*/agentmail.json"):
+            try:
+                email = json.loads(sub.read_text()).get("email", "")
+            except Exception:
+                continue
+            if email:
+                mdir = AGENTMAIL_HOME / "mail" / _addr_clean(email)
+                if mdir.is_dir():
+                    shutil.rmtree(mdir)
+                    _ok(f"removed mail data {mdir}")
+        shutil.rmtree(sid_dir)
+        _ok(f"removed system data {sid_dir}")
+    raw = AGENTMAIL_HOME / ".system_raw_key" / f"{sid}_admin.key"
+    if raw.is_file():
+        raw.unlink()
+        _ok(f"removed raw key {raw}")
+
+    print(f"  uninstall done for {sid}")
+    return 0
+
+
+# ═══════════════════════════════════════════════════════════════
 #  main
 # ═══════════════════════════════════════════════════════════════
 
@@ -653,6 +998,15 @@ def main():
     p_br.add_argument("--home", help="系统 home(平台根),配合重刷")
     p_br.add_argument("--restart", action="store_true", help="重启 bridge(单实例)")
     p_br.set_defaults(func=cmd_bridge)
+
+    p_stats = sub.add_parser("stats", help="本机 agentmail 对接状态(系统/agent/邮件统计)")
+    p_stats.set_defaults(func=cmd_stats)
+
+    p_uni = sub.add_parser("uninstall", help="卸载:消除 agentmail 在 agent 系统上的配置")
+    p_uni.add_argument("--system-id")
+    p_uni.add_argument("--home", help="系统 home(平台根)")
+    p_uni.add_argument("--yes", action="store_true", help="跳过确认")
+    p_uni.set_defaults(func=cmd_uninstall)
 
     args = ap.parse_args()
     sys.exit(args.func(args) or 0)
