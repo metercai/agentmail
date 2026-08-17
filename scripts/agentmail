@@ -43,6 +43,33 @@ def _fail(msg):
     sys.exit(1)
 
 
+def _load_env() -> None:
+    """Load repo-root .env into os.environ (never overrides existing vars).
+
+    Priority: shell environment > .env > CLI default. .env stays git-ignored.
+    """
+    for candidate in (SCRIPTS_DIR.parent / ".env", SCRIPTS_DIR / ".env"):
+        if not candidate.is_file():
+            continue
+        try:
+            for line in candidate.read_text().splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, _, v = s.partition("=")
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+        except Exception:
+            pass
+
+
+def _env_val(key: str, fallback: str = "") -> str:
+    """env var value (from .env or shell) with fallback."""
+    return os.environ.get(key, "") or fallback
+
+
 # ═══════════════════════════════════════════════════════════════
 #  平台事实推断
 # ═══════════════════════════════════════════════════════════════
@@ -150,6 +177,8 @@ def cmd_ping(args) -> int:
         cmd += ["--system-id", sid]
     if args.manager:
         cmd += ["--manager", args.manager]
+    elif _env_val("AMAIL_MANAGER_ADDRESS"):
+        cmd += ["--manager", _env_val("AMAIL_MANAGER_ADDRESS")]
     if args.timeout:
         cmd += ["--timeout", str(args.timeout)]
     return subprocess.call(cmd)
@@ -163,6 +192,8 @@ def cmd_welcome(args) -> int:
         cmd += ["--system-id", sid]
     if args.manager:
         cmd += ["--manager", args.manager]
+    elif _env_val("AMAIL_MANAGER_ADDRESS"):
+        cmd += ["--manager", _env_val("AMAIL_MANAGER_ADDRESS")]
     if args.no_wait:
         cmd += ["--no-wait"]
     return subprocess.call(cmd)
@@ -180,20 +211,25 @@ def cmd_install(args) -> int:
         _fail(f"无法确定平台:{system_home} 目录无特征且无 agentmail 指针")
     print(f"  install platform={platform} system_home={system_home}")
 
-    # 1) 激活/复用系统 → setup_system.py(env 契约)
+    # 1) 激活/复用系统 → setup_system.py(env 契约);参数优先,缺失从 .env 取
     sys.path.insert(0, str(SCRIPTS_DIR))
     from gateway_api import load_gateway_config
     env = dict(os.environ)
-    env["INTEGRATE_GATEWAY_URL"] = args.gateway_url or ""
+    gw_url = args.gateway_url or _env_val("AMAIL_URL", "https://amail.token.tm")
+    sys_name = args.system_name or _env_val("AMAIL_SYSTEM_NAME")
+    manager = args.manager or _env_val("AMAIL_MANAGER_ADDRESS")
+    prod_code = args.product_code or _env_val("AMAIL_PRODUCT_CODE")
+    adm_key = args.admin_key or _env_val("AMAIL_ADMIN_KEY")
+    env["INTEGRATE_GATEWAY_URL"] = gw_url
     env["INTEGRATE_SYSTEM_ID"] = args.system_id or ""
-    env["INTEGRATE_SYSTEM_NAME"] = args.system_name or ""
+    env["INTEGRATE_SYSTEM_NAME"] = sys_name
     env["INTEGRATE_SYSTEM_HOME"] = str(system_home)
-    env["INTEGRATE_MANAGER_ADDRESS"] = args.manager or ""
-    if args.product_code:
+    env["INTEGRATE_MANAGER_ADDRESS"] = manager
+    if prod_code:
         env["INTEGRATE_USE_PRODUCT_CODE"] = "true"
-        env["INTEGRATE_PRODUCT_CODE"] = args.product_code
-    elif args.admin_key:
-        env["INTEGRATE_ADMIN_KEY"] = args.admin_key
+        env["INTEGRATE_PRODUCT_CODE"] = prod_code
+    elif adm_key:
+        env["INTEGRATE_ADMIN_KEY"] = adm_key
     # 无显式凭据 → 从已有配置/指针复用
     elif args.system_id:
         cfg = load_gateway_config(args.system_id)
@@ -280,9 +316,9 @@ def cmd_reset(args) -> int:
             prev = json.loads(cfg_path.read_text())
         except Exception:
             pass
-    gw_url = args.gateway_url or prev.get("gateway_url", "")
-    sys_name = args.system_name or prev.get("system_name", "")
-    manager = args.manager or prev.get("manager_address", "")
+    gw_url = args.gateway_url or _env_val("AMAIL_URL") or prev.get("gateway_url", "")
+    sys_name = args.system_name or _env_val("AMAIL_SYSTEM_NAME") or prev.get("system_name", "")
+    manager = args.manager or _env_val("AMAIL_MANAGER_ADDRESS") or prev.get("manager_address", "")
 
     print(f"  reset platform={platform} system_id={sid}")
     env = dict(os.environ)
@@ -1283,6 +1319,7 @@ def unpatch_toolsets(fp: Path):
 # ═══════════════════════════════════════════════════════════════
 
 def main():
+    _load_env()
     ap = argparse.ArgumentParser(prog="agentmail", description="agentmail 维护工具")
     sub = ap.add_subparsers(dest="command", required=True)
 

@@ -279,8 +279,13 @@ cat ~/.hermes/gateway.log
 
 ### 安装流程（重点）
 
+仓库根目录的 `.env` 会被自动读取（CLI 参数 > shell 环境变量 > .env >
+内置默认值），常用值只需配置一次：
+
 ```bash
-# 新系统——用激活码激活
+# .env: AMAIL_URL / AMAIL_ADMIN_KEY | AMAIL_PRODUCT_CODE / AMAIL_MANAGER_ADDRESS
+
+# 新系统——用激活码激活（未传参则从 .env 取）
 ./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com
 
 # 已有系统——复用已存配置或传入 admin key

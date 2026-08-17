@@ -91,21 +91,23 @@ cd agentmail
 
 `install` runs the whole chain: system activation → bridge deploy → tool & skill install → webhook patch & profile registration. Then verify with `./agentmail check`, `./agentmail ping`, `./agentmail welcome`.
 
-### CLI Parameters
+### Using .env (optional, recommended)
 
-The CLI is the single entry point — no `.env` needed:
+Copy `.env.example` to `.env` in the repo root — the CLI reads it
+automatically, so flags can be omitted for repeated values:
 
 ```bash
-./agentmail install --home ~/.hermes --system-id <sid> --manager admin@example.com
-# new system:        --product-code <activation-code>
-# existing system:   --admin-key <key>  (or reuses the stored config)
+cp .env.example .env
+# AMAIL_URL            — Gateway URL
+# AMAIL_ADMIN_KEY      — existing system admin key
+# AMAIL_PRODUCT_CODE   — activation code for a new system
+# AMAIL_MANAGER_ADDRESS— manager email
+# AMAIL_SYSTEM_NAME    — shared-domain system name
 
-./agentmail stats                     # machine-wide overview (systems/agents/mail)
-./agentmail domain --system-id <sid>  # list domains
-./agentmail uninstall --system-id <sid> --yes   # remove the integration
+./agentmail install --home ~/.hermes          # picks everything up from .env
 ```
 
-See `./agentmail --help` for all subcommands.
+Priority: CLI flag > shell env > .env > built-in default.
 
 ---
 

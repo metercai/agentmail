@@ -96,21 +96,22 @@ cd agentmail
 
 `install` 完成整条链路：系统激活 → Bridge 部署 → Tool & Skill 安装 → Webhook 补丁与 Profile 注册。随后用 `./agentmail check`、`./agentmail ping`、`./agentmail welcome` 验证。
 
-### CLI 参数
+### 使用 .env（可选，推荐）
 
-CLI 是唯一入口，无需 `.env`：
+把 `.env.example` 复制为仓库根目录的 `.env`——CLI 会自动读取，常用值无需每次带参数：
 
 ```bash
-./agentmail install --home ~/.hermes --system-id <sid> --manager admin@example.com
-# 新系统:        --product-code <激活码>
-# 已有系统:      --admin-key <key>（或复用已存配置）
+cp .env.example .env
+# AMAIL_URL             — Gateway 地址
+# AMAIL_ADMIN_KEY       — 已有系统的 admin key
+# AMAIL_PRODUCT_CODE    — 新系统的激活码
+# AMAIL_MANAGER_ADDRESS — manager 邮箱
+# AMAIL_SYSTEM_NAME     — 共享域系统名
 
-./agentmail stats                     # 本机总览（系统/agent/邮件统计）
-./agentmail domain --system-id <sid>  # 查看域名
-./agentmail uninstall --system-id <sid> --yes   # 移除对接
+./agentmail install --home ~/.hermes          # 全部从 .env 读取
 ```
 
-全部子命令见 `./agentmail --help`。
+优先级：CLI 参数 > shell 环境变量 > .env > 内置默认值。
 
 ---
 

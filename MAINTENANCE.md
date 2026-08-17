@@ -279,8 +279,13 @@ Subcommands (alphabetical): `bridge`, `check`, `domain`, `install`, `mailname`,
 
 ### Installation (key flow)
 
+`.env` in the repo root is read automatically (CLI flag > shell env > .env
+> built-in default), so repeated values only need to be set once:
+
 ```bash
-# New system — activate with a product code
+# .env: AMAIL_URL / AMAIL_ADMIN_KEY | AMAIL_PRODUCT_CODE / AMAIL_MANAGER_ADDRESS
+
+# New system — activate with a product code (from .env if not passed)
 ./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com
 
 # Existing system — reuse the stored config or pass the admin key
