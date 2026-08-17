@@ -86,28 +86,44 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-./agentmail install --home ~/.hermes [--product-code CODE | --admin-key KEY] [--system-id SID] [--manager admin@example.com]
+cp .env.example .env        # fill in AMAIL_URL, AMAIL_PRODUCT_CODE (new) or
+                            # AMAIL_ADMIN_KEY (existing), AMAIL_MANAGER_ADDRESS;
+                            # optionally AMAIL_DOMAIN / AMAIL_SYSTEM_NAME
+./agentmail install --home ~/.hermes
 ```
 
-`install` runs the whole chain: system activation → bridge deploy → tool & skill install → webhook patch & profile registration. Then verify with `./agentmail check`, `./agentmail ping`, `./agentmail welcome`.
+`install` runs the whole chain **non-interactively**: system activation (or
+reuse of an existing system), bridge deploy, tool & skill install, webhook
+patch & profile registration. Every value is read from `.env`, so the only
+flag you usually pass is `--home`. Domains named in `AMAIL_DOMAIN` are
+preset at activation or actively created when missing.
 
-### Using .env (optional, recommended)
-
-Copy `.env.example` to `.env` in the repo root — the CLI reads it
-automatically, so flags can be omitted for repeated values:
+### Verify the Chain
 
 ```bash
-cp .env.example .env
-# AMAIL_URL            — Gateway URL
-# AMAIL_ADMIN_KEY      — existing system admin key
-# AMAIL_PRODUCT_CODE   — activation code for a new system
-# AMAIL_MANAGER_ADDRESS— manager email
-# AMAIL_SYSTEM_NAME    — shared-domain system name
-
-./agentmail install --home ~/.hermes          # picks everything up from .env
+./agentmail check      # 4-layer pipeline diagnostics (gateway → bridge → webhook → profile)
+./agentmail ping       # end-to-end ping/pong round-trip through SMTP
+./agentmail welcome    # sends a welcome email to the manager and verifies delivery
+./agentmail stats      # machine overview: systems, agents, mail statistics
 ```
 
-Priority: CLI flag > shell env > .env > built-in default.
+Example output:
+
+```
+$ ./agentmail stats
+  Systems installed:
+      shared-token-40b34a66   [hermes]    agents: 1
+      shared-token-9479c607   [openclaw]  agents: 1
+  Agents (2):
+      agent.weiwei@amail.token.tm   [hermes]
+          received: 12 emails · storage: 1.2 MB · manager: 925457@qq.com
+      agent.xianlin@amail.token.tm   [openclaw]
+          received: 8 emails · storage: 0.9 MB · manager: 925457@qq.com
+```
+
+Priority for every flag: CLI argument > shell env > `.env` > built-in default.
+See `./agentmail --help` for all subcommands (`bridge`, `check`, `domain`,
+`install`, `mailname`, `ping`, `reset`, `stats`, `uninstall`, `welcome`).
 
 ---
 

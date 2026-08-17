@@ -91,27 +91,43 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-./agentmail install --home ~/.hermes [--product-code CODE | --admin-key KEY] [--system-id SID] [--manager admin@example.com]
+cp .env.example .env        # 填入 AMAIL_URL、AMAIL_PRODUCT_CODE（新系统）或
+                            # AMAIL_ADMIN_KEY（已有系统）、AMAIL_MANAGER_ADDRESS；
+                            # 可选 AMAIL_DOMAIN / AMAIL_SYSTEM_NAME
+./agentmail install --home ~/.hermes
 ```
 
-`install` 完成整条链路：系统激活 → Bridge 部署 → Tool & Skill 安装 → Webhook 补丁与 Profile 注册。随后用 `./agentmail check`、`./agentmail ping`、`./agentmail welcome` 验证。
+`install` 全程**非交互**完成整条链路：系统激活（或复用已有系统）→ bridge
+部署 → 工具与 skill 安装 → webhook 补丁与 profile 注册。所有值都从
+`.env` 读取，通常唯一需要带的参数就是 `--home`。`AMAIL_DOMAIN` 指定的
+域名会在激活时预置，缺失时主动创建。
 
-### 使用 .env（可选，推荐）
-
-把 `.env.example` 复制为仓库根目录的 `.env`——CLI 会自动读取，常用值无需每次带参数：
+### 验证链路
 
 ```bash
-cp .env.example .env
-# AMAIL_URL             — Gateway 地址
-# AMAIL_ADMIN_KEY       — 已有系统的 admin key
-# AMAIL_PRODUCT_CODE    — 新系统的激活码
-# AMAIL_MANAGER_ADDRESS — manager 邮箱
-# AMAIL_SYSTEM_NAME     — 共享域系统名
-
-./agentmail install --home ~/.hermes          # 全部从 .env 读取
+./agentmail check      # 4 层流水线诊断（gateway → bridge → webhook → profile）
+./agentmail ping       # 端到端 ping/pong 闭环（经 SMTP）
+./agentmail welcome    # 向 manager 发送欢迎邮件并验证送达
+./agentmail stats      # 本机总览：系统、agent、邮件统计
 ```
 
-优先级：CLI 参数 > shell 环境变量 > .env > 内置默认值。
+输出示例：
+
+```
+$ ./agentmail stats
+  Systems installed:
+      shared-token-40b34a66   [hermes]    agents: 1
+      shared-token-9479c607   [openclaw]  agents: 1
+  Agents (2):
+      agent.weiwei@amail.token.tm   [hermes]
+          received: 12 emails · storage: 1.2 MB · manager: 925457@qq.com
+      agent.xianlin@amail.token.tm   [openclaw]
+          received: 8 emails · storage: 0.9 MB · manager: 925457@qq.com
+```
+
+所有参数优先级：CLI 参数 > shell 环境变量 > `.env` > 内置默认值。
+全部子命令见 `./agentmail --help`（`bridge`、`check`、`domain`、
+`install`、`mailname`、`ping`、`reset`、`stats`、`uninstall`、`welcome`）。
 
 ---
 
