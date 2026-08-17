@@ -229,7 +229,7 @@ def cmd_install(args) -> int:
     else:  # openclaw
         env3 = dict(os.environ)
         env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
-        r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "openclaw" / "register_agent.py"),
+        r = subprocess.call([sys.executable, str(SCRIPTS_DIR.parent / "bin" / "register_agent.py"),
                              "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
                             env=env3)
         if r == 0:
@@ -305,7 +305,7 @@ def cmd_reset(args) -> int:
     else:
         env3 = dict(os.environ)
         env3["AMAIL_SYSTEM_ID"] = sid
-        subprocess.call([sys.executable, str(SCRIPTS_DIR / "openclaw" / "register_agent.py"),
+        subprocess.call([sys.executable, str(SCRIPTS_DIR.parent / "bin" / "register_agent.py"),
                          "--all", "--system-id", sid], env=env3)
     _ok("registration chain re-run (idempotent)")
     print(f"  建议: agentmail check --system-id {sid}")
