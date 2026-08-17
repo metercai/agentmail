@@ -219,6 +219,7 @@ API Key 按 Agent 地址生成，存储在 `~/.agentmail/systems/{system_id}/{ad
 │       ├── board/                     # 系统级 A2A 角色 prompt（回退）
 │       └── {agent_addr}/              # 按地址隔离的目录（清洗后的邮箱）
 │           ├── agentmail.json         # email + api_key
+│           ├── board_creds.json       # A2A board 凭据（board_id → gateway_url/token）
 │           └── role_prompt/           # 地址级角色 prompt（优先）
 ├── mail/
 │   └── {agent_addr}/                  # 各地址收到的邮件

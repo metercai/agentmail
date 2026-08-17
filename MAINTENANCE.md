@@ -26,6 +26,7 @@
 │       ├── board/                     # system-level A2A role prompts (fallback)
 │       └── {agent_addr}/              # per-address dir (keyed by cleaned email)
 │           ├── agentmail.json         # agent config (email, api_key)
+│           ├── board_creds.json       # A2A board credentials (board_id → gateway_url/token)
 │           └── role_prompt/           # address-level role prompts (takes priority)
 ├── mail/
 │   └── {agent_addr}/
