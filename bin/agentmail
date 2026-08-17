@@ -953,6 +953,17 @@ def main():
     ap = argparse.ArgumentParser(prog="agentmail", description="agentmail 维护工具")
     sub = ap.add_subparsers(dest="command", required=True)
 
+    p_br = sub.add_parser("bridge", help="本机 bridge 维护(状态/重刷路由/重启)")
+    p_br.add_argument("--system-id", help="重刷该系统的转发路由")
+    p_br.add_argument("--home", help="系统 home(平台根),配合重刷")
+    p_br.add_argument("--restart", action="store_true", help="重启 bridge(单实例)")
+    p_br.set_defaults(func=cmd_bridge)
+
+    p_check = sub.add_parser("check", help="状态检查")
+    p_check.add_argument("--system-id")
+    p_check.add_argument("--home", help="系统 home(平台根)")
+    p_check.set_defaults(func=cmd_check)
+
     p_install = sub.add_parser("install", help="安装(集成脚本到 check 前)")
     p_install.add_argument("--home", help="系统 home(平台根:hermes=~/.hermes, openclaw=~/.openclaw)")
     p_install.add_argument("--system-id")
@@ -963,18 +974,10 @@ def main():
     p_install.add_argument("--manager")
     p_install.set_defaults(func=cmd_install)
 
-    p_reset = sub.add_parser("reset", help="重置配置(admin-key 路径,不重激活)")
-    p_reset.add_argument("--home")
-    p_reset.add_argument("--system-id")
-    p_reset.add_argument("--gateway-url", default="")
-    p_reset.add_argument("--system-name")
-    p_reset.add_argument("--manager")
-    p_reset.set_defaults(func=cmd_reset)
-
-    p_check = sub.add_parser("check", help="状态检查")
-    p_check.add_argument("--system-id")
-    p_check.add_argument("--home", help="系统 home(平台根)")
-    p_check.set_defaults(func=cmd_check)
+    p_mn = sub.add_parser("mailname", help="查看/修改默认主 agent 名映射")
+    p_mn.add_argument("--system-id")
+    p_mn.add_argument("--default", help="新的默认主 agent 名")
+    p_mn.set_defaults(func=cmd_mailname)
 
     p_ping = sub.add_parser("ping", help="ping-pong 闭环测试")
     p_ping.add_argument("--system-id")
@@ -982,22 +985,13 @@ def main():
     p_ping.add_argument("--timeout", type=int, default=120)
     p_ping.set_defaults(func=cmd_ping)
 
-    p_welcome = sub.add_parser("welcome", help="welcome 端到端测试")
-    p_welcome.add_argument("--system-id")
-    p_welcome.add_argument("--manager")
-    p_welcome.add_argument("--no-wait", action="store_true")
-    p_welcome.set_defaults(func=cmd_welcome)
-
-    p_mn = sub.add_parser("mailname", help="查看/修改默认主 agent 名映射")
-    p_mn.add_argument("--system-id")
-    p_mn.add_argument("--default", help="新的默认主 agent 名")
-    p_mn.set_defaults(func=cmd_mailname)
-
-    p_br = sub.add_parser("bridge", help="本机 bridge 维护(状态/重刷路由/重启)")
-    p_br.add_argument("--system-id", help="重刷该系统的转发路由")
-    p_br.add_argument("--home", help="系统 home(平台根),配合重刷")
-    p_br.add_argument("--restart", action="store_true", help="重启 bridge(单实例)")
-    p_br.set_defaults(func=cmd_bridge)
+    p_reset = sub.add_parser("reset", help="重置配置(admin-key 路径,不重激活)")
+    p_reset.add_argument("--home")
+    p_reset.add_argument("--system-id")
+    p_reset.add_argument("--gateway-url", default="")
+    p_reset.add_argument("--system-name")
+    p_reset.add_argument("--manager")
+    p_reset.set_defaults(func=cmd_reset)
 
     p_stats = sub.add_parser("stats", help="本机 agentmail 对接状态(系统/agent/邮件统计)")
     p_stats.set_defaults(func=cmd_stats)
@@ -1007,6 +1001,12 @@ def main():
     p_uni.add_argument("--home", help="系统 home(平台根)")
     p_uni.add_argument("--yes", action="store_true", help="跳过确认")
     p_uni.set_defaults(func=cmd_uninstall)
+
+    p_welcome = sub.add_parser("welcome", help="welcome 端到端测试")
+    p_welcome.add_argument("--system-id")
+    p_welcome.add_argument("--manager")
+    p_welcome.add_argument("--no-wait", action="store_true")
+    p_welcome.set_defaults(func=cmd_welcome)
 
     args = ap.parse_args()
     sys.exit(args.func(args) or 0)
