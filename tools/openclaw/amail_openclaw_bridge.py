@@ -79,7 +79,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         # 拦截(ping/pong)返回 None → 200 吞掉,不触发 agent;
         # pong 由共享 send_pong 出站,回环走完整入站链(设计意图)。
         # 预处理需要 agent 配置注入(set_agent_context)——先按收件地址
-        # 解析 agent,再调共享链(与 amail-poll.py 批级调用同入口)。
+        # 解析 agent,再调共享链(与 poll 批级调用同入口)。
         email = payload.get("to", "")
         if isinstance(email, list):
             email = email[0] if email else ""

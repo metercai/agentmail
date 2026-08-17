@@ -89,9 +89,11 @@ def register_bridge_route(system_id: str, email: str, gw: dict) -> None:
     import urllib.request
     port = int(gw.get("bridge_port", 8799))
     target_url = f"http://127.0.0.1:{port}/hook"
+    # bridge admin API 地址从配置取(bridge_admin_port),回退 38081
+    admin_port = int(gw.get("bridge_admin_port", 38081))
     try:
         req = urllib.request.Request(
-            "http://127.0.0.1:38081/api/v1/routes",
+            f"http://127.0.0.1:{admin_port}/api/v1/routes",
             data=json.dumps({"email": email, "host": target_url, "port": port}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",

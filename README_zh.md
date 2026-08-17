@@ -243,6 +243,7 @@ API Key 按 Agent 地址生成，存储在 `~/.agentmail/systems/{system_id}/{ad
 
 ## 延伸阅读
 
+- [AgentMail 对接指南(架构与实例示范)](AGENT-INTEGRATION.md)
 - [A2A Board 项目协作指导手册](board/A2A-BOARD-GUIDE_zh.md)
 - [API 依赖说明](API-DEPS.md)
 - [维护指南](MAINTENANCE_zh.md)

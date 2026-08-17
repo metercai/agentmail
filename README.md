@@ -239,6 +239,7 @@ API Keys are generated per Agent address, stored under `~/.agentmail/systems/{sy
 
 ## Further Reading
 
+- [AgentMail Integration Guide (对接架构与实例示范)](AGENT-INTEGRATION.md)
 - [A2A Board Collaboration Guide](board/A2A-BOARD-GUIDE.md)
 - [API Dependencies](API-DEPS.md)
 - [Maintenance Guide](MAINTENANCE.md)
