@@ -23,6 +23,7 @@
 ├── systems/
 │   └── {system_id}/
 │       ├── agentmail_gateway.json     # Gateway connection config (gateway_url, admin_key, system_id, domain)
+│       ├── board/                     # A2A board role prompts (installed at setup)
 │       └── {agent_addr}/              # per-address dir (keyed by cleaned email)
 │           └── agentmail.json         # agent config (email, api_key)
 ├── mail/
@@ -33,9 +34,13 @@
 │   ├── amail_bridge.toml              # bridge config
 │   ├── amail_routes.toml              # route table (email → local webhook)
 │   ├── bin/amail-bridge               # bridge binary
-│   └── bridge.pid                     # bridge PID
+│   ├── bridge.pid                     # bridge PID
+│   ├── bridge.out                     # bridge stdout log
+│   └── backup-deploy-*/               # pre-deploy backup (old config + binary)
 ├── logs/
-│   └── amail-bridge.log               # bridge runtime log
+│   ├── amail-bridge.log               # bridge runtime log
+│   └── agentmail.agent.{addr}.log     # per-agent processing log
+├── backup-reset-*/                    # config snapshot before each reset
 └── .system_raw_key/
     └── {system_id}_admin.key          # raw admin key (integration only)
 ```

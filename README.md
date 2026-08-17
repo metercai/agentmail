@@ -212,12 +212,26 @@ API Keys are generated per Agent address, stored under `~/.agentmail/systems/{sy
 ├── systems/
 │   └── {system_id}/
 │       ├── agentmail_gateway.json     # Gateway connection config
+│       ├── board/                     # A2A board role prompts (installed at setup)
 │       └── {agent_addr}/              # per-address dir (keyed by cleaned email)
 │           └── agentmail.json         # email + api_key
 ├── mail/
 │   └── {agent_addr}/                  # received mail per address
+│       ├── agentmail.log              # agent pipeline log
 │       └── {yyyymm}/in-*.json         # monthly snapshots
-└── .system_raw_key/                   # activation keys
+├── bridge/
+│   ├── amail_bridge.toml              # bridge config
+│   ├── amail_routes.toml              # route table (email → local webhook)
+│   ├── bin/amail-bridge               # bridge binary
+│   ├── bridge.pid                     # bridge PID
+│   ├── bridge.out                     # bridge stdout log
+│   └── backup-deploy-*/               # pre-deploy backup (old config + binary)
+├── logs/
+│   ├── amail-bridge.log               # bridge runtime log
+│   └── agentmail.agent.{addr}.log     # per-agent processing log
+├── backup-reset-*/                    # config snapshot before each reset
+└── .system_raw_key/
+    └── {system_id}_admin.key          # raw admin key (integration only)
 ```
 
 ---
