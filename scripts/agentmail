@@ -334,9 +334,12 @@ def cmd_install(args) -> int:
                 subprocess.call(["bash", str(SCRIPTS_DIR / "deer-flow" / sh)], env=env3)
         _ok("deerflow agents registered + inbound patch + skill installed")
     if platform == "dsh":
-        # dsh:session 由 dsh 侧创建(bind_agent.py 绑定);安装只装 skill
-        env3 = dict(os.environ)
-        subprocess.call(["bash", str(SCRIPTS_DIR / "dsh" / "install-skill.sh")], env=env3)
+        # 安装 = dsh 官方插件命令的薄封装(bundle 自动挂载 mail/mail-inbound/tool-mail)
+        r = subprocess.call(["dsh", "plugin", "--profile", "web", "add", "agentmail"])
+        if r != 0:
+            print("  ⚠ dsh plugin add agentmail 失败(检查 agentmail npm 包发布与网络)")
+        else:
+            _ok("agentmail 插件已安装(dsh bundle 层挂载)")
         print("  dsh: 绑定步骤 = scripts/dsh/bind_agent.py(注册地址+路由+落盘)")
         print("        在 dsh 中创建 session(加入 mail preset)后运行 bind_agent.py")
 
