@@ -256,7 +256,16 @@ def main():
     sid = os.environ.get("SYSTEM_ID", "")
     domain = os.environ.get("AMAIL_DOMAIN", "")
     wh_mode = os.environ.get("WEBHOOK_MODE", "bridge")
-    wh_host = os.environ.get("WEBHOOK_HOST", "")
+    # webhook_host 来源链(2026-08-18 用户定稿,与 setup_system 同源):
+    # env(AMAIL_WEBHOOK_HOST,兼容旧 WEBHOOK_HOST)→ 已有配置 → 自动探测
+    wh_host = os.environ.get("WEBHOOK_HOST", "") or os.environ.get("AMAIL_WEBHOOK_HOST", "")
+    if not wh_host and sid:
+        try:
+            gw_path = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid, "agentmail_gateway.json")
+            if os.path.isfile(gw_path):
+                wh_host = json.load(open(gw_path)).get("webhook_host", "")
+        except Exception:
+            pass
 
     if not all([gw, ak, sid, domain]):
         log_warn("Required vars missing: GATEWAY_URL, ADMIN_KEY, SYSTEM_ID, AMAIL_DOMAIN")
@@ -298,19 +307,20 @@ def main():
         log_warn("bridge binary not found")
         return 0
 
-    # Determine webhook host
-    if wh_mode == "bridge" and not wh_host:
+    # Write bridge config
+    bridge_mode = "pull" if wh_mode == "bridge" else "push"
+
+    # 三态语义(2026-08-18 用户定稿):pull 模式 webhook_host 显式空
+    # (有 bridge 拉取,云端不回调);push 模式才保留 env/已有/探测值。
+    if bridge_mode == "pull":
+        wh_host = ""
+    elif not wh_host:
         ip = detect_ip()
         wh_host = format_webhook_host(ip)
         log_step(f"Auto-detected bridge address: {wh_host}")
-    elif wh_host:
+    if wh_host:
         log_step(f"Using configured bridge address: {wh_host}")
 
-    if not wh_host and wh_mode != "internal":
-        return 0
-
-    # Write bridge config
-    bridge_mode = "pull" if wh_mode == "bridge" else "push"
     cfg_dir = os.path.expanduser("~/.agentmail/bridge")
     os.makedirs(cfg_dir, exist_ok=True)
     bridge_cfg = os.path.join(cfg_dir, "amail_bridge.toml")
