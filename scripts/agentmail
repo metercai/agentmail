@@ -75,11 +75,14 @@ def _env_val(key: str, fallback: str = "") -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def detect_platform_from_home(system_home: Path) -> str:
-    """按 home 目录特征判断平台。返回 'hermes'/'openclaw'/'unknown'。"""
+    """按 home 目录特征判断平台。返回 'hermes'/'openclaw'/'deerflow'/'unknown'。"""
     if (system_home / "hermes-agent").exists() or (system_home / "profiles").is_dir():
         return "hermes"
     if (system_home / "openclaw.json").is_file():
         return "openclaw"
+    if (system_home / "backend" / "app" / "gateway").is_dir():
+        # deer-flow FastAPI backend 布局(deer-flow/backend/app/gateway)
+        return "deerflow"
     return "unknown"
 
 
@@ -93,6 +96,8 @@ def _platform_ptr(platform: str) -> Path:
     """
     if platform == "openclaw":
         return HOME / ".openclaw" / ".agentmail"
+    if platform == "deerflow":
+        return HOME / ".deer-flow" / ".agentmail"
     root_ptr = HOME / ".hermes" / ".agentmail"
     if root_ptr.is_file():
         return root_ptr
@@ -305,7 +310,7 @@ def cmd_install(args) -> int:
             r = subprocess.call(["bash", str(script)], env=env3)
             if r != 0:
                 _warn(f"{sh} exit {r}")
-    else:  # openclaw
+    elif platform == "openclaw":
         env3 = dict(os.environ)
         env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
         r = subprocess.call([sys.executable, str(SCRIPTS_DIR.parent / "bin" / "register_agent.py"),
@@ -314,6 +319,17 @@ def cmd_install(args) -> int:
         if r == 0:
             subprocess.call(["bash", str(SCRIPTS_DIR / "openclaw" / "install-skill.sh")], env=env3)
         _ok("openclaw agents registered + skill installed")
+    else:  # deerflow
+        # 补充注册(全部已有 agent 注册地址+路由)+ 入站补丁 + skill/mcp
+        env3 = dict(os.environ)
+        env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
+        r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "deer-flow" / "register_agent.py"),
+                             "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
+                            env=env3)
+        if r == 0:
+            for sh in ("install-inbound.sh", "install-skill.sh", "install-mcp.sh"):
+                subprocess.call(["bash", str(SCRIPTS_DIR / "deer-flow" / sh)], env=env3)
+        _ok("deerflow agents registered + inbound patch + skill installed")
 
     print(f"  install done. 建议: agentmail check {'--system-id ' + args.system_id if args.system_id else ''}".rstrip())
     return 0
@@ -1073,6 +1089,12 @@ def cmd_uninstall(args) -> int:
         _uninstall_hermes(system_home if system_home.is_dir() else Path(gw.get("system_home", "")), sid)
     elif platform == "openclaw":
         _uninstall_openclaw(sid)
+    else:  # deerflow
+        # 共享布局(systems/{sid}/)由通用段清理;deer-flow 仓入站补丁
+        # (backend routers/agentmail_inbound.py + app.py 锚点)需手动还原
+        # (agentmail install 的 install-inbound.sh 是幂等安装,无自动反向)
+        print("  deerflow: 共享配置已清理;deer-flow 仓入站补丁请手动还原 "
+              "(删除 routers/agentmail_inbound.py + 移除 app.py 的 import/include_router 两行)")
 
     # 3. 本机数据
     sid_dir = SYSTEMS_DIR / sid
