@@ -75,7 +75,10 @@ def _env_val(key: str, fallback: str = "") -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def detect_platform_from_home(system_home: Path) -> str:
-    """按 home 目录特征判断平台。返回 'hermes'/'openclaw'/'deerflow'/'unknown'。"""
+    """按 home 目录特征判断平台。返回 'hermes'/'openclaw'/'deerflow'/'dsh'/'unknown'。"""
+    if system_home.name == ".dsh" and (system_home / "profiles").is_dir() and (system_home / "storages").is_dir():
+        # dsh home(~/.dsh:profiles/ + storages/)——须在 hermes 特征前(dsh 也有 profiles/)
+        return "dsh"
     if (system_home / "hermes-agent").exists() or (system_home / "profiles").is_dir():
         return "hermes"
     if (system_home / "openclaw.json").is_file():
@@ -330,6 +333,12 @@ def cmd_install(args) -> int:
             for sh in ("install-inbound.sh", "install-skill.sh", "install-mcp.sh"):
                 subprocess.call(["bash", str(SCRIPTS_DIR / "deer-flow" / sh)], env=env3)
         _ok("deerflow agents registered + inbound patch + skill installed")
+    if platform == "dsh":
+        # dsh:session 由 dsh 侧创建(bind_agent.py 绑定);安装只装 skill
+        env3 = dict(os.environ)
+        subprocess.call(["bash", str(SCRIPTS_DIR / "dsh" / "install-skill.sh")], env=env3)
+        print("  dsh: 绑定步骤 = scripts/dsh/bind_agent.py(注册地址+路由+落盘)")
+        print("        在 dsh 中创建 session(加入 mail preset)后运行 bind_agent.py")
 
     print(f"  install done. 建议: agentmail check {'--system-id ' + args.system_id if args.system_id else ''}".rstrip())
     return 0
@@ -1095,6 +1104,9 @@ def cmd_uninstall(args) -> int:
         # (agentmail install 的 install-inbound.sh 是幂等安装,无自动反向)
         print("  deerflow: 共享配置已清理;deer-flow 仓入站补丁请手动还原 "
               "(删除 routers/agentmail_inbound.py + 移除 app.py 的 import/include_router 两行)")
+    if platform == "dsh":
+        # dsh:绑定文件由通用段清理;dsh 侧插件卸载(dsh-mail-* 插件移除)为 dsh 操作
+        print("  dsh: 共享配置已清理;dsh 侧卸载 mail 插件(mail/mail-inbound/tool-mail)+ 删 preset 即可")
 
     # 3. 本机数据
     sid_dir = SYSTEMS_DIR / sid

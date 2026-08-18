@@ -192,6 +192,8 @@ def _detect_agent_type() -> str:
         return "hermes"
     if (Path.home() / ".openclaw" / "openclaw.json").is_file():
         return "openclaw"
+    if (Path.home() / ".dsh").is_dir() and (Path.home() / ".dsh" / "profiles").is_dir():
+        return "dsh"
     if (AGENT_HOME / "hermes-agent").exists() or (AGENT_HOME / "profiles").is_dir():
         return "hermes"
     return "unknown"
@@ -528,6 +530,102 @@ def _openclaw_check_hook(c: Check, agent: dict):
               "Start amail_openclaw_bridge.py on port 8799")
 
 
+# ── dsh adapter ────────────────────────────────────────────────
+def _dsh_detect() -> bool:
+    return (Path.home() / ".dsh").is_dir()
+
+
+def _dsh_list_agents() -> list[dict]:
+    """dsh: agents = agentmail.json 含 session_id 的绑定(每 session 一地址)。"""
+    agents = []
+    sid = _resolve_system_id()
+    sysdir = SYSTEMS_DIR / sid if sid else Path()
+    if sysdir.is_dir():
+        for sub in sorted(sysdir.iterdir()):
+            aj = sub / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                d = json.loads(aj.read_text())
+            except Exception:
+                continue
+            if d.get("session_id"):
+                agents.append({
+                    "name": d["session_id"][:8], "email": d.get("email", ""),
+                    "session_id": d.get("session_id", ""), "preset": d.get("preset", ""),
+                    "config": aj,
+                })
+    return agents
+
+
+def _dsh_check_config(c: Check, agent: dict):
+    """L3 dsh: name&apikey / webhook 成对 / session_id / preset / register。"""
+    name = agent.get("name", "?")
+    email = agent.get("email", "")
+    session_id = agent.get("session_id", "")
+    aj = agent.get("config")
+
+    api_key = ""
+    wh_url = ""
+    wh_secret = ""
+    preset = ""
+    if aj and aj.is_file():
+        try:
+            d = json.loads(aj.read_text())
+            api_key = d.get("api_key", "")
+            wh_url = d.get("webhook_url", "")
+            wh_secret = d.get("webhook_secret", "")
+            preset = d.get("preset", "")
+        except Exception:
+            pass
+    ok = bool(email and api_key)
+    c.add("agent", "name_apikey", ok,
+          f"{name}: {email or 'no email'}" + (", api_key ✓" if api_key else ", api_key MISSING"),
+          "Run scripts/dsh/bind_agent.py")
+
+    wh_ok = bool(wh_url and wh_secret)
+    c.add("agent", "webhook", wh_ok,
+          f"webhook_url={wh_url or '(缺)'}" + (", secret ✓" if wh_secret else ", secret MISSING"),
+          "bind_agent.py 落盘 webhook_url + webhook_secret")
+
+    sess_ok = bool(session_id and preset)
+    c.add("agent", "session", sess_ok,
+          f"session_id={session_id or '(缺)'}, preset={preset or '(缺)'}",
+          "bind_agent.py 落盘 session_id/preset;dsh 侧创建同名 session(加入 mail preset)")
+
+
+def _dsh_check_hook(c: Check, agent: dict):
+    """L4 dsh: POST webhook_url — 200/401 = 接收端点活跃(mail-inbound)。"""
+    aj = agent.get("config")
+    wh_url = ""
+    if aj and aj.is_file():
+        try:
+            wh_url = json.loads(aj.read_text()).get("webhook_url", "")
+        except Exception:
+            pass
+    if not wh_url:
+        c.add("agent", "hook", False, "webhook_url 缺失",
+              "bind_agent.py 落盘 webhook_url(mail-inbound 端点)")
+        return
+    try:
+        req = urllib.request.Request(
+            wh_url, data=b"{}", headers={"Content-Type": "application/json"},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            c.add("agent", "hook", True, f"POST {wh_url} → HTTP {r.status}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            c.add("agent", "hook", True, f"POST {wh_url} → {e.code} (receiver active)")
+        elif e.code == 404:
+            c.add("agent", "hook", False, f"POST {wh_url} → 404",
+                  "Start dsh mail-inbound plugin on the endpoint port")
+        else:
+            c.add("agent", "hook", False, f"POST {wh_url} → HTTP {e.code}")
+    except Exception as e:
+        c.add("agent", "hook", False, f"Cannot reach {wh_url}: {e}",
+              "Start dsh mail-inbound plugin on the endpoint port")
+
+
 PLATFORMS = {
     "hermes": {
         "detect": _hermes_detect,
@@ -540,6 +638,12 @@ PLATFORMS = {
         "list_agents": _openclaw_list_agents,
         "check_config": _openclaw_check_config,
         "check_hook": _openclaw_check_hook,
+    },
+    "dsh": {
+        "detect": _dsh_detect,
+        "list_agents": _dsh_list_agents,
+        "check_config": _dsh_check_config,
+        "check_hook": _dsh_check_hook,
     },
 }
 
