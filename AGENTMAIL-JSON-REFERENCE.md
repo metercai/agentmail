@@ -39,18 +39,19 @@
 | `gateway_url` | string | ✅ | 云端 gateway 基址(如 `https://amail.token.tm`)。所有 HTTP API 调用目标 |
 | `system_id` | string | ✅ | 系统标识(`shared-token-{hash}` / `system-{code}`)。目录键;gateway 侧系统归属;指针文件的值来源 |
 | `domain` | string | ✅ | 邮件域(如 `amail.token.tm`)。**唯一作用 = agent 地址拼接**(`{base}[.{system_name}]@{domain}`);传给 `email_for_agent` 与 `register_email`(gateway 侧从 email 自行提取域,不另收 domain 参数) |
+| `webhook_url` | string | ✅ | **agent 侧接收端点地址,所有平台入站成对字段,agentmail.json 唯一信任源**(2026-08-18 定调):注册时随 register_email 发给 gateway(云端 system_domains 记录);bridge 透明代理下同内网 gateway 直连、跨网 bridge 转发到同一端点。Hermes = `http://127.0.0.1:{wh_port}/webhooks/agentmail-inbound`;OpenClaw = `http://127.0.0.1:{bridge_port}/hook`(外部预处理进程);DeerFlow = `http://127.0.0.1:8001/agentmail/inbound`(进程内预处理)。**Hermes 的 profile config(platforms.webhook)只是运行时副本(webhook.py 监听/验签用),值同源写入——agentmail.json 才是 agentmail 范畴唯一可读可信任的源** |
+| `webhook_secret` | string | ✅ | **入站 HMAC 验签密钥,与 webhook_url 成对**(校验 bridge 转发的 `X-Webhook-Signature`)。权威源同 webhook_url:一律落 agentmail.json(Hermes 注册链从 agentmail.json 读取复用,防漂移;profile config 副本值同源) |
 | `system_name` | string | 共享域必填 | 系统名。**共享域下参与地址拼接**:`{base}.{system_name}@{domain}`(如 `agent.weiwei@amail.token.tm`);独立域下为空 → `{base}@{domain}`。两种全地址拼接方式由 `system_id` 前缀判定(shared-* → 共享域,其余独立域) |
 | `manager_address` | string | ✅ | 管理员邮箱。入站白名单判定;welcome 验收的收件人(管理员收到 Re: 回复) |
-| `mx_domain` | string | 冗余 | **历史遗留冗余字段**(2026-08-18 代码验证):注册脚本统一写 `mx_domain = domain`;client.register_email 的 mx_domain 形参**并未传给 gateway**(请求体仅 id/email/webhook_url/webhook_secret/manager_address,gateway 从 email 提取域);agentmail_base:122-123 仅作默认值构造(未配 domain 时用 `amail.token.tm` 派生)。**与 domain 同一事物,无功能意义,新平台不再写入,存量保留兼容** |
+| `mx_domain` | string | 冗余 | **历史遗留冗余字段,已从所有实例文件移除**(2026-08-18 代码验证):client.register_email 的 mx_domain 形参从未传给 gateway(gateway 从 email 提取域);agentmail_base 默认构造已简化。**与 domain 同一事物,无功能意义,新平台不写入,存量已清理** |
 
 ### 2.2 平台特有字段(按平台,互不冲突)
 
 | 字段 | 类型 | 平台 | 作用 |
 |------|------|------|------|
 | `agent_id` | string | OpenClaw / DeerFlow / (Hermes 可选) | 平台内 agent 标识(`main` / `default` / profile 名)。`_scan_systems_for_agent(agent_id)` 的匹配键;Hermes 按 profile 名注册、文件内可缺省 |
-| `webhook_secret` | string | OpenClaw / DeerFlow | 入站 webhook HMAC 验签密钥(校验 bridge 转发的 `X-Webhook-Signature`)。Hermes 不落此字段(secret 在 profile config 的 platforms.webhook) |
 | `deerflow_url` | string | DeerFlow | **已删除**(2026-08-18 重构执行):预处理并入 DeerFlow 本地 gateway(8001)进程后,接收端点统一为 `webhook_url`(`http://127.0.0.1:8001/agentmail/inbound`);旧独立接收进程 amail_deerflow_bridge(8798)退役。存量文件含此字段时忽略 |
-| `assistant_id` | string | DeerFlow | DeerFlow 平台内**助理定义标识**(如 `lead_agent`,预设角色)。**不进地址**:地址 base 来自 `agent_id`(default→agent);assistant_id 是投递目标(amail_deerflow_bridge 调 DeerFlow gateway 时指定哪个 assistant 处理)与 Hermes **profile 同级**(定义/角色层)。**assistant 有 name 字段**(代码实锤:AssistantResponse = assistant_id/graph_id/name,默认三者同名 "lead_agent";自定义 agent 时 name = 配置名,graph 统一 lead_agent)——未来多 assistant 各自收信时,地址 base 直接取 assistant 的 name 即可,无需另设命名体系;当前仅 lead_agent |
+| `assistant_id` | string | DeerFlow | DeerFlow 平台内**助理定义标识**(如 `lead_agent`,预设角色)。**不进地址**:地址 base 来自 `agent_id`(default→agent);assistant_id 是投递目标(agentmail_inbound 调 start_run 时指定哪个 assistant 处理)与 Hermes **profile 同级**(定义/角色层)。**assistant 有 name 字段**(代码实锤:AssistantResponse = assistant_id/graph_id/name,默认三者同名 "lead_agent";自定义 agent 时 name = 配置名,graph 统一 lead_agent)——未来多 assistant 各自收信时,地址 base 直接取 assistant 的 name 即可,无需另设命名体系;当前仅 lead_agent |
 
 ### 2.3 dsh 扩展字段(方案已定,待实施)
 
@@ -80,8 +81,9 @@
 ## 3. 实例(修订后形态,2026-08-18;存量文件字段超集,兼容读取)
 
 ```json
-// Hermes(shared-token-40b34a66,共享域 weiwei)——通用字段全集(无 webhook_url/
-// webhook_secret:Hermes 的接收端点与验签密钥在 profile config 的 platforms.webhook)
+// Hermes(shared-token-40b34a66,共享域 weiwei)——通用字段全集(含 webhook_url/
+// webhook_secret:唯一信任源落 agentmail.json;profile config 的 platforms.webhook
+// 是 Hermes 运行时副本,值同源)
 {
   "email": "agent.weiwei@amail.token.tm",
   "gateway_url": "https://amail.token.tm",
@@ -89,7 +91,9 @@
   "system_id": "shared-token-40b34a66",
   "system_name": "weiwei",
   "manager_address": "925457@qq.com",
-  "api_key": "<64hex>"
+  "api_key": "<64hex>",
+  "webhook_url": "http://127.0.0.1:8646/webhooks/agentmail-inbound",
+  "webhook_secret": "<64hex>"
 }
 ```
 

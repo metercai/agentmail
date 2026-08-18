@@ -449,61 +449,74 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     email = core.email_for_agent(name, domain, system_name)
     manager_address = config.get("manager_address", "")
 
-    # Auto-configure or read profile webhook config
-    wh_config = _ensure_profile_webhook(profile_dir)
-    if not wh_config:
-        logger.warning("[agentmail_gateway] Failed to configure webhook for %s — inbound mail disabled", profile_dir)
-        webhook_url = ""
-        webhook_secret = ""
+    # 事实源优先:agentmail.json 已有 webhook_url/secret 则复用(agentmail 唯一
+    # 信任源;profile config 是 Hermes 运行时副本,值同源——重注册不漂移)
+    existing_cfg = _load_profile_config()
+    if (existing_cfg and existing_cfg.get("webhook_url")
+            and existing_cfg.get("webhook_secret")):
+        webhook_url = existing_cfg["webhook_url"]
+        webhook_secret = existing_cfg["webhook_secret"]
+        try:
+            wh_port = int(webhook_url.rsplit(":", 1)[1].split("/", 1)[0])
+        except Exception:
+            wh_port = 8644
+        wh_config = {"secret": webhook_secret, "port": wh_port}
     else:
-        webhook_secret = wh_config["secret"]
-        wh_port = wh_config["port"]
-
-        webhook_host = config.get("webhook_host", "")
-        if not webhook_host:
-            # integrate.sh set webhook_host="" → gateway is local
-            webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/agentmail-inbound"
+        # Auto-configure or read profile webhook config
+        wh_config = _ensure_profile_webhook(profile_dir)
+        if not wh_config:
+            logger.warning("[agentmail_gateway] Failed to configure webhook for %s — inbound mail disabled", profile_dir)
+            webhook_url = ""
+            webhook_secret = ""
         else:
-            # Remote gateway → call bridge API to get webhook_url
-            # Protocol: IP:port → http, domain:port → https
-            if re.match(r'^(\d+\.\d+\.\d+\.\d+|\[.*\]):', webhook_host):
-                bridge_base = f"http://{webhook_host}"
-            elif '[' in webhook_host and ']' in webhook_host:
-                # IPv6 without port — add default bridge port
-                bridge_base = f"http://{webhook_host.rstrip(']')}:38081]"
-            elif ':' in webhook_host and '.' not in webhook_host:
-                # Raw IPv6 (no brackets) — wrap and add port
-                bridge_base = f"http://[{webhook_host}]:38081"
+            webhook_secret = wh_config["secret"]
+            wh_port = wh_config["port"]
+
+            webhook_host = config.get("webhook_host", "")
+            if not webhook_host:
+                # integrate.sh set webhook_host="" → gateway is local
+                webhook_url = f"http://127.0.0.1:{wh_port}/webhooks/agentmail-inbound"
             else:
-                bridge_base = f"https://{webhook_host}"
+                # Remote gateway → call bridge API to get webhook_url
+                # Protocol: IP:port → http, domain:port → https
+                if re.match(r'^(\d+\.\d+\.\d+\.\d+|\[.*\]):', webhook_host):
+                    bridge_base = f"http://{webhook_host}"
+                elif '[' in webhook_host and ']' in webhook_host:
+                    # IPv6 without port — add default bridge port
+                    bridge_base = f"http://{webhook_host.rstrip(']')}:38081]"
+                elif ':' in webhook_host and '.' not in webhook_host:
+                    # Raw IPv6 (no brackets) — wrap and add port
+                    bridge_base = f"http://[{webhook_host}]:38081"
+                else:
+                    bridge_base = f"https://{webhook_host}"
 
-            try:
-                import json as _json
-                data = _json.dumps(
-                    {"email": email, "host": "127.0.0.1", "port": wh_port}
-                ).encode()
-                req = urllib.request.Request(
-                    f"{bridge_base}/api/v1/routes",
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    resp_data = _json.loads(r.read().decode())
-                webhook_url = resp_data.get("webhook_url", "")
-                logger.info("[agentmail_gateway] Bridge returned webhook_url=%s", webhook_url)
-            except Exception as e:
-                logger.warning("[agentmail_gateway] Bridge unreachable: %s (continuing without bridge webhook)", e)
-                # Don't block registration — bridge can be set up later
-                webhook_url = ""
+                try:
+                    import json as _json
+                    data = _json.dumps(
+                        {"email": email, "host": "127.0.0.1", "port": wh_port}
+                    ).encode()
+                    req = urllib.request.Request(
+                        f"{bridge_base}/api/v1/routes",
+                        data=data,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        resp_data = _json.loads(r.read().decode())
+                    webhook_url = resp_data.get("webhook_url", "")
+                    logger.info("[agentmail_gateway] Bridge returned webhook_url=%s", webhook_url)
+                except Exception as e:
+                    logger.warning("[agentmail_gateway] Bridge unreachable: %s (continuing without bridge webhook)", e)
+                    # Don't block registration — bridge can be set up later
+                    webhook_url = ""
 
-        # Ensure agentmail-inbound route exists (idempotent)
-        # skills=["agentmail"] so webhook sessions get the agentmail skill
-        # (send_mail protocol); without it the agent cannot reply by email.
-        _ensure_webhook_route(
-            "agentmail-inbound", webhook_secret, profile_dir=profile_dir,
-            skills=["agentmail"],
-        )
+            # Ensure agentmail-inbound route exists (idempotent)
+            # skills=["agentmail"] so webhook sessions get the agentmail skill
+            # (send_mail protocol); without it the agent cannot reply by email.
+            _ensure_webhook_route(
+                "agentmail-inbound", webhook_secret, profile_dir=profile_dir,
+                skills=["agentmail"],
+            )
 
     # Register the email + generate activation code（公共注册链，幂等）
     reg = core.register_agent_email(
@@ -539,8 +552,11 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
         "manager_address": manager_address,
         "save_raw_snapshots": config.get("save_raw_snapshots", False),
         "webhook_host": config.get("webhook_host", ""),
+        # agentmail 唯一信任源:webhook_url + webhook_secret 成对落盘
+        # (注册链/验签/路由统一从 agentmail.json 读;profile config 的
+        # platforms.webhook 只是 Hermes 运行时副本,值同源)
+        "webhook_url": webhook_url,
         "webhook_secret": webhook_secret,
-        "_wh_port": wh_port if wh_config else 0,
     }
     if api_key:
         inject_cfg["api_key"] = api_key
