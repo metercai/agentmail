@@ -28,6 +28,37 @@
 
 入站完整链路:云端 SMTP 收信 → gateway 清洗/富化 → 入站队列 → **两条路径**:同内网 = gateway 直接 webhook 到接收端点;跨网 = amail-bridge 轮询转发 → 接收端点 → **验签(webhook_secret)** → 预处理 → 投递 agent。
 
+### 1.2 系统级 agentmail_gateway.json 字段参考(2026-08-18 复验,读写点实锤)
+
+系统级配置 `~/.agentmail/systems/{sid}/agentmail_gateway.json`(文件名唯一,无兼容别名)。**注意:此文件没有 webhook_url 字段**——接收端点是地址级概念,见下方特别说明。
+
+| 字段 | 类型 | 含义与作用 | 写入方 | 读取方 |
+|------|------|-----------|--------|--------|
+| `gateway_url` | string | 云端 gateway 基址(https://amail.token.tm)。全部 HTTP 客户端基址 | setup_system | 共享核心/client/注册链 |
+| `admin_key` | string | **system scope 管理密钥**(系统级;agent 级 api_key 在 agentmail.json)。注册链 client、bridge [pull] 条目派生 | setup_system | 注册链、reconcile、bridge 配置 |
+| `system_id` | string | 系统标识(shared-token-xxx),目录键;指针文件值来源 | setup_system | 全 |
+| `system_name` | string | 系统名(共享域地址的 .{system_name} 段) | setup_system | email_for_agent |
+| `save_raw_snapshots` | bool | 原始快照保存开关 | setup_system | (注册链 inject 透传) |
+| `domain` | string | 邮件域(地址拼接) | setup_system | email_for_agent |
+| `manager_address` | string | 系统默认管理员地址(agent 注册缺省时沿用) | setup_system | 注册链 |
+| `webhook_host` | string | **NAT 出口 IP:port**(push 模式云端可达地址声明;Hermes 远端场景用它构造 bridge 路由;实际入站走 pull 时不依赖) | setup_system | agentmail_hermes(远端分支) |
+| `system_home` | string | 平台根目录(Hermes=~/.hermes,OpenClaw=~/.openclaw)——CLI 平台推断的锚点 | setup_system | CLI(install/check/reset 平台探测) |
+| `bridge_port` | int | 本机接收进程端口(OpenClaw 默认 8799);注册时 webhook_url 派生、bridge 路由注册 | save_mode / CLI | register_agent、load_mode、CLI bridge |
+| `mode` | string | 入站模式 push/pull(当前生产 pull) | save_mode / CLI | load_mode、deploy_bridge |
+| `default_agent_name` | string | 默认主 agent 名映射(OpenClaw: main→agent) | CLI mailname | CLI mailname/check |
+
+### 1.3 特别说明:webhook_url(agentmail.json)与 webhook_host(agentmail_gateway.json)的区别
+
+| | agentmail.json `webhook_url` | agentmail_gateway.json `webhook_host` |
+|---|---|---|
+| 层级 | **地址级(per-agent)** | 系统级 |
+| 内容 | **完整接收端点 URL**(含协议+路径,如 `http://127.0.0.1:8646/webhooks/agentmail-inbound`) | **裸 host:port**(NAT 出口 IP,如 `114.249.58.131:38081`) |
+| 作用 | ① 注册给 gateway(云端 system_domains,webhook_url+webhook_secret 成对)② bridge 路由表目标 ③ 入站验签配套 | push 模式下云端回调的可达地址声明(远端 bridge 构造路由用);**pull 模式实际不依赖** |
+| 信任源 | **agentmail.json 唯一信任源**(全平台统一落盘) | 系统级声明,历史遗留语义(实际走 bridge pull) |
+| 关系 | 本地接收端点(127.0.0.1 可达) | 公网出口(NAT 后的机器云端不可直连 → 才需要 bridge) |
+
+**一句话:webhook_url 是"agent 在哪收"的本地事实(地址级,唯一信任源);webhook_host 是"云端能从哪个公网地址回调"的声明(系统级,当前 pull 模式不依赖)。agentmail_gateway.json 里没有 webhook_url 字段——接收端点只存在于 agentmail.json。**
+
 ## 2. 字段总表
 
 ### 2.1 通用字段(全部平台,4 平台共享)
