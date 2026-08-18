@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""unbind_agent.py — 解绑 dsh session(网关注销 + 删 agentmail.json)。
+
+用法:
+  python3 scripts/dsh/unbind_agent.py --email <addr> [--system-id <sid>]
+"""
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
+
+import agentmail_base as _base            # noqa: E402
+import agentmail_tools as _tools          # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="解绑 dsh session 与 agentmail 地址")
+    ap.add_argument("--email", required=True, help="agentmail 地址(agent.dsh@domain)")
+    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    args = ap.parse_args()
+
+    system_id = args.system_id or _base.detect_system_id()
+    gw = _base.load_gateway_config(system_id)
+    if not gw:
+        raise SystemExit(f"gateway config not found for {system_id}")
+
+    client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
+    st = _base.deregister_agent_email(client, system_id, args.email,
+                                      manager_address=gw.get("manager_address", ""))
+    print(f"  ✓ gateway deregister {args.email} (api-key={st.get('api_key')} "
+          f"domain={st.get('domain')} whitelist={st.get('whitelist')})")
+
+    p = os.path.expanduser(f"~/.agentmail/systems/{system_id}/{_base._clean_agent_dir_name(args.email)}/agentmail.json")
+    if os.path.isfile(p):
+        os.remove(p)
+        print(f"  ✓ removed {p}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
