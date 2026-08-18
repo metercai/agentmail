@@ -655,14 +655,21 @@ def _system_agents(sid: str) -> list[tuple[str, str]]:
 
 
 def _default_recv_url(sid: str, email: str) -> str:
-    """推断该 agent 的接收端 URL:bridge_port 优先(OpenClaw=/hook),
-    Hermes 用 webhook 端口 + /webhooks/agentmail-inbound。"""
+    """推断该 agent 的接收端 URL:优先 agentmail.json 的 webhook_url(唯一
+    信任源,注册后已落盘);fallback 平台默认(Hermes=profile webhook 端口,
+    OpenClaw=8799/hook)。"""
+    try:
+        aj = SYSTEMS_DIR / sid / _addr_clean(email) / "agentmail.json"
+        if aj.is_file():
+            wu = json.loads(aj.read_text()).get("webhook_url", "")
+            if wu:
+                return wu
+    except Exception:
+        pass
+    # fallback:平台默认
     cfg_path = SYSTEMS_DIR / sid / "agentmail_gateway.json"
-    port = 8799
     try:
         gw = json.loads(cfg_path.read_text())
-        port = int(gw.get("bridge_port") or 8799)
-        # Hermes:bridge_port 字段存在但实际 webhook 端口在 profile config
         system_home = gw.get("system_home", "")
         if system_home and (Path(system_home) / "hermes-agent").exists():
             try:
@@ -678,7 +685,7 @@ def _default_recv_url(sid: str, email: str) -> str:
             return f"http://127.0.0.1:{port}/webhooks/agentmail-inbound"
     except Exception:
         pass
-    return f"http://127.0.0.1:{port}/hook"
+    return "http://127.0.0.1:8799/hook"
 
 
 # ═══════════════════════════════════════════════════════════════

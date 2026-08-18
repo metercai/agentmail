@@ -54,8 +54,14 @@ def discover_openclaw_agents() -> list:
 
 def register_one(client, system_id: str, agent_id: str, email: str,
                  webhook_url: str, webhook_secret: str, manager_address: str,
-                 domain: str, system_name: str, gateway_url: str) -> dict:
-    """注册单个 agent：核心链走公共 register_agent_email，平台部分只做本地落盘组装。"""
+                 domain: str, system_name: str, gateway_url: str,
+                 local_webhook_url: str) -> dict:
+    """注册单个 agent：核心链走公共 register_agent_email，平台部分只做本地落盘组装。
+
+    webhook_url(注册参数)由 resolve_register_webhook_url 三态决定(push=bridge
+    公网入口 / pull=空 / 无 bridge=本地端点);agentmail.json 落盘的一律是
+    local_webhook_url(本地接收端点,唯一信任源,给 bridge 路由表)。
+    """
     reg = _base.register_agent_email(
         client, system_id, email, webhook_url, webhook_secret,
         manager_address,
@@ -70,30 +76,30 @@ def register_one(client, system_id: str, agent_id: str, email: str,
         "system_name": system_name,
         "manager_address": manager_address,
         "api_key": api_key,
-        # webhook_secret 落盘：接收端(bridge 转发目标)验签需与云端一致。
-        # webhook_url 与 webhook_secret 成对（2026-08-18 定调）：webhook_url =
-        # agent 侧接收端点，与入站模式(push/pull)无关，一律注册。
+        # agentmail.json webhook_url = 本地接收端点(唯一信任源,给 bridge 路由);
+        # 与地址注册参数是两个值(见 resolve_register_webhook_url)。
+        "webhook_url": local_webhook_url,
         "webhook_secret": webhook_secret,
     }
     return cfg
 
 
-def register_bridge_route(system_id: str, email: str, gw: dict) -> None:
-    """注册后向本机 bridge POST 路由(email → 接收端全 URL)。
+def register_bridge_route(system_id: str, email: str, gw: dict,
+                          local_webhook_url: str) -> None:
+    """注册后向本机 bridge POST 路由(email → 本地接收端点全 URL)。
 
     bridge admin API: POST /api/v1/routes {email, host, port} —— 新版支持
     全 URL(host 字段传完整 http://... 含路径,如 /hook)。
-    端口取 agentmail_gateway.json 的 bridge_port(默认 8799)。
+    端口取 agentmail_gateway.json 的 bridge_admin_port(默认 38081)。
     """
     import urllib.request
-    port = int(gw.get("bridge_port", 8799))
-    target_url = f"http://127.0.0.1:{port}/hook"
+    target_url = local_webhook_url
     # bridge admin API 地址从配置取(bridge_admin_port),回退 38081
     admin_port = int(gw.get("bridge_admin_port", 38081))
     try:
         req = urllib.request.Request(
             f"http://127.0.0.1:{admin_port}/api/v1/routes",
-            data=json.dumps({"email": email, "host": target_url, "port": port}).encode(),
+            data=json.dumps({"email": email, "host": target_url, "port": 0}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -124,8 +130,7 @@ def main() -> int:
     manager = args.manager or os.environ.get("AMAIL_MANAGER", "")
     if not manager:
         raise SystemExit("need --manager <addr> or AMAIL_MANAGER env (审批联系人)")
-    mode = _base.load_mode(system_id)
-    print(f"system_id={system_id} mode={mode.get('mode')} domain={gw.get('domain')}")
+    print(f"system_id={system_id} domain={gw.get('domain')}")
 
     # admin client（register_email/activate_address 全在 _GatewayClient）
     client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
@@ -134,10 +139,10 @@ def main() -> int:
     if not agents:
         agents = ["main"]
 
-    # webhook_url = agent 侧接收端点(/hook),与入站模式无关(2026-08-18 定调:
-    # bridge 是透明代理,同内网 gateway 直连、跨网 bridge 转发到同一端点)
-    bridge_port = int(gw.get("bridge_port", 8799))
-    webhook_url = f"http://127.0.0.1:{bridge_port}/hook"
+    # 本地接收端点(平台常量:接收进程 amail_openclaw_bridge.py 监听 8799,/hook)
+    local_webhook_url = "http://127.0.0.1:8799/hook"
+    # 注册参数三态:push=bridge 公网入口 / pull=空 / 无 bridge=本地端点
+    reg_url = _base.resolve_register_webhook_url(gw, local_webhook_url)
     created = 0
 
     for agent_id in agents:
@@ -145,15 +150,16 @@ def main() -> int:
         webhook_secret = secrets.token_hex(32)
         cfg = register_one(
             client, system_id, agent_id, email,
-            webhook_url, webhook_secret, manager,
+            reg_url, webhook_secret, manager,
             gw["domain"], gw.get("system_name", ""), gw["gateway_url"],
+            local_webhook_url,
         )
         if cfg["api_key"]:
             _base.save_agent_config(agent_id, cfg, system_id)
             created += 1
             print(f"  ✓ {agent_id} → {email} (api_key ok)")
-            # 注册后向本机 bridge 注册路由(email → 接收端全 URL)
-            register_bridge_route(system_id, email, gw)
+            # 注册后向本机 bridge 注册路由(email → 本地接收端点全 URL)
+            register_bridge_route(system_id, email, gw, local_webhook_url)
         else:
             print(f"  ⚠ {agent_id} → {email} registered but no api_key (activation pending)")
 

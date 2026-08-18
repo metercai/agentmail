@@ -157,35 +157,6 @@ def detect_system_id() -> str:
     )
 
 
-def load_mode(system_id: str = "") -> dict:
-    """读取 push/pull 模式（合并进 agentmail_gateway.json 的 mode/bridge_port 字段）。"""
-    if not system_id:
-        system_id = detect_system_id()
-    gw = load_gateway_config(system_id) or {}
-    mode = gw.get("mode", "pull")
-    bridge_port = gw.get("bridge_port", 8799)
-    return {
-        "mode": mode,
-        "bridge_port": bridge_port,
-        "bridge_url": f"http://127.0.0.1:{bridge_port}/hook" if mode == "push" else "",
-    }
-
-
-def save_mode(system_id: str, mode: dict) -> None:
-    """把 push/pull 模式写进 agentmail_gateway.json（mode/bridge_port 字段）。"""
-    p = system_dir(system_id) / "agentmail_gateway.json"
-    cfg = {}
-    if p.is_file():
-        try:
-            cfg = json.loads(p.read_text())
-        except Exception:
-            pass
-    cfg["mode"] = mode.get("mode", "pull")
-    cfg["bridge_port"] = mode.get("bridge_port", 8799)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
-
-
 def load_openclaw_hooks() -> Optional[dict]:
     """读取 ~/.openclaw/openclaw.json 的 hooks 块（token/path）。"""
     p = Path.home() / ".openclaw" / "openclaw.json"

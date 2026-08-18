@@ -98,12 +98,14 @@ def main() -> int:
         email = _base.email_for_agent(agent_id, gw["domain"], gw.get("system_name", ""),
                                       default_aliases=("default",))
         webhook_secret = secrets.token_hex(32)
-        # webhook_url = agent 侧接收端点(DeerFlow 本地 gateway /agentmail/inbound,
-        # 预处理已并入 8001 进程;2026-08-18 定调)
+        # 本地接收端点(进程内预处理,DeerFlow 本地 gateway /agentmail/inbound;
+        # DEERFLOW_INBOUND_URL 可覆盖,2026-08-18 重构)
         inbound_base = os.environ.get("DEERFLOW_INBOUND_URL", "http://127.0.0.1:8001")
-        webhook_url = inbound_base.rstrip("/") + "/agentmail/inbound"
+        local_webhook_url = inbound_base.rstrip("/") + "/agentmail/inbound"
+        # 注册参数三态:push=bridge 公网入口 / pull=空 / 无 bridge=本地端点
+        reg_url = _base.resolve_register_webhook_url(gw, local_webhook_url)
         reg = _base.register_agent_email(
-            client, system_id, email, webhook_url, webhook_secret, manager,
+            client, system_id, email, reg_url, webhook_secret, manager,
         )
         if reg.get("api_key"):
             cfg = {
@@ -114,7 +116,8 @@ def main() -> int:
                 "system_name": gw.get("system_name", ""),
                 "manager_address": manager,
                 "api_key": reg["api_key"],
-                "webhook_url": webhook_url,
+                # agentmail.json webhook_url = 本地接收端点(唯一信任源,给 bridge 路由)
+                "webhook_url": local_webhook_url,
                 "webhook_secret": webhook_secret,
                 "assistant_id": meta.get("assistant_id", "lead_agent"),
             }

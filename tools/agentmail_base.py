@@ -957,6 +957,27 @@ def email_for_agent(agent_id: str, domain: str, system_name: str = "",
     return f"{base}@{domain}"
 
 
+def resolve_register_webhook_url(gw: dict, local_webhook_url: str) -> str:
+    """webhook_host 三态 → 地址注册参数 webhook_url(2026-08-18 用户定稿语义):
+
+    - webhook_host 有合法 IP:port → 有 bridge,push 模式 → 注册参数 =
+      webhook_host(bridge 公网入口,云端直推)
+    - webhook_host 显式空值("") → 有 bridge,pull 模式 → 注册参数 = 空
+      (云端不回调;bridge 按空值走 pull 拉取,与 amail_bridge toml 语义一致)
+    - webhook_host 配置项不存在 → 无 bridge → 注册参数 = local_webhook_url
+      (agentmail.json 的本地接收端点,云端直推本地)
+
+    注意:注册参数与 agentmail.json 的 webhook_url 是两个值——agentmail.json
+    webhook_url 始终 = 本地接收端点(bridge 路由目标,唯一信任源)。
+    """
+    whh = gw.get("webhook_host") if isinstance(gw, dict) else None
+    if whh is not None and str(whh).strip():
+        return str(whh)          # push:bridge 公网入口
+    if whh is not None:
+        return ""                # pull:显式空值
+    return local_webhook_url     # 无 bridge:本地端点
+
+
 def register_agent_email(client, system_id: str, email: str,
                          webhook_url: str = "", webhook_secret: str = "",
                          manager_address: str = "") -> dict:

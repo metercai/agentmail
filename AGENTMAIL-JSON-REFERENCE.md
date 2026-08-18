@@ -41,23 +41,22 @@
 | `save_raw_snapshots` | bool | 原始快照保存开关 | setup_system | (注册链 inject 透传) |
 | `domain` | string | 邮件域(地址拼接) | setup_system | email_for_agent |
 | `manager_address` | string | 系统默认管理员地址(agent 注册缺省时沿用) | setup_system | 注册链 |
-| `webhook_host` | string | **NAT 出口 IP:port**(push 模式云端可达地址声明;Hermes 远端场景用它构造 bridge 路由;实际入站走 pull 时不依赖) | setup_system | agentmail_hermes(远端分支) |
+| `webhook_host` | string | **三态语义(2026-08-18 用户定稿)**:① 有合法 IP:port → 有 bridge,push 模式(地址注册参数直接用 webhook_host)② 显式空值 "" → 有 bridge,pull 模式(注册参数为空,云端不回调;bridge 空值=拉取)③ **配置项不存在** → 无 bridge(注册参数 = agentmail.json 的 webhook_url 本地端点)。安装时设置 | setup_system / deploy_bridge | 注册链(resolve_register_webhook_url 三态) |
 | `system_home` | string | 平台根目录(Hermes=~/.hermes,OpenClaw=~/.openclaw)——CLI 平台推断的锚点 | setup_system | CLI(install/check/reset 平台探测) |
-| `bridge_port` | int | 本机接收进程端口(OpenClaw 默认 8799);注册时 webhook_url 派生、bridge 路由注册 | save_mode / CLI | register_agent、load_mode、CLI bridge |
-| `mode` | string | 入站模式 push/pull(当前生产 pull) | save_mode / CLI | load_mode、deploy_bridge |
 | `default_agent_name` | string | 默认主 agent 名映射(OpenClaw: main→agent) | CLI mailname | CLI mailname/check |
+
+> 已删除(2026-08-18):`mode`(冗余——push/pull 由 webhook_host 三态表达,agent 侧只有 hook 入口;bridge 自身模式在 amail_bridge.toml)、`bridge_port`(冗余——接收端点已在 agentmail.json webhook_url 里含端口;bridge 自身端口在 amail_bridge.toml)。
 
 ### 1.3 特别说明:webhook_url(agentmail.json)与 webhook_host(agentmail_gateway.json)的区别
 
 | | agentmail.json `webhook_url` | agentmail_gateway.json `webhook_host` |
 |---|---|---|
 | 层级 | **地址级(per-agent)** | 系统级 |
-| 内容 | **完整接收端点 URL**(含协议+路径,如 `http://127.0.0.1:8646/webhooks/agentmail-inbound`) | **裸 host:port**(NAT 出口 IP,如 `114.249.58.131:38081`) |
-| 作用 | ① 注册给 gateway(云端 system_domains,webhook_url+webhook_secret 成对)② bridge 路由表目标 ③ 入站验签配套 | push 模式下云端回调的可达地址声明(远端 bridge 构造路由用);**pull 模式实际不依赖** |
-| 信任源 | **agentmail.json 唯一信任源**(全平台统一落盘) | 系统级声明,历史遗留语义(实际走 bridge pull) |
-| 关系 | 本地接收端点(127.0.0.1 可达) | 公网出口(NAT 后的机器云端不可直连 → 才需要 bridge) |
+| 内容 | **完整接收端点 URL**(含协议+路径,如 `http://127.0.0.1:8646/webhooks/agentmail-inbound`) | **三态**:有合法 IP:port / 空("")/ 配置项不存在 |
+| 语义 | 本地接收端点 = **唯一信任源**(给 bridge 路由表;注册链落盘) | ① 有值 = 有 bridge,push 模式(bridge 公网入口,注册参数直接用)② 空 = 有 bridge,pull 模式(注册参数空,云端不回调)③ 无键 = 无 bridge(注册参数用本地端点) |
+| 注册参数关系 | 无 bridge 时 = 地址注册参数;pull 时注册参数为空 | push 时 = 地址注册参数 |
 
-**一句话:webhook_url 是"agent 在哪收"的本地事实(地址级,唯一信任源);webhook_host 是"云端能从哪个公网地址回调"的声明(系统级,当前 pull 模式不依赖)。agentmail_gateway.json 里没有 webhook_url 字段——接收端点只存在于 agentmail.json。**
+**一句话:webhook_url 是"agent 在哪收"的本地事实(地址级,唯一信任源,始终落盘);webhook_host 是"是否有 bridge / 走 push 还是 pull"的系统级三态声明(安装时设置,决定地址注册参数)。两个字段各自独立——注册参数 = 三态解析结果,agentmail.json 落盘值始终是本地端点。**
 
 ## 2. 字段总表
 
