@@ -265,7 +265,6 @@ class _GatewayClient:
     def register_email(
         self,
         system_id: str,
-        mx_domain: str,
         email: str,
         webhook_url: str,
         webhook_secret: str,
@@ -273,7 +272,9 @@ class _GatewayClient:
         generate_code: bool = False,
     ) -> dict:
         """POST /api/v1/admin/systems/:sid/addresses — register an agent address.
-        When generate_code=True, also creates an activation code in one call."""
+        When generate_code=True, also creates an activation code in one call.
+        Note: domain is derived by the gateway from the email address itself —
+        no domain/mx_domain parameter (mx_domain removed 2026-08-18, was never sent)."""
         params = "?generate_code=true" if generate_code else ""
         result = self._request(
             "POST",

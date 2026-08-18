@@ -58,7 +58,7 @@ def register_one(client, system_id: str, agent_id: str, email: str,
     """注册单个 agent：核心链走公共 register_agent_email，平台部分只做本地落盘组装。"""
     reg = _base.register_agent_email(
         client, system_id, email, webhook_url, webhook_secret,
-        manager_address, mx_domain=domain,
+        manager_address,
     )
     api_key = reg.get("api_key", "")
 
@@ -70,10 +70,9 @@ def register_one(client, system_id: str, agent_id: str, email: str,
         "system_name": system_name,
         "manager_address": manager_address,
         "api_key": api_key,
-        "mx_domain": domain,
         # webhook_secret 落盘：接收端(bridge 转发目标)验签需与云端一致。
-        # pull 模式下 webhook_url 为空，但云端 pending 仍用该 secret 签名
-        # (webhook.rs sign_payload)——本地不落盘则接收端验签必 401。
+        # webhook_url 与 webhook_secret 成对（2026-08-18 定调）：webhook_url =
+        # agent 侧接收端点，与入站模式(push/pull)无关，一律注册。
         "webhook_secret": webhook_secret,
     }
     return cfg
@@ -135,7 +134,10 @@ def main() -> int:
     if not agents:
         agents = ["main"]
 
-    webhook_url = mode.get("bridge_url", "") if mode.get("mode") == "push" else ""
+    # webhook_url = agent 侧接收端点(/hook),与入站模式无关(2026-08-18 定调:
+    # bridge 是透明代理,同内网 gateway 直连、跨网 bridge 转发到同一端点)
+    bridge_port = int(gw.get("bridge_port", 8799))
+    webhook_url = f"http://127.0.0.1:{bridge_port}/hook"
     created = 0
 
     for agent_id in agents:

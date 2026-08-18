@@ -508,7 +508,7 @@ def _auto_register_email(name: str, profile_dir: str, config: dict) -> None:
     # Register the email + generate activation code（公共注册链，幂等）
     reg = core.register_agent_email(
         client, system_id, email, webhook_url, webhook_secret,
-        manager_address, mx_domain=config["domain"],
+        manager_address,
     )
     logger.info("[agentmail_gateway] Registered email %s (api_key=%s)",
                 email, "ok" if reg.get("api_key") else "pending")

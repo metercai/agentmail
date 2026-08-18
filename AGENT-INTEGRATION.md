@@ -100,7 +100,7 @@ email_for_agent(agent_id, domain, system_name, default_aliases)
 
 ```
 register_agent_email(client, system_id, email, webhook_url, webhook_secret,
-                     manager_address, mx_domain) -> {"api_key", "activation_code"}
+                     manager_address) -> {"api_key", "activation_code"}
 deregister_agent_email(client, system_id, email, manager_address) -> {api_key, domain, whitelist}
 ```
 
@@ -179,15 +179,26 @@ welcome 是唯一含真实 LLM 的端到端验证(管理员收到 agent 的 Re: 
 | 部署 | repo-direct:tools/openclaw/*.py 直接运行,改立即生效;skill 经 install-skill.sh 拷贝 |
 | 关键坑 | 接收端必须**先 set_agent_context 再调 process_inbound_mail**(否则富化跳过);set_agent_context 需 export AMAIL_AGENT_EMAIL(否则日志落 default.log) |
 
-### 4.3 对比(新系统选型参考)
+### 4.3 DeerFlow(第三实例,生产运行中;2026-08-18 重构:预处理并入本地 gateway)
 
-| 维度 | Hermes | OpenClaw |
-|------|--------|----------|
-| 入站模型 | 单入单出(每 profile 独立端口) | 单入多出(一个 hooks 端点路由多 agent) |
-| 工具暴露 | 进程内 registry 注册 | MCP stdio server(amail__ 前缀) |
-| 部署 | copy-deploy(改后须重跑 install) | repo-direct(改立即生效) |
-| 生命周期事件 | 有事件总线(profile_created/deleted) | 无 → CLI 包装 |
-| persona | 全能力(PERSONA_SUPPORTED=True) | 无(False,归一基础地址) |
+| 组件 | 位置 |
+|------|------|
+| 适配层 | `tools/deer-flow/amail_base.py`(注入点赋值 + `PERSONA_SUPPORTED = False` + 身份注入 `deerflow/{ver}` + 转发共享函数) |
+| 工具 | `tools/amail_mcp_server.py`(共享 MCP stdio server,`amail__*` 前缀;MCP server 提升为共享兜底后,DeerFlow 同 OpenClaw 复用) |
+| 入站 | **进程内预处理(仿 Hermes,2026-08-18 重构)**:deer-flow `backend/app/gateway/routers/agentmail_inbound.py` — `POST /agentmail/inbound`:HMAC 验签(per-address webhook_secret)→ 共享 `process_inbound_mail`(import amail_base 适配层注入)→ ping/pong 拦截 → 未拦截 `start_run` 内部投递(thread=uuid5("amail", email),assistant_id 读 agentmail.json) |
+| 生命周期 | `scripts/deer-flow/reconcile.py`(对账为主)+ register_agent.py(即时注册);webhook_url = 本地 gateway 接收端点(`http://127.0.0.1:8001/agentmail/inbound`) |
+| 部署 | 依赖 agentmail 仓库共享布局(~/.agentmail/systems/{sid}/{cleaned_addr}/agentmail.json,env `AMAIL_REPO` 可指仓库路径);旧独立接收进程 `amail_deerflow_bridge.py`(8798)已退役删除 |
+| 关键坑 | 8001 进程内 import amail_base 需 sys.path 注入(router 模块级);Pyright 报 import 无法解析是误报(运行时路径已插入) |
+
+### 4.4 对比(新系统选型参考)
+
+| 维度 | Hermes | OpenClaw | DeerFlow |
+|------|--------|----------|----------|
+| 入站模型 | 单入单出(每 profile 独立端口) | 单入多出(一个 hooks 端点路由多 agent) | **进程内预处理**(gateway 内 /agentmail/inbound,start_run 投递;仿 Hermes) |
+| 工具暴露 | 进程内 registry 注册 | MCP stdio server(amail__ 前缀) | MCP stdio server(amail__ 前缀) |
+| 部署 | copy-deploy(改后须重跑 install) | repo-direct(改立即生效) | 适配层 repo-direct;预处理在 deer-flow 仓(改后重启 8001) |
+| 生命周期事件 | 有事件总线(profile_created/deleted) | 无 → CLI 包装 | 无 → reconcile 对账 |
+| persona | 全能力(PERSONA_SUPPORTED=True) | 无(False,归一基础地址) | 无(False,归一基础地址) |
 
 ---
 

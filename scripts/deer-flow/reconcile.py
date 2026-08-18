@@ -98,8 +98,12 @@ def main() -> int:
         email = _base.email_for_agent(agent_id, gw["domain"], gw.get("system_name", ""),
                                       default_aliases=("default",))
         webhook_secret = secrets.token_hex(32)
+        # webhook_url = agent 侧接收端点(DeerFlow 本地 gateway /agentmail/inbound,
+        # 预处理已并入 8001 进程;2026-08-18 定调)
+        inbound_base = os.environ.get("DEERFLOW_INBOUND_URL", "http://127.0.0.1:8001")
+        webhook_url = inbound_base.rstrip("/") + "/agentmail/inbound"
         reg = _base.register_agent_email(
-            client, system_id, email, "", webhook_secret, manager, mx_domain=gw["domain"],
+            client, system_id, email, webhook_url, webhook_secret, manager,
         )
         if reg.get("api_key"):
             cfg = {
@@ -110,9 +114,8 @@ def main() -> int:
                 "system_name": gw.get("system_name", ""),
                 "manager_address": manager,
                 "api_key": reg["api_key"],
-                "mx_domain": gw["domain"],
+                "webhook_url": webhook_url,
                 "webhook_secret": webhook_secret,
-                "deerflow_url": gw.get("deerflow_url", "http://127.0.0.1:8001"),
                 "assistant_id": meta.get("assistant_id", "lead_agent"),
             }
             _save_agent_config(agent_id, cfg, system_id)

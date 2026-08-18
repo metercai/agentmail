@@ -49,7 +49,7 @@ def register_one(client, system_id: str, agent_id: str, email: str,
     """注册单个 agent: 核心链走公共 register_agent_email,平台部分只做本地落盘组装。"""
     reg = _base.register_agent_email(
         client, system_id, email, webhook_url, webhook_secret,
-        manager_address, mx_domain=domain,
+        manager_address,
     )
     api_key = reg.get("api_key", "")
 
@@ -61,10 +61,10 @@ def register_one(client, system_id: str, agent_id: str, email: str,
         "system_name": system_name,
         "manager_address": manager_address,
         "api_key": api_key,
-        "mx_domain": domain,
-        # webhook_secret 落盘:接收端(bridge 转发目标)验签需与云端一致。
+        # webhook_url + webhook_secret 成对(2026-08-18 定调):webhook_url =
+        # agent 侧接收端点(DeerFlow = 本地 gateway 的 /agentmail/inbound)。
+        "webhook_url": webhook_url,
         "webhook_secret": webhook_secret,
-        "deerflow_url": os.environ.get("DEERFLOW_URL", "http://127.0.0.1:8001"),
         "assistant_id": os.environ.get("DEERFLOW_ASSISTANT_ID", "lead_agent"),
     }
     return cfg
@@ -110,13 +110,18 @@ def main() -> int:
     if not agents:
         agents = ["default"]
 
+    # webhook_url = agent 侧接收端点(DeerFlow 本地 gateway 的 /agentmail/inbound;
+    # 预处理已并入 8001 进程,2026-08-18 定调),与入站模式无关
+    inbound_base = os.environ.get("DEERFLOW_INBOUND_URL", "http://127.0.0.1:8001")
+    webhook_url = inbound_base.rstrip("/") + "/agentmail/inbound"
+
     created = 0
     for agent_id in agents:
         email = email_for_agent(agent_id, gw["domain"], gw.get("system_name", ""))
         webhook_secret = secrets.token_hex(32)
         cfg = register_one(
             client, system_id, agent_id, email,
-            "", webhook_secret, manager,
+            webhook_url, webhook_secret, manager,
             gw["domain"], gw.get("system_name", ""), gw["gateway_url"],
         )
         if cfg["api_key"]:

@@ -119,8 +119,7 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     env_sid = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
     if env_sid:
         system_id = env_sid
-    mx_domain = os.environ.get("AMAIL_MX_DOMAIN", "amail.token.tm")
-    domain = mx_domain or os.environ.get("AMAIL_DOMAIN", "")
+    domain = os.environ.get("AMAIL_DOMAIN", "")
     # Fallback: map AMAIL_BRIDGE_URL → webhook_host
     raw_webhook = os.environ.get("AMAIL_WEBHOOK_HOST", "") or os.environ.get("AMAIL_BRIDGE_URL", "")
     if raw_webhook:
@@ -136,7 +135,6 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
             "manager_address": os.environ.get("AMAIL_MANAGER_ADDRESS", ""),
             "webhook_host": raw_webhook,
             "sys_id": sys_id,
-            "mx_domain": mx_domain,
         }
 
     # Try ~/.agentmail/systems/{system_id}/agentmail_gateway.json
@@ -961,16 +959,17 @@ def email_for_agent(agent_id: str, domain: str, system_name: str = "",
 
 def register_agent_email(client, system_id: str, email: str,
                          webhook_url: str = "", webhook_secret: str = "",
-                         manager_address: str = "", mx_domain: str = "") -> dict:
+                         manager_address: str = "") -> dict:
     """注册链（幂等，4 步）：register_email(generate_code) → 已存在更新 webhook →
     manager 白名单 → activate_address。返回 {"api_key", "activation_code"}
     （api_key 为空 = 激活 pending/已存在；activation_code 供延迟激活语义）。
+    域由 gateway 从 email 地址自行提取（2026-08-18 起不再传 mx_domain/domain 参数）。
 
     client 须提供：register_email / list_system_domains / update_system_domain /
     activate_address（agentmail_tools._GatewayClient 全具备；白名单由网关注册接口自动创建）。
     """
     result = client.register_email(
-        system_id=system_id, mx_domain=mx_domain, email=email,
+        system_id=system_id, email=email,
         webhook_url=webhook_url, webhook_secret=webhook_secret,
         manager_address=manager_address, generate_code=True,
     )

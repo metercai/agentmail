@@ -4,13 +4,17 @@
 与 OpenClaw amail_base.py 同构（三件套）:
   ① 平台实现: config 加载 / profile 目录 / set_agent_context
   ② 注入点赋值 + 能力开关: PERSONA_SUPPORTED = False
-  ③ 平台注册: 入站 bridge 投递目标(LangGraph API)
+  ③ 平台注册: 身份注入(deerflow/{ver})
 
 共享核心(tools/agentmail_base)已提供平台无关 set_agent_context
 (按 agentmail.json 布局扫描),本适配层在 OpenClaw 基础上仅做:
   - 转发共享函数(与 OpenClaw 同款)
   - 注入 DeerFlow 身份(X-Agentmail-Agent: deerflow/...)
-  - bridge 投递段: dispatch_to_deerflow(LangGraph threads+runs)
+
+入站(2026-08-18 重构):预处理并入 DeerFlow 本地 gateway(8001)进程,
+agentmail_inbound router 直接 import 本适配层获得注入点;独立接收进程
+amail_deerflow_bridge.py(8798)已退役删除——链路 gateway→bridge→
+8001 /agentmail/inbound(验签+预处理+start_run 投递),仿 Hermes 进程内预处理。
 
 布局: ~/.agentmail/systems/{sid}/{cleaned_addr}/agentmail.json(共享)
 """
@@ -19,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -143,54 +146,9 @@ _ab.PERSONA_SUPPORTED = False        # DeerFlow 无 persona 派生地址概念
 _ab._PROFILE_DIR_RESOLVER = _deerflow_profile_dir
 
 
-# ── ③ bridge 投递段: DeerFlow LangGraph API ─────────────────────
-def dispatch_to_deerflow(enriched_payload: dict, cfg: dict) -> dict:
-    """投递富化后的邮件到 DeerFlow LangGraph API。
-
-    cfg 键: deerflow_url(默认 http://127.0.0.1:8001) / assistant_id
-    (默认 lead_agent) / thread_id(默认 UUID5("amail", email))。
-
-    链路:
-      POST {url}/api/runs/wait  RunCreateRequest
-        {"assistant_id", "input": {"messages": [{role, content}]},
-         "config": {"configurable": {"thread_id"}}, "metadata":
-         {"idempotency_key": "amail:<delivery_id>"},
-         "multitask_strategy": "reject", "if_not_exists": "create"}
-    """
-    import urllib.request
-    url = (cfg.get("deerflow_url") or "http://127.0.0.1:8001").rstrip("/")
-    assistant_id = cfg.get("assistant_id") or "lead_agent"
-    email = enriched_payload.get("to") or ""
-    if isinstance(email, list):
-        email = email[0] if email else ""
-    email = enriched_payload.get("my_amail_addr") or email
-    thread_id = cfg.get("thread_id") or str(uuid.uuid5(uuid.NAMESPACE_DNS, f"amail:{email}"))
-
-    # 完整渲染(共享 render_message = json.dumps(payload) 语义,与 Hermes/
-    # OpenClaw 一致):agent 需要 sender/recipients/my_amail_addr 才知道
-    # 回复给谁——只传 body 会让 LLM 编造收件人(实测 test@example.com)。
-    content = _ab.render_message(enriched_payload)
-    body = {
-        "assistant_id": assistant_id,
-        "input": {"messages": [{"role": "user", "content": content}]},
-        "config": {"configurable": {"thread_id": thread_id}},
-        "metadata": {"idempotency_key": f"amail:{enriched_payload.get('mail_id', '')}",
-                     "amail_email": email},
-        "multitask_strategy": "reject",
-        "if_not_exists": "create",
-    }
-    req = urllib.request.Request(
-        f"{url}/api/runs/wait",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=cfg.get("timeout", 120)) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        return {"error": str(e)}
-
+# ── ③ 身份注入(在 ② 之上,同 OpenClaw 模式)──────────────────────
+# 注:入站预处理并入 8001 进程后,dispatch_to_deerflow(原 ③)已删除;
+# 投递由 deer-flow backend 的 agentmail_inbound router 内部 start_run 完成。
 
 # ── 转发共享核心(复用面,与 OpenClaw 同款)────────────────────────
 preprocess_mail_payload = _ab.preprocess_mail_payload
