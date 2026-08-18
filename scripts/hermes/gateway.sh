@@ -99,45 +99,36 @@ if not os.path.exists(gw_cfg_path):
 with open(gw_cfg_path) as f:
     gw_cfg = json.load(f)
 
-bridge_addr = gw_cfg.get("webhook_host", "")
-if not bridge_addr:
-    exit(0)  # no bridge deployed
+# bridge admin 端口(bridge_admin_port,默认 38081)。2026-08-18 修订:
+# webhook_host 三态(pull=空)不影响路由注册——pull 模式 bridge 拉取后
+# 同样按路由表转发,路由表必须有条目。bridge 存在性由 POST 结果判定。
+admin_port = int(gw_cfg.get("bridge_admin_port", 38081))
+bridge_base = f"http://127.0.0.1:{admin_port}"
 
-# Read webhook port from root config (fallback when _wh_port not in agent config)
-import yaml
-root_cfg_path = os.path.join(os.path.expanduser("~"), "config.yaml")
-root_port = 8644
-if os.path.exists(root_cfg_path):
-    with open(root_cfg_path) as f:
-        root_cfg = yaml.safe_load(f) or {}
-    root_port = int(root_cfg.get("platforms", {}).get("webhook", {}).get("extra", {}).get("port", 8644))
-
-bridge_base = f"http://{bridge_addr}"
+# 接收端点一律从 agentmail.json 的 webhook_url 解析(唯一信任源,全 URL
+# 含路径;旧 _wh_port 字段已停写,不再 fallback)
+sys_dir = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid)
 profiles = {}
-
-# Address-keyed configs (root + named both live under systems/{sid}/*/)
-if sid:
-    sys_dir = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid)
-    if os.path.isdir(sys_dir):
-        for name in sorted(os.listdir(sys_dir)):
-            aj = os.path.join(sys_dir, name, "agentmail.json")
-            if not os.path.isfile(aj):
-                continue
-            with open(aj) as f:
-                pf = json.load(f)
-            email = pf.get("email", "")
-            if not email:
-                continue
-            port = int(pf.get("_wh_port", 0) or root_port)
-            profiles[email] = ("127.0.0.1", port)
+if sid and os.path.isdir(sys_dir):
+    for name in sorted(os.listdir(sys_dir)):
+        aj = os.path.join(sys_dir, name, "agentmail.json")
+        if not os.path.isfile(aj):
+            continue
+        with open(aj) as f:
+            pf = json.load(f)
+        email = pf.get("email", "")
+        wu = pf.get("webhook_url", "")
+        if email and wu:
+            profiles[email] = wu
 
 if not profiles:
     exit(0)
 
 registered = 0
 errors = 0
-for email, (host, p) in profiles.items():
-    data = json.dumps({"email": email, "host": host, "port": p}).encode()
+for email, target in profiles.items():
+    # port=80 占位(host 为全 URL 时被 bridge 忽略;0 会被参数校验拒绝)
+    data = json.dumps({"email": email, "host": target, "port": 80}).encode()
     req = urllib.request.Request(
         f"{bridge_base}/api/v1/routes",
         data=data, headers={"Content-Type": "application/json"}, method="POST"
