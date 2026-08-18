@@ -13,13 +13,10 @@ OpenClaw 对应适配层：tools/openclaw/amail_base.py
 import json
 import logging
 import os
-import re
 import secrets
 import socket
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -619,39 +616,9 @@ def _auto_activate_profile(profile_dir: str, config: dict) -> None:
         except Exception as sync_err:
             logger.warning("[agentmail_gateway] Failed to sync api_key: %s", sync_err)
 
-        # ── Port refresh: re-register bridge route if webhook port changed ──
-        webhook_host = config.get("webhook_host", "")
-        if webhook_host:
-
-
-            wh_config = _ensure_profile_webhook(profile_dir)
-            if wh_config:
-                current_port = wh_config["port"]
-                last_port = prof.get("_wh_port", 0)
-                if current_port != last_port:
-                    if re.match(r'^(\d+\.\d+\.\d+\.\d+|\[.*\]):', webhook_host):
-                        bridge_base = f"http://{webhook_host}"
-                    else:
-                        bridge_base = f"https://{webhook_host}"
-                    try:
-                        import json as _json
-                        data = _json.dumps(
-                            {"email": prof["email"], "host": "127.0.0.1", "port": current_port}
-                        ).encode()
-                        req = urllib.request.Request(
-                            f"{bridge_base}/api/v1/routes",
-                            data=data,
-                            headers={"Content-Type": "application/json"},
-                            method="POST",
-                        )
-                        urllib.request.urlopen(req, timeout=5).close()
-                        prof["_wh_port"] = current_port
-                        with open(config_path, "w") as f:
-                            json.dump(prof, f, indent=2)
-                        logger.info("[agentmail_gateway] Bridge route updated: port %s -> %s",
-                                    last_port, current_port)
-                    except Exception as e:
-                        logger.warning("[agentmail_gateway] Bridge route refresh failed: %s", e)
+        # 注:旧 "Port refresh"(激活时刷 bridge 路由)已删除(2026-08-18)——
+        # bridge 路由表目标 = agentmail.json 的 webhook_url(唯一信任源),
+        # 由注册链/CLI bridge 维护,激活流程不再触碰。
     else:
         # Rate-limit retries: skip if recently attempted (avoids spamming gateway
         # with a permanently invalid activation code)

@@ -23,7 +23,7 @@ def latest_bridge_zip(bridge_dir_local: str, arch: str) -> str:
     Scans actual files (not a hardcoded version) so a new release is picked
     up automatically — bumping the version only requires adding the zip.
     """
-    prefix = f"amail-bridge-v"
+    prefix = "amail-bridge-v"
     suffix = f"-linux-{arch}.zip"
     candidates = []
     for f in os.listdir(bridge_dir_local):
@@ -385,7 +385,7 @@ def main():
         if bridge_key:
             log_ok("bridge API key created (category=bridge)")
     else:
-        log_warn(f"bridge failed to start — check ~/.agentmail/logs/amail-bridge.log")
+        log_warn("bridge failed to start — check ~/.agentmail/logs/amail-bridge.log")
 
     return 0
 

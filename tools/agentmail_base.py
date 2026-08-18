@@ -494,7 +494,6 @@ def _log_ping_event(dir_: str, ping_id: str, payload: dict, pong_status: str = "
     (webhook.py Hermes) or poll/bridge (OpenClaw) intercept point.
     """
     try:
-        import sys as _sys
         _entry = {
             "ts": datetime.now().astimezone().isoformat(),
             "dir": dir_, "ping_id": ping_id,
