@@ -261,7 +261,16 @@ def init_system(
     )
 
     status = result.get("status", 0)
-    if not result.get("success"):
+    # 成功判定:网关激活成功响应为 {"status":"activated","raw_key":...},
+    # 无 success 字段(result.get("success") → None 会被误判失败——
+    # 2026-08-18 实测 DeerFlow 激活时踩中:系统已建但 raw_key 丢失)。
+    # 失败响应带 error/非 200 status。
+    is_ok = (
+        result.get("success") in (True, "true", "ok")
+        or str(status).lower() in ("activated", "200", "201")
+        or bool(result.get("raw_key"))
+    )
+    if not is_ok:
         return {"success": False, "error": result.get("error", f"Activation failed (HTTP {status})"), "status": status}
 
     admin_key = result.get("raw_key", "")

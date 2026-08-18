@@ -115,7 +115,10 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     admin_key = os.environ.get("AMAIL_ADMIN_KEY", "")
     product_code = os.environ.get("AMAIL_PRODUCT_CODE", "")
     sys_id = os.environ.get("AMAIL_SYS_ID", "")
-    system_id = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
+    # 仅在 env 显式提供时覆盖传入参数(否则保留调用方 system_id)
+    env_sid = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
+    if env_sid:
+        system_id = env_sid
     mx_domain = os.environ.get("AMAIL_MX_DOMAIN", "amail.token.tm")
     domain = mx_domain or os.environ.get("AMAIL_DOMAIN", "")
     # Fallback: map AMAIL_BRIDGE_URL → webhook_host
