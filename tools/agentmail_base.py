@@ -214,6 +214,63 @@ def _register_board_gateway(board_id: str, gateway_url: str) -> None:
         _BOARD_GATEWAY_SINK(board_id, gateway_url)
 
 
+# ── 平台无关 agent 上下文（兜底 MCP/CLI 共用,2026-08-18 提升）─────
+# 原实现位于 tools/openclaw/amail_base.py(set_agent_context/load_agent_config),
+# 仅 OpenClaw 可用;MCP server 提升为共享服务后,任何 agent 系统只需按共享
+# 布局落 agentmail.json 即可复用。OpenClaw 适配层转发此实现(单一权威)。
+_ACTIVE_AGENT_CONFIG: Optional[dict] = None  # 最近一次 set_agent_context 的配置
+
+
+def _scan_systems_for_agent(agent_id: str, system_id: str = "") -> Optional[dict]:
+    """按 agentId 遍历 systems/{sid}/*/agentmail.json 找匹配配置(平台无关)。
+
+    system_id 缺省时扫描全部 systems/ 目录;命中返回 agentmail.json 内容。
+    """
+    base = Path.home() / ".agentmail" / "systems"
+    candidates = [base / system_id] if system_id else (
+        sorted(p for p in base.iterdir() if p.is_dir()) if base.is_dir() else [])
+    for sys_dir in candidates:
+        if not sys_dir.is_dir():
+            continue
+        for addr_dir in sorted(sys_dir.iterdir()):
+            aj = addr_dir / "agentmail.json"
+            if not aj.is_file():
+                continue
+            try:
+                cfg = json.loads(aj.read_text())
+                if cfg.get("agent_id") == agent_id:
+                    cfg.setdefault("system_id", sys_dir.name)
+                    return cfg
+            except Exception:
+                continue
+    return None
+
+
+def load_agent_config(agent_id: str, system_id: str = "") -> Optional[dict]:
+    """按 agentId 找地址键 config(共享布局 agentmail.json,平台无关)。"""
+    return _scan_systems_for_agent(agent_id, system_id)
+
+
+def set_agent_context(agent_id: str, system_id: str = "") -> None:
+    """把当前 agent 的 config 挂到公共核心注入点(平台无关,兜底 MCP 服务用)。
+
+    原 OpenClaw 版(读 ~/.openclaw/.agentmail 指针 + AMAIL_AGENT_EMAIL)提升为
+    共享实现:遍历 systems/{sid}/*/agentmail.json 匹配 agent_id,命中后设置
+    _CONFIG_LOADER 与 AMAIL_AGENT_EMAIL(日志落位),供 preprocess 与 6 工具共用。
+    未注册 → RuntimeError(与 OpenClaw 原语义一致)。
+    """
+    global _ACTIVE_AGENT_CONFIG, _CONFIG_LOADER
+    cfg = _scan_systems_for_agent(agent_id, system_id)
+    if cfg is None:
+        raise RuntimeError(f"agent '{agent_id}' not registered — run register_agent.py first")
+    _ACTIVE_AGENT_CONFIG = cfg
+    _CONFIG_LOADER = lambda: cfg  # noqa: E731
+    if cfg.get("email"):
+        os.environ["AMAIL_AGENT_EMAIL"] = cfg["email"]
+    os.environ.setdefault("AMAIL_AGENT_ID", agent_id)
+    os.environ.setdefault("AMAIL_SYSTEM_ID", cfg.get("system_id", system_id))
+
+
 def _clean_agent_dir_name(addr: str) -> str:
     """agent 地址 → 目录名：路径不合法字符替换（@ → _ 等）。
 

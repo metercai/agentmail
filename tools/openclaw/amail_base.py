@@ -105,22 +105,12 @@ def load_agents_registry(system_id: str) -> dict:
 
 
 def load_agent_config(agent_id: str, system_id: str = "") -> Optional[dict]:
-    """按 agentId 找地址键 config（agentmail.json 中 agent_id 匹配）。"""
-    if not system_id:
-        system_id = detect_system_id()
-    sys_dir = system_dir(system_id)
-    if sys_dir.is_dir():
-        for addr_dir in sys_dir.iterdir():
-            aj = addr_dir / "agentmail.json"
-            if not aj.is_file():
-                continue
-            try:
-                cfg = json.loads(aj.read_text())
-                if cfg.get("agent_id") == agent_id:
-                    return cfg
-            except Exception:
-                pass
-    return None
+    """按 agentId 找地址键 config（agentmail.json 中 agent_id 匹配）。
+
+    2026-08-18 起转发共享核心实现（tools/agentmail_base.load_agent_config，
+    平台无关布局扫描）——单一权威。
+    """
+    return _ab.load_agent_config(agent_id, system_id)
 
 
 def save_agent_config(agent_id: str, config: dict, system_id: str = "") -> None:
@@ -210,38 +200,28 @@ def load_openclaw_hooks() -> Optional[dict]:
     return None
 
 
-# ── agent 上下文切换（monkey-patch Hermes config 加载）───────────
+# ── agent 上下文切换（转发共享核心实现,2026-08-18）──────────────
+# _ACTIVE_AGENT_CONFIG 在 tools/agentmail_base.py 维护;本地仅保留镜像
+# 引用(amail.py _patch_config 读取),不再有独立 _openclaw_profile_config。
 
 _ACTIVE_AGENT_CONFIG: Optional[dict] = None
 
 
-def _openclaw_profile_config() -> Optional[dict]:
-    """替换 agentmail_base._load_profile_config 的 OpenClaw 版。"""
-    return _ACTIVE_AGENT_CONFIG
-
-
 def set_agent_context(agent_id: str, system_id: str = "") -> None:
-    """把当前 agent 的 config 挂到公共核心的注入点上。
+    """把当前 agent 的 config 挂到公共核心的注入点上（转发共享实现）。
 
     preprocess_mail_payload()（agentmail_base）与 6 工具函数
     （agentmail_tools）内部都调用 _load_profile_config() —— 公共版读
-    _CONFIG_LOADER 注入点，此处设置后两处同时生效（同一函数对象）。
-    同时设 AMAIL_AGENT_EMAIL（共享 _resolve_agent_email 的第一优先
-    来源）——日志 agentmail.{email}.log 按 agent 落位；不设则 email
-    解析为空，日志落 agentmail.default.log（OpenClaw 接收端曾踩此坑）。
-    所有 OpenClaw 侧消费者（amail.py / MCP server / poll / bridge）
-    统一走此入口，避免各份重复 patch。
+    _CONFIG_LOADER 注入点，共享 set_agent_context 设置后两处同时生效
+    （同一函数对象）。同时设 AMAIL_AGENT_EMAIL（共享 _resolve_agent_email
+    的第一优先来源）——日志 agentmail.{email}.log 按 agent 落位。
+
+    2026-08-18 起转发 tools/agentmail_base.set_agent_context（平台无关，
+    兜底 MCP 服务共用）——单一权威。_ACTIVE_AGENT_CONFIG 在共享核心维护。
     """
+    _ab.set_agent_context(agent_id, system_id)
     global _ACTIVE_AGENT_CONFIG
-    cfg = load_agent_config(agent_id, system_id)
-    if cfg is None:
-        raise RuntimeError(f"agent '{agent_id}' not registered — run register_agent.py first")
-    _ACTIVE_AGENT_CONFIG = cfg
-    _ab._CONFIG_LOADER = _openclaw_profile_config
-    if cfg.get("email"):
-        os.environ["AMAIL_AGENT_EMAIL"] = cfg["email"]
-    os.environ.setdefault("AMAIL_AGENT_ID", agent_id)
-    os.environ.setdefault("AMAIL_SYSTEM_ID", cfg.get("system_id", system_id))
+    _ACTIVE_AGENT_CONFIG = _ab._ACTIVE_AGENT_CONFIG
 
 # ── 从 agentmail_base 转发（复用面）────────────────────────────
 preprocess_mail_payload = _ab.preprocess_mail_payload

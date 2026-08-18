@@ -173,7 +173,7 @@ welcome 是唯一含真实 LLM 的端到端验证(管理员收到 agent 的 Re: 
 | 组件 | 位置 |
 |------|------|
 | 适配层 | `tools/openclaw/amail_base.py`(394 行,`_ab.PERSONA_SUPPORTED = False`、注入身份、转发共享函数) |
-| 工具 | `tools/openclaw/amail_mcp_server.py` — MCP stdio server,6 邮件工具 + board 工具暴露为 `amail__*`;**newline-delimited JSON 帧协议(非 Content-Length)** |
+| 工具 | `tools/amail_mcp_server.py` — 共享 MCP stdio server(兜底,2026-08-18 从 openclaw 提升),6 邮件工具 + board 工具暴露为 `amail__*`;**newline-delimited JSON 帧协议(非 Content-Length)**;直接依赖共享核心,任何 agent 系统按共享布局落 agentmail.json 即可复用 |
 | 入站接收端 | `tools/openclaw/amail_openclaw_bridge.py` — HTTP 接收 `/hook` 与 `/webhooks/amail-inbound`:HMAC 验签 → set_agent_context → process_inbound_mail → dispatch_to_hooks |
 | 生命周期 | CLI 包装(openclaw 无 agent 事件总线):`bin/register_agent.py`(openclaw agents list 发现 → 注册链 → bridge 路由注册) |
 | 部署 | repo-direct:tools/openclaw/*.py 直接运行,改立即生效;skill 经 install-skill.sh 拷贝 |
@@ -200,8 +200,7 @@ welcome 是唯一含真实 LLM 的端到端验证(管理员收到 agent 的 Re: 
      身份注入(`_AGENT_IDENTITY_OVERRIDE = "platform/ver"`)
    - 赋值注入点(见 §2.1);确认适配层转发所有消费方用到的共享函数名
      (漏转发 = 运行时 AttributeError,verify 必须**实际调用**消费者函数而非 grep)。
-3. **暴露工具**:进程内 registry(照 Hermes)或 MCP server(照 OpenClaw,
-   newline-JSON 帧);工具名保持 Hermes 名(send_mail 等),MCP 可加平台前缀。
+3. **暴露工具**:进程内 registry(照 Hermes)或 **MCP server(直接复用共享 `tools/amail_mcp_server.py`**——兜底服务,平台无关,按共享布局落 agentmail.json 即可,`AMAIL_AGENT_ID` env 指定 agent);工具名保持 Hermes 名(send_mail 等),MCP 可加平台前缀。
 4. **接入站**:接收端(HTTP 端点或 webhook preprocessor)先注入 agent 配置
    (set_agent_context 等价物)→ 调 `process_inbound_mail` → 未拦截则投递原始 body。
    入站拉取**默认复用 amail-bridge**(`[pull].systems` 数组加系统条目),

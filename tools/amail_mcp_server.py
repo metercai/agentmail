@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""amail_mcp_server.py — OpenClaw agentmail MCP server（stdio）。
+"""amail_mcp_server.py — 共享 agentmail MCP server（stdio,兜底服务）。
 
-暴露 Hermes 等价工具集（结构化调用，替代 CLI 方式）：
+暴露 Hermes 等价工具集（结构化调用,替代 CLI 方式）:
   send_mail / manage_contacts / contact_profile / set_contact_profile
   email_summary / set_email_summary / board_*（A2A）
 
-agent 上下文：env AMAIL_AGENT_ID（mcp.servers.<name>.env 配置，默认 main）。
+平台无关（2026-08-18 从 tools/openclaw/ 提升）:任何 agent 系统只需按共享
+布局落 ~/.agentmail/systems/{sid}/{cleaned_addr}/agentmail.json(register 链
+自动写),即可复用本服务——不 import 任何平台适配层,直接依赖共享核心
+(agentmail_base/agentmail_tools/agentmail_board)。
+
+agent 上下文：env AMAIL_AGENT_ID（mcp.servers.<name>.env 配置,默认 main）。
 每工具也可显式传 agentId 参数覆盖（多 agent 共享 server 时）。
 
 零第三方依赖：纯标准库 JSON-RPC over stdio。
@@ -16,11 +21,11 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "openclaw"))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "hermes"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import amail_base as _base            # noqa: E402
-import agentmail_tools as _tools      # noqa: E402
+import agentmail_base as _base            # noqa: E402
+import agentmail_tools as _tools          # noqa: E402
+import agentmail_board as _board          # noqa: E402
 
 
 # ── MCP stdio 帧（OpenClaw 打包的 SDK 用 newline-delimited JSON，
@@ -44,7 +49,7 @@ def write_msg(obj):
 # ── agent 上下文 ────────────────────────────────────────────────
 
 def _agent_ctx(agent_id: str = "") -> str:
-    """确定当前 agentId（显式参数 > env）并切换上下文（统一走 amail_base）。"""
+    """确定当前 agentId（显式参数 > env）并切换上下文（共享 set_agent_context）。"""
     aid = agent_id or os.environ.get("AMAIL_AGENT_ID", "main")
     _base.set_agent_context(aid)
     return aid
@@ -230,8 +235,9 @@ HANDLERS = {
     "set_public_whoami": tool_set_public_whoami,
 }
 
-# board 函数体（统一走 amail_base.load_board_module，与 amail.py 共用）
-_board = _base.load_board_module()
+# board 函数体（共享 agentmail_board 直接 import——顶层无 registry 注册块,
+# 2026-08-18 已从 amail_base.load_board_module 的 ast 裁剪方式简化为直接 import）
+_board = _board  # noqa: E741  (显式绑定:共享 agentmail_board 模块,见上注释)
 
 
 # ── MCP 主循环 ──────────────────────────────────────────────────
