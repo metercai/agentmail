@@ -956,6 +956,32 @@ def email_for_agent(agent_id: str, domain: str, system_name: str = "",
     return f"{base}@{domain}"
 
 
+def register_bridge_route(system_id: str, email: str, gw: dict,
+                          local_webhook_url: str) -> dict:
+    """注册后向本机 bridge POST 入站 hook 路由(email → 本地接收端点全 URL)。
+
+    铁律(2026-08-18 用户强调):有 bridge 时,每个 agent 创建注册地址后
+    必须注册路由——否则 bridge 拉取到邮件后不知转发到哪,入站断链。
+    幂等(bridge 路由表 upsert)。bridge admin API: POST /api/v1/routes
+    {email, host, port} —— host 传完整 URL(含路径)。admin 端口取
+    agentmail_gateway.json 的 bridge_admin_port(默认 38081)。
+    """
+    import urllib.request
+    admin_port = int(gw.get("bridge_admin_port", 38081)) if isinstance(gw, dict) else 38081
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{admin_port}/api/v1/routes",
+            # port 占位(host 为全 URL 时被 bridge 忽略;0 会被参数校验拒绝,用 80 对齐 CLI)
+            data=json.dumps({"email": email, "host": local_webhook_url, "port": 80}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read().decode() or "{}")
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def resolve_register_webhook_url(gw: dict, local_webhook_url: str) -> str:
     """webhook_host 三态 → 地址注册参数 webhook_url(2026-08-18 用户定稿语义):
 

@@ -85,29 +85,9 @@ def register_one(client, system_id: str, agent_id: str, email: str,
 
 
 def register_bridge_route(system_id: str, email: str, gw: dict,
-                          local_webhook_url: str) -> None:
-    """注册后向本机 bridge POST 路由(email → 本地接收端点全 URL)。
-
-    bridge admin API: POST /api/v1/routes {email, host, port} —— 新版支持
-    全 URL(host 字段传完整 http://... 含路径,如 /hook)。
-    端口取 agentmail_gateway.json 的 bridge_admin_port(默认 38081)。
-    """
-    import urllib.request
-    target_url = local_webhook_url
-    # bridge admin API 地址从配置取(bridge_admin_port),回退 38081
-    admin_port = int(gw.get("bridge_admin_port", 38081))
-    try:
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{admin_port}/api/v1/routes",
-            data=json.dumps({"email": email, "host": target_url, "port": 0}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as r:
-            resp = json.loads(r.read().decode())
-        print(f"  ✓ bridge route: {email} → {target_url} ({resp.get('status', '?')})")
-    except Exception as e:
-        print(f"  ⚠ bridge route registration failed: {e} (bridge may be down; routes can be added later)")
+                          local_webhook_url: str) -> dict:
+    """注册后向本机 bridge POST 路由(共享实现,见 agentmail_base)。"""
+    return _base.register_bridge_route(system_id, email, gw, local_webhook_url)
 
 
 def main() -> int:

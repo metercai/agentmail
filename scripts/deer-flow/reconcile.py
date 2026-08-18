@@ -124,6 +124,8 @@ def main() -> int:
             _save_agent_config(agent_id, cfg, system_id)
             changes += 1
             print(f"  ✓ registered {agent_id} → {email}")
+            # 铁律:有 bridge 时注册后必须向 bridge 注册入站 hook 路由
+            _base.register_bridge_route(system_id, email, gw, local_webhook_url)
         else:
             print(f"  ⚠ {agent_id} → {email} no api_key (activation pending)")
 
