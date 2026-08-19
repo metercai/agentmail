@@ -335,7 +335,7 @@ def cmd_install(args) -> int:
         _ok("deerflow agents registered + inbound patch + skill installed")
     if platform == "dsh":
         # 安装 = dsh 官方插件命令的薄封装(bundle 自动挂载 mail/mail-inbound/tool-mail)
-        r = subprocess.call(["dsh", "plugin", "--profile", "web", "add", "dsh-amail"])
+        r = subprocess.call(["dsh", "plugin", "--profile", "web", "add", "dsh-aimail"])
         if r != 0:
             print("  ⚠ dsh plugin add agentmail 失败(检查 agentmail npm 包发布与网络)")
         else:
