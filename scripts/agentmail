@@ -498,17 +498,17 @@ def cmd_mailname(args) -> int:
 # ═══════════════════════════════════════════════════════════════
 
 BRIDGE_DIR = AGENTMAIL_HOME / "bridge"
-BRIDGE_CFG = BRIDGE_DIR / "amail_bridge.toml"
+BRIDGE_CFG = BRIDGE_DIR / "aimail_bridge.toml"
 BRIDGE_PID = BRIDGE_DIR / "bridge.pid"
-BRIDGE_LOG = AGENTMAIL_HOME / "logs" / "amail-bridge.log"
-ROUTES_FILE = BRIDGE_DIR / "amail_routes.toml"
+BRIDGE_LOG = AGENTMAIL_HOME / "logs" / "aimail-bridge.log"
+ROUTES_FILE = BRIDGE_DIR / "aimail_routes.toml"
 BRIDGE_ADDR = "127.0.0.1:38081"
 
 
 def _bridge_pids() -> list[int]:
     try:
         out = subprocess.check_output(
-            ["pgrep", "-f", r"amail-bridge.*--config|amail-bridge.*\.toml"],
+            ["pgrep", "-f", r"aimail-bridge.*--config|aimail-bridge.*\.toml"],
             text=True, timeout=5)
         return [int(l.strip()) for l in out.splitlines() if l.strip().isdigit()]
     except subprocess.CalledProcessError:
@@ -516,7 +516,7 @@ def _bridge_pids() -> list[int]:
 
 
 def _read_routes() -> dict:
-    """读 amail_routes.toml(email → target URL)。"""
+    """读 aimail_routes.toml(email → target URL)。"""
     routes = {}
     if not ROUTES_FILE.exists():
         return routes
@@ -543,7 +543,7 @@ def cmd_bridge(args) -> int:
             _fail(f"bridge 配置不存在: {BRIDGE_CFG}(未部署?)")
         sys.path.insert(0, str(SCRIPTS_DIR))
         from deploy_bridge import start_bridge
-        bin_path = BRIDGE_DIR / "bin" / "amail-bridge"
+        bin_path = BRIDGE_DIR / "bin" / "aimail-bridge"
         if not bin_path.exists():
             _fail(f"bridge 二进制不存在: {bin_path}")
         ok = start_bridge(str(bin_path), str(BRIDGE_CFG), str(BRIDGE_PID))
@@ -575,7 +575,7 @@ def cmd_bridge(args) -> int:
             except Exception as e:
                 _warn(f"配置读取失败: {e}")
         else:
-            _warn("配置: amail_bridge.toml 不存在")
+            _warn("配置: aimail_bridge.toml 不存在")
         # 路由表
         routes = _read_routes()
         if routes:
@@ -583,7 +583,7 @@ def cmd_bridge(args) -> int:
             for email, target in sorted(routes.items()):
                 print(f"       {email} → {target}")
         else:
-            _warn("路由表为空(amail_routes.toml)")
+            _warn("路由表为空(aimail_routes.toml)")
         # 日志新鲜度
         if BRIDGE_LOG.exists():
             try:

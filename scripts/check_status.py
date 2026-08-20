@@ -2,7 +2,7 @@
 """
 check_status.py — One-shot amail pipeline runtime status check (generic)
 
-Covers the full chain: amail-gateway → amail-bridge → agent config →
+Covers the full chain: aimail-gateway → aimail-bridge → agent config →
 agent hook interface → ping-pong. Platform-agnostic: works for any
 agent system (Hermes/OpenClaw/DeerFlow/dsh) via a per-platform adapter
 (L3/L4 vary by platform; L1/L2/L5 are shared).
@@ -83,9 +83,9 @@ def _resolve_system_id(args: list[str] | None = None) -> str:
 def _system_agent_path(sid: str) -> Path:
     return SYSTEMS_DIR / sid / "agentmail_gateway.json"
 
-BRIDGE_CFG  = BRIDGE_DIR / "amail_bridge.toml"
+BRIDGE_CFG  = BRIDGE_DIR / "aimail_bridge.toml"
 BRIDGE_PID  = BRIDGE_DIR / "bridge.pid"
-BRIDGE_LOG  = LOGS_DIR / "amail-bridge.log"
+BRIDGE_LOG  = LOGS_DIR / "aimail-bridge.log"
 AGENT_CFG   = AGENT_HOME / "config.yaml"
 # --agent 指定 profile 时,读该 profile 的 config.yaml(端口随 profile)
 if "--agent" in sys.argv:
@@ -99,7 +99,7 @@ if "--agent" in sys.argv:
         pass
 SUBS_FILE   = AGENT_HOME / "webhook_subscriptions.json"
 PROFILES_DIR = AGENT_HOME / "profiles"
-ROUTES_FILE = BRIDGE_DIR / "amail_routes.toml"
+ROUTES_FILE = BRIDGE_DIR / "aimail_routes.toml"
 
 # Agent-scoped paths (require --agent argument for per-agent data)
 
@@ -141,8 +141,8 @@ class Check:
     def print_table(self):
         groups = [
             ("system (check scope)",  [c for c in self.checks if c["level"] == "system"]),
-            ("amail-gateway (external mail gateway)", [c for c in self.checks if c["level"] == "gateway"]),
-            ("amail-bridge (local NAT traversal bridge)",  [c for c in self.checks if c["level"] == "bridge"]),
+            ("aimail-gateway (external mail gateway)", [c for c in self.checks if c["level"] == "gateway"]),
+            ("aimail-bridge (local NAT traversal bridge)",  [c for c in self.checks if c["level"] == "bridge"]),
             ("agent (platform config + hook interface)",  [c for c in self.checks if c["level"] == "agent"]),
             ("agent-gateway (Hermes gateway)",  [c for c in self.checks if c["level"] == "agent-gw"]),
             ("agent-profile (agent entity)",   [c for c in self.checks if c["level"] == "profile"]),
@@ -705,15 +705,15 @@ def _read_gw_cfg(sid: str = "") -> dict | None:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Level 1: amail-gateway (external mail gateway)
+#  Level 1: aimail-gateway (external mail gateway)
 # ═══════════════════════════════════════════════════════════════
 def check_gateway(c: Check, sid: str = ""):
-    """amail-gateway: health + SMTP port + API credentials"""
+    """aimail-gateway: health + SMTP port + API credentials"""
     cfg = _read_gw_cfg(sid)
     if not cfg:
         c.add("gateway", "config", False,
               "agentmail_gateway.json not found",
-              "Run integrate.sh to configure amail-gateway")
+              "Run integrate.sh to configure aimail-gateway")
         return
 
     gw_url = cfg.get("gateway_url", "").rstrip("/")
@@ -731,7 +731,7 @@ def check_gateway(c: Check, sid: str = ""):
     else:
         err = body.get("error", body) if isinstance(body, dict) else str(body)
         c.add("gateway", "health", False, f"HTTP {code}: {err}",
-              "Start amail-gateway service on the gateway server")
+              "Start aimail-gateway service on the gateway server")
         return
 
     # 1.2 SMTP port 25
@@ -746,7 +746,7 @@ def check_gateway(c: Check, sid: str = ""):
     except Exception as e:
         c.add("gateway", "smtp_port", False,
               f"Port 25 unreachable: {e}",
-              "Check firewall and amail-gateway SMTP listener")
+              "Check firewall and aimail-gateway SMTP listener")
 
     # 1.3 API key scope
     if not ak:
@@ -773,13 +773,13 @@ def check_gateway(c: Check, sid: str = ""):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Level 2: amail-bridge (local NAT traversal bridge)
+#  Level 2: aimail-bridge (local NAT traversal bridge)
 #  Optional component. If config not found, bridge is simply
 #  not deployed (gateway → agent-gateway directly).
 #  May run on a different machine in the LAN.
 # ═══════════════════════════════════════════════════════════════
 def check_bridge(c: Check, sid: str = ""):
-    """amail-bridge: config + process + log + pull path (P0)
+    """aimail-bridge: config + process + log + pull path (P0)
 
     sid 指定时:bridge 配置里的 pull.systems 按 sid 匹配该系统的条目
     (单 bridge 多系统,2026-08-16)。未指定则用 systems[0] 或扁平字段。
@@ -804,7 +804,7 @@ def check_bridge(c: Check, sid: str = ""):
         c.add("bridge", "config", True, ", ".join(parts))
     except Exception as e:
         c.add("bridge", "config", False,
-              f"Parse error: {e}", "Check amail_bridge.toml syntax")
+              f"Parse error: {e}", "Check aimail_bridge.toml syntax")
         return
 
     # Determine if bridge is running on this machine
@@ -825,7 +825,7 @@ def check_bridge(c: Check, sid: str = ""):
     else:
         c.add("bridge", "activity", True, "N/A — bridge is remote")
 
-    # 2.4 [P0] Pull path: bridge → amail-gateway (works remotely too)
+    # 2.4 [P0] Pull path: bridge → aimail-gateway (works remotely too)
     _check_bridge_pull_path(c, td, sid)
 
     # 2.5 [P1] Bridge self health (remote HTTP to bridge addr)
@@ -912,7 +912,7 @@ def _detect_local_bridge_pid() -> str:
         except Exception:
             pass
     try:
-        out = subprocess.run(["pgrep", "-f", "amail-bridge"],
+        out = subprocess.run(["pgrep", "-f", "aimail-bridge"],
                              capture_output=True, text=True, timeout=5)
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip().replace("\n", ", ")
@@ -938,7 +938,7 @@ def _check_bridge_activity(c: Check):
 
 
 def _check_bridge_pull_path(c: Check, td: dict, sid: str = "") -> bool:
-    """P0: Verify bridge credentials can reach amail-gateway pull API. Returns True if pass."""
+    """P0: Verify bridge credentials can reach aimail-gateway pull API. Returns True if pass."""
     # 多系统支持:pull.systems 数组按 sid 匹配,空则回退单系统扁平字段。
     # 用标准 tomllib 重读(自定义 _parse_toml 不支持数组)。
     try:
@@ -963,7 +963,7 @@ def _check_bridge_pull_path(c: Check, td: dict, sid: str = "") -> bool:
     if not amail_url or not pull_key:
         c.add("bridge", "pull_path", False,
               "amail_url or admin_key missing in bridge config",
-              "Check [pull] section in amail_bridge.toml")
+              "Check [pull] section in aimail_bridge.toml")
         return False
 
     body = json.dumps({"limit": 1}).encode()
@@ -985,7 +985,7 @@ def _check_bridge_pull_path(c: Check, td: dict, sid: str = "") -> bool:
     else:
         c.add("bridge", "pull_path", False,
               f"HTTP {code} — bridge cannot reach gateway's pending API",
-              "Check amail_url and admin_key in amail_bridge.toml")
+              "Check amail_url and admin_key in aimail_bridge.toml")
     return code == 200
 
 
@@ -1161,7 +1161,7 @@ def main():
         c.print_table()
         print()
         if c.all_pass():
-            print(f"  {GREEN}{BOLD}✓ All clear — amail-gateway → agent-platform ready{NC}")
+            print(f"  {GREEN}{BOLD}✓ All clear — aimail-gateway → agent-platform ready{NC}")
         else:
             fail = sum(1 for ch in c.checks if not ch["pass"])
             print(f"  {YELLOW}{BOLD}⚠ {fail}  issue(s) — check items marked  {CROSS} {NC}")

@@ -22,11 +22,11 @@
 **`webhook_url` + `webhook_secret` 成对出现,是 agent 侧接收端点的注册声明**:
 
 - 注册链 `register_agent_email(client, system_id, email, webhook_url, webhook_secret, ...)` 把两者随 `register_email` 发给 gateway(云端 system_domains 记录)——`webhook_url` = agent 侧接收端点地址,`webhook_secret` = 配套验签密钥(HMAC 校验 `X-Webhook-Signature`)。
-- **bridge 是透明代理**:同内网环境下(自建 gateway),gateway 直接 webhook 到 agent 接收端点,**不经过 bridge**;跨网/NAT 环境才由 amail-bridge(pull,2s 轮询 /pending → 路由表全 URL 转发)承担,转发到**同一接收端点**。两条路径共用同一字段,路由表在 `bridge/amail_routes.toml`,不在 agentmail.json。
+- **bridge 是透明代理**:同内网环境下(自建 gateway),gateway 直接 webhook 到 agent 接收端点,**不经过 bridge**;跨网/NAT 环境才由 aimail-bridge(pull,2s 轮询 /pending → 路由表全 URL 转发)承担,转发到**同一接收端点**。两条路径共用同一字段,路由表在 `bridge/aimail_routes.toml`,不在 agentmail.json。
 - **平台特有投递端点字段(如 deerflow_url)与 webhook_url 性质一致,应合并**:都是"agent 侧接收端点地址"。DeerFlow 的 `deerflow_url`(`http://127.0.0.1:8001`)= DeerFlow 接收端点 = 其 webhook_url;落盘统一用 `webhook_url` 字段,不另立名(2026-08-18 定调,方案执行时合并)。
 - 本地接收端点(如 OpenClaw `/hook`、dsh mail-inbound 端点)同理 = 注册的 webhook_url 值。
 
-入站完整链路:云端 SMTP 收信 → gateway 清洗/富化 → 入站队列 → **两条路径**:同内网 = gateway 直接 webhook 到接收端点;跨网 = amail-bridge 轮询转发 → 接收端点 → **验签(webhook_secret)** → 预处理 → 投递 agent。
+入站完整链路:云端 SMTP 收信 → gateway 清洗/富化 → 入站队列 → **两条路径**:同内网 = gateway 直接 webhook 到接收端点;跨网 = aimail-bridge 轮询转发 → 接收端点 → **验签(webhook_secret)** → 预处理 → 投递 agent。
 
 ### 1.2 系统级 agentmail_gateway.json 字段参考(2026-08-18 复验,读写点实锤)
 
@@ -45,7 +45,7 @@
 | `system_home` | string | 平台根目录(Hermes=~/.hermes,OpenClaw=~/.openclaw)——CLI 平台推断的锚点 | setup_system | CLI(install/check/reset 平台探测) |
 | `default_agent_name` | string | 默认主 agent 名映射(OpenClaw: main→agent) | CLI mailname | CLI mailname/check |
 
-> 已删除(2026-08-18):`mode`(冗余——push/pull 由 webhook_host 三态表达,agent 侧只有 hook 入口;bridge 自身模式在 amail_bridge.toml)、`bridge_port`(冗余——接收端点已在 agentmail.json webhook_url 里含端口;bridge 自身端口在 amail_bridge.toml)。
+> 已删除(2026-08-18):`mode`(冗余——push/pull 由 webhook_host 三态表达,agent 侧只有 hook 入口;bridge 自身模式在 aimail_bridge.toml)、`bridge_port`(冗余——接收端点已在 agentmail.json webhook_url 里含端口;bridge 自身端口在 aimail_bridge.toml)。
 
 ### 1.3 特别说明:webhook_url(agentmail.json)与 webhook_host(agentmail_gateway.json)的区别
 

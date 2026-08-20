@@ -26,14 +26,14 @@ AgentMail 与任意 agent 系统(LLM 运行时)对接,agent 获得完整邮件�
 ### 1.2 拓扑
 
 ```
-                        云端 amail-gateway
+                        云端 aimail-gateway
    ┌─────────────────────────────────────────────┐
    │ SMTP 收信 → 清洗/富化 → 入站队列(pending)     │
    │ HTTP API (send/contacts/...) / A2A Board    │
    └──────────┬──────────────────────────▲────────┘
               │ pending 轮询              │ HTTP API
    ┌──────────▼──────────┐   ┌───────────┴──────────┐
-   │ amail-bridge (本机)  │──►│ agent 接收端点 (本机)  │
+   │ aimail-bridge (本机)  │──►│ agent 接收端点 (本机)  │
    │ 单进程多系统拉取      │   │ 验签 → 共享预处理       │
    │ 按路由表全 URL 转发   │   │ → 投递 agent           │
    └─────────────────────┘   └───────────▲──────────┘
@@ -134,7 +134,7 @@ deregister_agent_email(client, system_id, email, manager_address) -> {api_key, d
 
 ```
 云端收信 → gateway 入站队列 → bridge pull(2s 轮询 /pending)
-  → 查路由表 amail_routes.toml(email → 接收端点全 URL)
+  → 查路由表 aimail_routes.toml(email → 接收端点全 URL)
   → 透明转发(逐字节 body + 头白名单 X-Amail-Email / X-Webhook-Signature / X-Mailrelay-Timestamp)
   → 接收端点:HMAC 验签(webhook_secret)→ process_inbound_mail
   → ping/pong 拦截(三阶段日志)→ 未拦截投递 agent
@@ -256,7 +256,7 @@ install 全非交互:激活 → 从 setup_system JSON stdout 取 server 分配�
 1. **建共享层引用**:import `tools/agentmail_base` / `agentmail_tools` / `agentmail_board`(sys.path 插入 tools/);不复制、不改共享代码。
 2. **写适配层** `tools/<system>/<adapter>.py`:平台三件事(配置源 / personas 或 `PERSONA_SUPPORTED=False` / 身份注入 `_AGENT_IDENTITY_OVERRIDE = "platform/ver"`)+ 赋值注入点(§2.1)。
 3. **暴露工具**:进程内 registry(照 Hermes)或直接复用共享 `tools/amail_mcp_server.py`(平台无关,按共享布局落 agentmail.json 即可)。
-4. **接入站**:接收端点先注入 agent 配置(set_agent_context 等价物)→ 验签 → `process_inbound_mail` → 未拦截投递原始 body;入站拉取复用 amail-bridge,不写新 poller。
+4. **接入站**:接收端点先注入 agent 配置(set_agent_context 等价物)→ 验签 → `process_inbound_mail` → 未拦截投递原始 body;入站拉取复用 aimail-bridge,不写新 poller。
 5. **接生命周期**:有事件总线 → 挂钩子;无 → 包装 agents add/delete CLI 调共享注册/注销链。
 6. **装 skill**:逐字拷贝 `skills/SKILL.md`(+ DESCRIPTION.md),零改写。
 7. **注册到 CLI**:check_status.py `PLATFORMS` 注册表加 adapter(detect/list_agents/check_config/check_hook 四函数);install/uninstall 平台适配段加分支(含安装补充注册)。
@@ -291,10 +291,10 @@ install 全非交互:激活 → 从 setup_system JSON stdout 取 server 分配�
 
 ## 9. 已退役/勿用
 
-- **amail-poll.py**:已删除。入站 pull 统一走 amail-bridge(单进程多系统)。
+- **amail-poll.py**:已删除。入站 pull 统一走 aimail-bridge(单进程多系统)。
 - **amail_deerflow_bridge.py**(8798):已退役。DeerFlow 入站为 8001 进程内预处理。
 - **integrate.sh / uninstall.sh / bridge-ctl.sh**:已被 `agentmail install/uninstall/bridge` 取代。
-- **amail_gateway.json 旧名**:统一 `agentmail_gateway.json`,无兼容别名。
+- **aimail_gateway.json 旧名**:统一 `agentmail_gateway.json`,无兼容别名。
 - **--agent-type 参数**:平台事实推断,禁止手动指定。
 - **mode / bridge_port 配置项**:webhook_host 三态表达 push/pull;接收端点端口在 webhook_url。
 - **docs/ 目录**:本地草稿区,不版本化;正式文档落仓库根(本文件 + README/MAINTENANCE)。

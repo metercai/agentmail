@@ -6,7 +6,7 @@
 
 **AgentMail** is a highly controllable, network-adaptable, open-collaboration email infrastructure purpose-built for AI agents — enabling them to communicate, interact, and collaborate with the outside world just like humans do.
 
-- **Seamless access to the global network:** Built on [amail-gateway](https://github.com/metercai/amail-gateway), a bidirectional SMTP-HTTP gateway that connects any Agent platform (such as [Hermes Agent](https://github.com/nousresearch/hermes-agent)) to the global email network with zero friction.
+- **Seamless access to the global network:** Built on [aimail-gateway](https://github.com/metercai/aimail-gateway), a bidirectional SMTP-HTTP gateway that connects any Agent platform (such as [Hermes Agent](https://github.com/nousresearch/hermes-agent)) to the global email network with zero friction.
 - **Independent identity & autonomous interaction:** Every Agent has a globally unique email address, enabling it to initiate conversations, manage context, and engage deeply with individuals, teams, workflows, or other agents.
 - **Open protocols & human-agent co-working:** Free from platform lock-in. Standard email protocols and collaboration primitives, built on decentralized email infrastructure, create a cross-network, open ecosystem for human-agent hybrid collaboration.
 
@@ -77,7 +77,7 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 
 ### Prerequisites
 
-- [amail-gateway](https://github.com/metercai/amail-gateway) (running)
+- [aimail-gateway](https://github.com/metercai/aimail-gateway) (running)
 - [Hermes Agent](https://github.com/nousresearch/hermes-agent) (installed)
 - Linux + Python 3.10+
 
@@ -129,11 +129,11 @@ See `./agentmail --help` for all subcommands (`bridge`, `check`, `domain`,
 
 ## Architecture
 
-AgentMail consists of two core components: **amail-gateway** (mail gateway) and **Hermes Agent** (LLM engine), working together via Webhook and HTTP API at runtime.
+AgentMail consists of two core components: **aimail-gateway** (mail gateway) and **Hermes Agent** (LLM engine), working together via Webhook and HTTP API at runtime.
 
 ```
                      ┌────────────────────┐
-                     │   amail-gateway    │
+                     │   aimail-gateway    │
                      │                    │
    External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ─┐
                      │                    │                      │
@@ -183,7 +183,7 @@ AgentMail consists of two core components: **amail-gateway** (mail gateway) and 
 
 - Self-Hosted Gateway, Custom Domain
 
-Deploy your own [amail-gateway](https://github.com/metercai/amail-gateway) with a custom domain. Root profile defaults to `agent@{domain}`. Additional profiles created via `hermes -p`.
+Deploy your own [aimail-gateway](https://github.com/metercai/aimail-gateway) with a custom domain. Root profile defaults to `agent@{domain}`. Additional profiles created via `hermes -p`.
 
 | Type | Format | Example |
 |------|--------|---------|
@@ -222,13 +222,13 @@ API Keys are generated per Agent address, stored under `~/.agentmail/systems/{sy
 │       ├── agentmail.log              # agent pipeline log
 │       └── {yyyymm}/in-*.json         # monthly snapshots
 ├── bridge/
-│   ├── amail_bridge.toml              # bridge config
-│   ├── amail_routes.toml              # route table (email → local webhook)
-│   ├── bin/amail-bridge               # bridge binary
+│   ├── aimail_bridge.toml              # bridge config
+│   ├── aimail_routes.toml              # route table (email → local webhook)
+│   ├── bin/aimail-bridge               # bridge binary
 │   ├── bridge.pid                     # bridge PID
 │   └── bridge.out                     # bridge stdout log
 ├── logs/
-│   ├── amail-bridge.log               # bridge runtime log
+│   ├── aimail-bridge.log               # bridge runtime log
 │   └── agentmail.agent.{addr}.log     # per-agent processing log
 ├── backup-reset-*/                    # config snapshot before each reset
 └── .system_raw_key/

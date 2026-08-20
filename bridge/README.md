@@ -1,10 +1,10 @@
-# amail-bridge
+# aimail-bridge
 
 [🇨🇳 中文](README_zh.md)
 
 **Zero ports, email inbound. One port, instant forwarding to all agents.**
 
-A high-performance transparent bridge between [amail-gateway](https://github.com/metercai/amail-gateway)
+A high-performance transparent bridge between [aimail-gateway](https://github.com/metercai/aimail-gateway)
 and [Hermes agent](https://github.com/nousresearch/hermes-agent) gateway webhook endpoints.
 Solves firewall penetration for heterogeneous multi-agent deployments with minimal
 surface area.
@@ -64,7 +64,7 @@ Works for both push and pull modes.
 ### Zero-config automation
 
 - **API route registration** — agents register their webhook via `POST /api/v1/routes`
-- **inotify hot-reload** — changes to `amail_routes.toml` are applied immediately
+- **inotify hot-reload** — changes to `aimail_routes.toml` are applied immediately
 - **ACME auto-TLS** — set `hostname` → automatic Let's Encrypt certificate
   (HTTP-01 challenge), cached and auto-renewed every ~60 days
 - **Dual-port mode** — `bind` port 80 + `hostname` set → auto 80→443 redirect
@@ -78,7 +78,7 @@ Works for both push and pull modes.
 
 ```
                        ┌─────────────────────────────────┐
-                       │         amail-bridge             │
+                       │         aimail-bridge             │
                        │  (single public port 38080)       │
 gateway ──POST──►      │                                  │
   alice@...+bob@...    │  alice → 127.0.0.1:8645          │──► webhook:8645
@@ -121,11 +121,11 @@ gateway (public)                              behind NAT/firewall
 
 ```bash
 # Unzip the appropriate zip for your platform
-unzip amail-bridge-v0.6.2-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-chmod +x amail-bridge
+unzip aimail-bridge-v0.6.2-linux-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+chmod +x aimail-bridge
 
 # Push mode (single port, all agents)
-cat > amail_bridge.toml << 'EOF'
+cat > aimail_bridge.toml << 'EOF'
 mode = "push"
 bind = "0.0.0.0:38080"
 hostname = "bridge.example.com"     # enables TLS + ACME auto-cert
@@ -136,7 +136,7 @@ allowed_ips = ["10.0.0.0/8"]
 EOF
 
 # Pull mode (zero ports, outbound only)
-cat > amail_bridge.toml << 'EOF'
+cat > aimail_bridge.toml << 'EOF'
 mode = "pull"
 bind = "127.0.0.1:38080"
 
@@ -147,7 +147,7 @@ system_id = "admin"
 EOF
 
 # Run
-./amail-bridge -c amail_bridge.toml
+./aimail-bridge -c aimail_bridge.toml
 
 # Check health
 curl http://localhost:38080/health
@@ -217,7 +217,7 @@ systems = [
 ```toml
 [logging]
 level = "info"                        # log level (default: "info")
-file = "/var/log/amail-bridge.log"   # log file, stdout if unset (default: none)
+file = "/var/log/aimail-bridge.log"   # log file, stdout if unset (default: none)
 ```
 
 

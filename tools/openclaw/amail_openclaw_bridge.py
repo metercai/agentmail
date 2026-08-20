@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """amail_openclaw_bridge.py — OpenClaw 入站接收端(bridge 转发目标)。
 
-amail-bridge(拉取器,透明转发)→ 本服务:
+aimail-bridge(拉取器,透明转发)→ 本服务:
   1. HMAC 验签(X-Webhook-Signature,webhook_secret)
   2. 共享入站预处理 process_inbound_mail(身份/persona/富化/存储,
      最后一步 ping/pong 拦截——pong 回环走全链末端)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy amail-bridge: bridge config, startup."""
+"""Deploy aimail-bridge: bridge config, startup."""
 import sys, os, json, re, subprocess, socket, time
 
 from gateway_api import create_api_key
@@ -11,19 +11,19 @@ def log_ok(msg: str):
     print(f"  ✓ {msg}")
 
 def _version_key(name: str):
-    """Extract (major, minor, patch) sort key from 'amail-bridge-vX.Y[.Z]-...'."""
+    """Extract (major, minor, patch) sort key from 'aimail-bridge-vX.Y[.Z]-...'."""
     m = re.search(r"-v(\d+)\.(\d+)(?:\.(\d+))?", name)
     if not m:
         return (0, 0, 0)
     return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
 
 def latest_bridge_zip(bridge_dir_local: str, arch: str) -> str:
-    """Pick the newest amail-bridge-v*-linux-{arch}.zip in the bridge dir.
+    """Pick the newest aimail-bridge-v*-linux-{arch}.zip in the bridge dir.
 
     Scans actual files (not a hardcoded version) so a new release is picked
     up automatically — bumping the version only requires adding the zip.
     """
-    prefix = "amail-bridge-v"
+    prefix = "aimail-bridge-v"
     suffix = f"-linux-{arch}.zip"
     candidates = []
     for f in os.listdir(bridge_dir_local):
@@ -69,7 +69,7 @@ def format_webhook_host(ip: str) -> str:
 def write_bridge_config(path: str, mode: str, addr: str, gw: str,
                         ak: str, sid: str, api_key: str = "",
                         webhook_secret: str = ""):
-    """Write/merge amail_bridge.toml — SINGLE bridge, MULTI-system.
+    """Write/merge aimail_bridge.toml — SINGLE bridge, MULTI-system.
 
     2026-08-16 用户定调: 本机只安装一个 bridge,不管几套 agent 系统
     (bridge 已支持多系统透传)。因此本函数**合并**而非覆盖:
@@ -78,7 +78,7 @@ def write_bridge_config(path: str, mode: str, addr: str, gw: str,
         字段作为兼容,resolved_systems 空数组回退单系统)
     重启由 start_bridge 幂等处理(先杀旧进程再起新,单实例)。
     """
-    log_path = os.path.expanduser("~/.agentmail/logs/amail-bridge.log")
+    log_path = os.path.expanduser("~/.agentmail/logs/aimail-bridge.log")
 
     def _entry() -> dict:
         e = {
@@ -170,7 +170,7 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
 
     2026-08-16 双进程教训: pkill 模式匹配可能漏杀(旧进程 cmdline
     是旧路径),残留进程与新进程双拉同一 pending = 重复投递风险。
-    因此: ① 按 pid 文件精确杀 ② pgrep -af 兜底列出全部 amail-bridge
+    因此: ① 按 pid 文件精确杀 ② pgrep -af 兜底列出全部 aimail-bridge
     进程按 PID 逐个 kill(不依赖模式匹配)③ 再启动。
     """
     # 1) pid 文件精确杀
@@ -193,16 +193,16 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
         except (ProcessLookupError, PermissionError):
             pass
 
-    # 2) pgrep 兜底:列出 amail-bridge 进程按 PID 杀(防模式漏杀)。
+    # 2) pgrep 兜底:列出 aimail-bridge 进程按 PID 杀(防模式漏杀)。
     # ⚠️ 精确匹配:必须匹配 bridge 二进制路径特征(--config 参数或
-    # bridge/bin/amail-bridge),不能裸匹配 "amail-bridge" 字符串——
+    # bridge/bin/aimail-bridge),不能裸匹配 "aimail-bridge" 字符串——
     # 否则会误杀命令行含该串的其他进程(如集成脚本自身 shell、测试
     # 包装进程)。2026-08-16 实测事故:裸匹配曾把生产 bridge 与调用
     # shell 一并杀掉。
     def _bridge_pids() -> list:
         try:
             out = subprocess.check_output(
-                ["pgrep", "-f", r"amail-bridge.*--config|amail-bridge.*\.toml"],
+                ["pgrep", "-f", r"aimail-bridge.*--config|aimail-bridge.*\.toml"],
                 text=True, timeout=5)
             return [int(l.strip()) for l in out.splitlines() if l.strip().isdigit()]
         except subprocess.CalledProcessError:
@@ -244,8 +244,8 @@ def start_bridge(bin_path: str, cfg_path: str, pid_path: str) -> bool:
 def main():
     # Standalone restart: just kill and restart bridge process
     if "--restart" in sys.argv:
-        bin_path = os.path.expanduser("~/.agentmail/bridge/bin/amail-bridge")
-        cfg_path = os.path.expanduser("~/.agentmail/bridge/amail_bridge.toml")
+        bin_path = os.path.expanduser("~/.agentmail/bridge/bin/aimail-bridge")
+        cfg_path = os.path.expanduser("~/.agentmail/bridge/aimail_bridge.toml")
         pid_path = os.path.expanduser("~/.agentmail/bridge/bridge.pid")
         start_bridge(bin_path, cfg_path, pid_path)
         return 0 if os.path.exists(pid_path) else 1
@@ -273,7 +273,7 @@ def main():
 
     # ── Bridge deployment ────────────────────────────────────
     bridge_dir = os.path.expanduser("~/.agentmail/bridge/bin")
-    bridge_bin = os.path.join(bridge_dir, "amail-bridge")
+    bridge_bin = os.path.join(bridge_dir, "aimail-bridge")
     os.makedirs(bridge_dir, exist_ok=True)
 
     # Extract from local zip if missing
@@ -292,7 +292,7 @@ def main():
             arch = "amd64"
         zip_path = latest_bridge_zip(bridge_dir_local, arch)
         if not zip_path:
-            log_warn(f"No bridge zip found in {bridge_dir_local} (amail-bridge-v*-linux-{arch}.zip)")
+            log_warn(f"No bridge zip found in {bridge_dir_local} (aimail-bridge-v*-linux-{arch}.zip)")
             return 0
         log_step(f"Extracting bridge from {zip_path}...")
         try:
@@ -323,7 +323,7 @@ def main():
 
     cfg_dir = os.path.expanduser("~/.agentmail/bridge")
     os.makedirs(cfg_dir, exist_ok=True)
-    bridge_cfg = os.path.join(cfg_dir, "amail_bridge.toml")
+    bridge_cfg = os.path.join(cfg_dir, "aimail_bridge.toml")
 
     # Create bridge API key (use system-level key for higher privilege)
     import uuid
@@ -385,7 +385,7 @@ def main():
         if bridge_key:
             log_ok("bridge API key created (category=bridge)")
     else:
-        log_warn("bridge failed to start — check ~/.agentmail/logs/amail-bridge.log")
+        log_warn("bridge failed to start — check ~/.agentmail/logs/aimail-bridge.log")
 
     return 0
 

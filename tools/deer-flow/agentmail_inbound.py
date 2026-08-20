@@ -4,7 +4,7 @@
 独立接收进程 amail_deerflow_bridge.py(8798,已退役删除)。
 
 链路:
-  amail-gateway → amail-bridge(透明代理,跨网 pull / 同内网直连)
+  aimail-gateway → aimail-bridge(透明代理,跨网 pull / 同内网直连)
     → POST /agentmail/inbound
       → HMAC 验签(X-Webhook-Signature, per-address webhook_secret)
       → 共享 process_inbound_mail(agentmail 适配层 amail_base)

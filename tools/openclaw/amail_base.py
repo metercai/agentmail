@@ -9,7 +9,7 @@ scripts/gateway_api.py（标准 amail API 客户端），仅替换 config 加载
       agentmail_gateway.json               ← 网关配置（激活时写入，含 mode/bridge_port）
       {cleaned_addr}/agentmail.json        ← 每 agent 配置（api_key + agent_id，地址键）
 
-不修改 amail-gateway，不修改 Hermes 代码 —— 只做运行时配置源替换。
+不修改 aimail-gateway，不修改 Hermes 代码 —— 只做运行时配置源替换。
 """
 from __future__ import annotations
 

@@ -7,7 +7,7 @@
 1. [本地存储](#1-本地存储)
 2. [日志](#2-日志)
 3. [诊断（CLI）](#3-诊断cli)
-4. [amail-bridge](#4-amail-bridge)
+4. [aimail-bridge](#4-aimail-bridge)
 5. [Hermes 网关](#5-hermes-网关)
 6. [常见问题](#6-常见问题)
 7. [CLI 参考](#7-cli-参考)
@@ -33,13 +33,13 @@
 │       ├── agentmail.log              # agent 处理流水日志
 │       └── {yyyymm}/in-*.json         # 按月入站快照
 ├── bridge/
-│   ├── amail_bridge.toml              # bridge 配置
-│   ├── amail_routes.toml              # 路由表(email → 本地 webhook)
-│   ├── bin/amail-bridge               # bridge 二进制
+│   ├── aimail_bridge.toml              # bridge 配置
+│   ├── aimail_routes.toml              # 路由表(email → 本地 webhook)
+│   ├── bin/aimail-bridge               # bridge 二进制
 │   ├── bridge.pid                     # bridge PID
 │   └── bridge.out                     # bridge stdout 日志
 ├── logs/
-│   ├── amail-bridge.log               # bridge 运行日志
+│   ├── aimail-bridge.log               # bridge 运行日志
 │   └── agentmail.agent.{addr}.log     # 各 agent 处理日志
 ├── backup-reset-*/                    # reset 前的配置快照
 └── .system_raw_key/
@@ -52,7 +52,7 @@
 |------|------|--------|
 | `systems/{sid}/agentmail_gateway.json` | gateway_url, admin_key, system_id, system_name, manager_address, system_home | `agentmail install` / `reset` → `setup_system.py` |
 | `systems/{sid}/{addr}/agentmail.json` | email, api_key, gateway_url, domain, system_id, manager_address | 注册链(`register_profiles.py` / `register_agent.py`) |
-| `bridge/amail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
+| `bridge/aimail_bridge.toml` | mode, addr/pull 配置 | `deploy_bridge.py` |
 
 所有配置都放在 `~/.agentmail/` 下；agent home 中不保存网关配置
 （profile 目录里的 `.agentmail` 指针仅记录 system_id）。
@@ -66,7 +66,7 @@
 | 文件 | 内容 | 位置 |
 |------|------|------|
 | **agentmail.log** | 邮件流水日志(ping/pong、入站/出站、预处理) | `~/.agentmail/mail/{agent_addr}/agentmail.log` |
-| **amail-bridge.log** | bridge 运行日志(pull、转发、路由、健康) | `~/.agentmail/logs/amail-bridge.log` |
+| **aimail-bridge.log** | bridge 运行日志(pull、转发、路由、健康) | `~/.agentmail/logs/aimail-bridge.log` |
 | **gateway.log** | Hermes 网关日志(每 profile) | `~/.hermes/gateway.log`(根)或 `~/.hermes/profiles/{name}/gateway.log` |
 
 ### agentmail.log 格式
@@ -95,7 +95,7 @@
     compress
     missingok
 }
-~/.agentmail/logs/amail-bridge.log {
+~/.agentmail/logs/aimail-bridge.log {
     daily
     rotate 7
     compress
@@ -151,7 +151,7 @@
 
 ---
 
-## 4. amail-bridge
+## 4. aimail-bridge
 
 ### 进程管理
 
@@ -168,7 +168,7 @@
 
 ### 配置
 
-`~/.agentmail/bridge/amail_bridge.toml`：
+`~/.agentmail/bridge/aimail_bridge.toml`：
 
 ```toml
 mode = "pull"
@@ -241,7 +241,7 @@ grep pong_status ~/.agentmail/mail/*/agentmail.log
 ```bash
 ./agentmail bridge
 curl https://amail.token.tm/health
-tail -20 ~/.agentmail/logs/amail-bridge.log
+tail -20 ~/.agentmail/logs/aimail-bridge.log
 ```
 
 ### 网关起不来

@@ -5,7 +5,7 @@
 **AI Agent 专属的邮件系统**
 
 **AgentMail** 是为 AI 智能体专属打造的高可控、全网通、开放式协作的邮件基础设施，让 Agent 像人一样与外界进行交流、互动和协作。
-- **无缝接入全球网络**：依托 [amail-gateway](https://github.com/metercai/amail-gateway) 构建 SMTP 与 HTTP 的双向网关，将各类 Agent 平台（如 [Hermes Agent](https://github.com/nousresearch/hermes-agent) ）零门槛接入全球邮件网络。
+- **无缝接入全球网络**：依托 [aimail-gateway](https://github.com/metercai/aimail-gateway) 构建 SMTP 与 HTTP 的双向网关，将各类 Agent 平台（如 [Hermes Agent](https://github.com/nousresearch/hermes-agent) ）零门槛接入全球邮件网络。
 - **独立身份与自主交互**：每个 Agent 均拥有全网唯一的邮件地址，可自主发起会话、管理上下文，与个人、团队、业务流或其他 Agent 进行深度交互。
 - **开放协议与人机协同**：去除平台依赖，遵循公共的邮件协议和协作习惯，在去中心化的邮件基础设施上，构建了跨网络、开放的人机混合的智能体协同生态。
 
@@ -82,7 +82,7 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 
 ### 前置条件
 
-- [amail-gateway](https://github.com/metercai/amail-gateway)（已运行）
+- [aimail-gateway](https://github.com/metercai/aimail-gateway)（已运行）
 - [Hermes Agent](https://github.com/nousresearch/hermes-agent)（已安装）
 - Linux 环境 + Python 3.10+
 
@@ -133,11 +133,11 @@ $ ./agentmail stats
 
 ## 完整架构
 
-AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Hermes Agent**（LLM 引擎），运行时通过 Webhook 和 HTTP API 协同工作。
+AgentMail 由两大部件组成：**aimail-gateway**（邮件网关）和 **Hermes Agent**（LLM 引擎），运行时通过 Webhook 和 HTTP API 协同工作。
 
 ```
                      ┌────────────────────┐
-                     │   amail-gateway    │
+                     │   aimail-gateway    │
                      │                    │
    External Mail ───►│ SMTP Receiver      │──── Inbound Webhook ─┐
                      │                    │                      │
@@ -187,7 +187,7 @@ AgentMail 由两大部件组成：**amail-gateway**（邮件网关）和 **Herme
 
 - 自建网关，独享域名
 
-部署自己的 [amail-gateway](https://github.com/metercai/amail-gateway)，使用自有域名。根 Profile 固定为 `agent@{domain}`，其他 Profile 通过 `hermes -p` 创建。
+部署自己的 [aimail-gateway](https://github.com/metercai/aimail-gateway)，使用自有域名。根 Profile 固定为 `agent@{domain}`，其他 Profile 通过 `hermes -p` 创建。
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
@@ -226,13 +226,13 @@ API Key 按 Agent 地址生成，存储在 `~/.agentmail/systems/{system_id}/{ad
 │       ├── agentmail.log              # agent 流水日志
 │       └── {yyyymm}/in-*.json         # 按月快照
 ├── bridge/
-│   ├── amail_bridge.toml              # bridge 配置
-│   ├── amail_routes.toml              # 路由表（email → 本地 webhook）
-│   ├── bin/amail-bridge               # bridge 二进制
+│   ├── aimail_bridge.toml              # bridge 配置
+│   ├── aimail_routes.toml              # 路由表（email → 本地 webhook）
+│   ├── bin/aimail-bridge               # bridge 二进制
 │   ├── bridge.pid                     # bridge PID
 │   └── bridge.out                     # bridge stdout 日志
 ├── logs/
-│   ├── amail-bridge.log               # bridge 运行日志
+│   ├── aimail-bridge.log               # bridge 运行日志
 │   └── agentmail.agent.{addr}.log     # 各 agent 处理日志
 ├── backup-reset-*/                    # reset 前的配置快照
 └── .system_raw_key/

@@ -1,7 +1,7 @@
-# amail-bridge configuration example
+# aimail-bridge configuration example
 #
-# Copy this file to amail_bridge.toml and edit to match your setup.
-# Run: ./amail-bridge -c amail_bridge.toml
+# Copy this file to aimail_bridge.toml and edit to match your setup.
+# Run: ./aimail-bridge -c aimail_bridge.toml
 
 # ── Top-level ─────────────────────────────────────────────────────
 mode = "push"                        # "push" (bridge receives webhooks) or
@@ -31,7 +31,7 @@ admin_allowed_ips = ["127.0.0.1", "::1"]
 # Logging
 # [logging]
 # level = "info"                       # log level (default: "info")
-# file = "/var/log/amail-bridge.log"  # log file path (default: stdout)
+# file = "/var/log/aimail-bridge.log"  # log file path (default: stdout)
 
 # ── Pull mode (bridge polls gateway outbound) ─────────────────────
 #

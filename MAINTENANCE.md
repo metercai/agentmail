@@ -7,7 +7,7 @@
 1. [Local Storage](#1-local-storage)
 2. [Logs](#2-logs)
 3. [Diagnostics (CLI)](#3-diagnostics-cli)
-4. [amail-bridge](#4-amail-bridge)
+4. [aimail-bridge](#4-aimail-bridge)
 5. [Hermes Gateway](#5-hermes-gateway)
 6. [Common Issues](#6-common-issues)
 7. [CLI Reference](#7-cli-reference)
@@ -33,13 +33,13 @@
 │       ├── agentmail.log              # agent pipeline log
 │       └── {yyyymm}/in-*.json         # monthly inbound snapshots
 ├── bridge/
-│   ├── amail_bridge.toml              # bridge config
-│   ├── amail_routes.toml              # route table (email → local webhook)
-│   ├── bin/amail-bridge               # bridge binary
+│   ├── aimail_bridge.toml              # bridge config
+│   ├── aimail_routes.toml              # route table (email → local webhook)
+│   ├── bin/aimail-bridge               # bridge binary
 │   ├── bridge.pid                     # bridge PID
 │   └── bridge.out                     # bridge stdout log
 ├── logs/
-│   ├── amail-bridge.log               # bridge runtime log
+│   ├── aimail-bridge.log               # bridge runtime log
 │   └── agentmail.agent.{addr}.log     # per-agent processing log
 ├── backup-reset-*/                    # config snapshot before each reset
 └── .system_raw_key/
@@ -52,7 +52,7 @@
 |------|---------|------------|
 | `systems/{sid}/agentmail_gateway.json` | gateway_url, admin_key, system_id, system_name, manager_address, system_home | `agentmail install` / `reset` → `setup_system.py` |
 | `systems/{sid}/{addr}/agentmail.json` | email, api_key, gateway_url, domain, system_id, manager_address | registration chain (`register_profiles.py` / `register_agent.py`) |
-| `bridge/amail_bridge.toml` | mode, addr/pull config | `deploy_bridge.py` |
+| `bridge/aimail_bridge.toml` | mode, addr/pull config | `deploy_bridge.py` |
 
 All config lives under `~/.agentmail/`; no gateway config is kept in the agent home
 (pointer files `.agentmail` in profile dirs only reference the system_id).
@@ -66,7 +66,7 @@ All config lives under `~/.agentmail/`; no gateway config is kept in the agent h
 | File | Content | Location |
 |------|---------|----------|
 | **agentmail.log** | Mail pipeline logs (ping/pong, inbound/outbound, preprocessing) | `~/.agentmail/mail/{agent_addr}/agentmail.log` |
-| **amail-bridge.log** | Bridge runtime logs (pull, forward, routing, health) | `~/.agentmail/logs/amail-bridge.log` |
+| **aimail-bridge.log** | Bridge runtime logs (pull, forward, routing, health) | `~/.agentmail/logs/aimail-bridge.log` |
 | **gateway.log** | Hermes gateway log (per profile) | `~/.hermes/gateway.log` (root) or `~/.hermes/profiles/{name}/gateway.log` |
 
 ### agentmail.log Format
@@ -95,7 +95,7 @@ No auto-rotation. Configure logrotate or cron:
     compress
     missingok
 }
-~/.agentmail/logs/amail-bridge.log {
+~/.agentmail/logs/aimail-bridge.log {
     daily
     rotate 7
     compress
@@ -151,7 +151,7 @@ Sends ping via SMTP to gateway to bridge to webhook, triggers auto-pong reply, v
 
 ---
 
-## 4. amail-bridge
+## 4. aimail-bridge
 
 ### Process Management
 
@@ -168,7 +168,7 @@ Sends ping via SMTP to gateway to bridge to webhook, triggers auto-pong reply, v
 
 ### Config
 
-`~/.agentmail/bridge/amail_bridge.toml`:
+`~/.agentmail/bridge/aimail_bridge.toml`:
 
 ```toml
 mode = "pull"
@@ -241,7 +241,7 @@ grep pong_status ~/.agentmail/mail/*/agentmail.log
 ```bash
 ./agentmail bridge
 curl https://amail.token.tm/health
-tail -20 ~/.agentmail/logs/amail-bridge.log
+tail -20 ~/.agentmail/logs/aimail-bridge.log
 ```
 
 ### Gateway won't start
