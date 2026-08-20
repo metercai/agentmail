@@ -2,15 +2,15 @@
 # install-skill.sh — 安装 agentmail SKILL 到 dsh 技能目录(逐字拷贝,零改写)
 #
 # 用法:
-#   bash install-skill.sh [DSH_HOME] [AMAIL_REPO]
+#   bash install-skill.sh [DSH_HOME] [AIMAIL_REPO]
 #     DSH_HOME   默认 ~/.dsh(全局技能 <DSH_HOME>/skills/agentmail/)
-#     AMAIL_REPO 默认 ~/agentmail(SKILL.md 源)
+#     AIMAIL_REPO 默认 ~/agentmail(SKILL.md 源)
 set -euo pipefail
 
 DSH_HOME="${1:-$HOME/.dsh}"
-AMAIL_REPO="${2:-$HOME/agentmail}"
+AIMAIL_REPO="${2:-$HOME/agentmail}"
 
-SRC="$AMAIL_REPO/skills/SKILL.md"
+SRC="$AIMAIL_REPO/skills/SKILL.md"
 DST_DIR="$DSH_HOME/skills/agentmail"
 
 [ -f "$SRC" ] || { echo "ERROR: SKILL.md not found: $SRC"; exit 1; }

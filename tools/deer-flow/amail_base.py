@@ -69,7 +69,7 @@ _tools._AGENT_IDENTITY_OVERRIDE = f"deerflow/{_detect_deerflow_version()}"
 # ── ① 平台实现 ──────────────────────────────────────────────────
 def _deerflow_profile_dir() -> Optional[str]:
     """profile 目录: 当前 system 目录(system_id 解析同 OpenClaw 指针)。"""
-    sid = os.environ.get("AMAIL_SYSTEM_ID", "")
+    sid = os.environ.get("AIMAIL_SYSTEM_ID", "")
     if sid:
         return str(Path.home() / ".agentmail" / "systems" / sid)
     return None
@@ -94,7 +94,7 @@ def make_client(api_key: str = "", system_id: str = ""):
 def load_agent_config_for_key(system_id: str = "") -> Optional[dict]:
     """读取当前 system 的 gateway 配置(agentmail_gateway.json)。"""
     try:
-        sid = system_id or os.environ.get("AMAIL_SYSTEM_ID", "")
+        sid = system_id or os.environ.get("AIMAIL_SYSTEM_ID", "")
         path = Path.home() / ".agentmail" / "systems" / sid / "agentmail_gateway.json"
         if path.is_file():
             return json.loads(path.read_text())
@@ -110,7 +110,7 @@ def load_gateway_config(system_id: str = "") -> Optional[dict]:
 
 def detect_system_id() -> str:
     """系统身份: 指针文件唯一来源(~/.deer-flow/.agentmail 或 env)。"""
-    sid = os.environ.get("AMAIL_SYSTEM_ID", "")
+    sid = os.environ.get("AIMAIL_SYSTEM_ID", "")
     if sid:
         return sid
     for ptr in (Path.home() / ".deer-flow" / ".agentmail",

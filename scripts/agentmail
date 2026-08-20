@@ -185,8 +185,8 @@ def cmd_ping(args) -> int:
         cmd += ["--system-id", sid]
     if args.manager:
         cmd += ["--manager", args.manager]
-    elif _env_val("AMAIL_MANAGER_ADDRESS"):
-        cmd += ["--manager", _env_val("AMAIL_MANAGER_ADDRESS")]
+    elif _env_val("AIMAIL_MANAGER_ADDRESS"):
+        cmd += ["--manager", _env_val("AIMAIL_MANAGER_ADDRESS")]
     if args.timeout:
         cmd += ["--timeout", str(args.timeout)]
     return subprocess.call(cmd)
@@ -200,8 +200,8 @@ def cmd_welcome(args) -> int:
         cmd += ["--system-id", sid]
     if args.manager:
         cmd += ["--manager", args.manager]
-    elif _env_val("AMAIL_MANAGER_ADDRESS"):
-        cmd += ["--manager", _env_val("AMAIL_MANAGER_ADDRESS")]
+    elif _env_val("AIMAIL_MANAGER_ADDRESS"):
+        cmd += ["--manager", _env_val("AIMAIL_MANAGER_ADDRESS")]
     if args.no_wait:
         cmd += ["--no-wait"]
     return subprocess.call(cmd)
@@ -223,21 +223,21 @@ def cmd_install(args) -> int:
     sys.path.insert(0, str(SCRIPTS_DIR))
     from gateway_api import load_gateway_config
     env = dict(os.environ)
-    gw_url = args.gateway_url or _env_val("AMAIL_URL", "https://amail.token.tm")
-    sys_name = args.system_name or _env_val("AMAIL_SYSTEM_NAME")
-    manager = args.manager or _env_val("AMAIL_MANAGER_ADDRESS")
-    prod_code = args.product_code or _env_val("AMAIL_PRODUCT_CODE")
-    adm_key = args.admin_key or _env_val("AMAIL_ADMIN_KEY")
-    want_domain = args.domain or _env_val("AMAIL_DOMAIN")
+    gw_url = args.gateway_url or _env_val("AIMAIL_URL", "https://amail.token.tm")
+    sys_name = args.system_name or _env_val("AIMAIL_SYSTEM_NAME")
+    manager = args.manager or _env_val("AIMAIL_MANAGER_ADDRESS")
+    prod_code = args.product_code or _env_val("AIMAIL_PRODUCT_CODE")
+    adm_key = args.admin_key or _env_val("AIMAIL_ADMIN_KEY")
+    want_domain = args.domain or _env_val("AIMAIL_DOMAIN")
     env["INTEGRATE_GATEWAY_URL"] = gw_url
     env["INTEGRATE_SYSTEM_ID"] = args.system_id or ""
     env["INTEGRATE_SYSTEM_NAME"] = sys_name
     env["INTEGRATE_SYSTEM_HOME"] = str(system_home)
     env["INTEGRATE_MANAGER_ADDRESS"] = manager
-    env["INTEGRATE_AMAIL_DOMAIN"] = want_domain
+    env["INTEGRATE_AIMAIL_DOMAIN"] = want_domain
     env["INTEGRATE_SAVE_SNAPSHOTS"] = (
-        "true" if _env_val("AMAIL_SAVE_SNAPSHOTS", "no").lower() in ("yes", "true", "1") else "false")
-    env["INTEGRATE_WEBHOOK_HOST"] = _env_val("AMAIL_WEBHOOK_HOST")
+        "true" if _env_val("AIMAIL_SAVE_SNAPSHOTS", "no").lower() in ("yes", "true", "1") else "false")
+    env["INTEGRATE_WEBHOOK_HOST"] = _env_val("AIMAIL_WEBHOOK_HOST")
     if prod_code:
         env["INTEGRATE_USE_PRODUCT_CODE"] = "true"
         env["INTEGRATE_PRODUCT_CODE"] = prod_code
@@ -271,7 +271,7 @@ def cmd_install(args) -> int:
         env["INTEGRATE_SYSTEM_ID"] = sid2
         _ok(f"system_id: {sid2}")
 
-    # 1b) domain 预置/创建:AMAIL_DOMAIN 指定且系统缺失时主动创建
+    # 1b) domain 预置/创建:AIMAIL_DOMAIN 指定且系统缺失时主动创建
     if want_domain and sid2:
         sys.path.insert(0, str(SCRIPTS_DIR.parent / "tools"))
         try:
@@ -315,7 +315,7 @@ def cmd_install(args) -> int:
                 _warn(f"{sh} exit {r}")
     elif platform == "openclaw":
         env3 = dict(os.environ)
-        env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
+        env3["AIMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
         r = subprocess.call([sys.executable, str(SCRIPTS_DIR.parent / "bin" / "register_agent.py"),
                              "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
                             env=env3)
@@ -325,7 +325,7 @@ def cmd_install(args) -> int:
     else:  # deerflow
         # 补充注册(全部已有 agent 注册地址+路由)+ 入站补丁 + skill/mcp
         env3 = dict(os.environ)
-        env3["AMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
+        env3["AIMAIL_SYSTEM_ID"] = env.get("INTEGRATE_SYSTEM_ID", "")
         r = subprocess.call([sys.executable, str(SCRIPTS_DIR / "deer-flow" / "register_agent.py"),
                              "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
                             env=env3)
@@ -387,9 +387,9 @@ def cmd_reset(args) -> int:
             prev = json.loads(cfg_path.read_text())
         except Exception:
             pass
-    gw_url = args.gateway_url or _env_val("AMAIL_URL") or prev.get("gateway_url", "")
-    sys_name = args.system_name or _env_val("AMAIL_SYSTEM_NAME") or prev.get("system_name", "")
-    manager = args.manager or _env_val("AMAIL_MANAGER_ADDRESS") or prev.get("manager_address", "")
+    gw_url = args.gateway_url or _env_val("AIMAIL_URL") or prev.get("gateway_url", "")
+    sys_name = args.system_name or _env_val("AIMAIL_SYSTEM_NAME") or prev.get("system_name", "")
+    manager = args.manager or _env_val("AIMAIL_MANAGER_ADDRESS") or prev.get("manager_address", "")
 
     print(f"  reset platform={platform} system_id={sid}")
     env = dict(os.environ)
@@ -411,7 +411,7 @@ def cmd_reset(args) -> int:
         subprocess.call([sys.executable, str(SCRIPTS_DIR / "hermes" / "register_profiles.py")], env=env3)
     else:
         env3 = dict(os.environ)
-        env3["AMAIL_SYSTEM_ID"] = sid
+        env3["AIMAIL_SYSTEM_ID"] = sid
         subprocess.call([sys.executable, str(SCRIPTS_DIR.parent / "bin" / "register_agent.py"),
                          "--all", "--system-id", sid], env=env3)
     _ok("registration chain re-run (idempotent)")
@@ -1433,10 +1433,10 @@ def main():
     p_install.add_argument("--system-id")
     p_install.add_argument("--product-code", help="激活码(新系统)")
     p_install.add_argument("--admin-key", help="已激活系统的 admin key")
-    p_install.add_argument("--gateway-url", default=None, help="网关地址(默认 AMAIL_URL 或 https://amail.token.tm)")
+    p_install.add_argument("--gateway-url", default=None, help="网关地址(默认 AIMAIL_URL 或 https://amail.token.tm)")
     p_install.add_argument("--system-name")
     p_install.add_argument("--manager")
-    p_install.add_argument("--domain", help="预置/创建域名(默认取 AMAIL_DOMAIN)")
+    p_install.add_argument("--domain", help="预置/创建域名(默认取 AIMAIL_DOMAIN)")
     p_install.set_defaults(func=cmd_install)
 
     p_mn = sub.add_parser("mailname", help="查看/修改默认主 agent 名映射")

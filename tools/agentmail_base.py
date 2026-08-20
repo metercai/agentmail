@@ -107,21 +107,16 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
     """load gateway connection config
 
     Reads from (in priority order):
-    1. Environment variables (AMAIL_GATEWAY_URL + AMAIL_ADMIN_KEY/AMAIL_PRODUCT_CODE)
+    1. Environment variables (AIMAIL_GATEWAY_URL + AIMAIL_ADMIN_KEY/AIMAIL_PRODUCT_CODE)
     2. ~/.agentmail/systems/{system_id}/agentmail_gateway.json (direct, or via HERMES_PROFILE_DIR/.agentmail pointer)
     """
     # Try environment variables first
-    gateway_url = os.environ.get("AMAIL_GATEWAY_URL", "")
-    admin_key = os.environ.get("AMAIL_ADMIN_KEY", "")
-    product_code = os.environ.get("AMAIL_PRODUCT_CODE", "")
-    sys_id = os.environ.get("AMAIL_SYS_ID", "")
-    # 仅在 env 显式提供时覆盖传入参数(否则保留调用方 system_id)
-    env_sid = sys_id or os.environ.get("AMAIL_TENANT_ID", "")
-    if env_sid:
-        system_id = env_sid
-    domain = os.environ.get("AMAIL_DOMAIN", "")
-    # Fallback: map AMAIL_BRIDGE_URL → webhook_host
-    raw_webhook = os.environ.get("AMAIL_WEBHOOK_HOST", "") or os.environ.get("AMAIL_BRIDGE_URL", "")
+    gateway_url = os.environ.get("AIMAIL_GATEWAY_URL", "")
+    admin_key = os.environ.get("AIMAIL_ADMIN_KEY", "")
+    product_code = os.environ.get("AIMAIL_PRODUCT_CODE", "")
+    domain = os.environ.get("AIMAIL_DOMAIN", "")
+    # Fallback: map AIMAIL_BRIDGE_URL → webhook_host
+    raw_webhook = os.environ.get("AIMAIL_WEBHOOK_HOST", "") or os.environ.get("AIMAIL_BRIDGE_URL", "")
     if raw_webhook:
         # Strip protocol and /path to get host:port
         raw_webhook = raw_webhook.replace("http://", "").replace("https://", "").split("/")[0]
@@ -132,9 +127,8 @@ def _load_gateway_config(system_id: str = "") -> Optional[dict]:
             "product_code": product_code,
             "system_id": system_id,
             "domain": domain,
-            "manager_address": os.environ.get("AMAIL_MANAGER_ADDRESS", ""),
+            "manager_address": os.environ.get("AIMAIL_MANAGER_ADDRESS", ""),
             "webhook_host": raw_webhook,
-            "sys_id": sys_id,
         }
 
     # Try ~/.agentmail/systems/{system_id}/agentmail_gateway.json
@@ -255,9 +249,9 @@ def load_agent_config(agent_id: str, system_id: str = "") -> Optional[dict]:
 def set_agent_context(agent_id: str, system_id: str = "") -> None:
     """把当前 agent 的 config 挂到公共核心注入点(平台无关,兜底 MCP 服务用)。
 
-    原 OpenClaw 版(读 ~/.openclaw/.agentmail 指针 + AMAIL_AGENT_EMAIL)提升为
+    原 OpenClaw 版(读 ~/.openclaw/.agentmail 指针 + AIMAIL_AGENT_EMAIL)提升为
     共享实现:遍历 systems/{sid}/*/agentmail.json 匹配 agent_id,命中后设置
-    _CONFIG_LOADER 与 AMAIL_AGENT_EMAIL(日志落位),供 preprocess 与 6 工具共用。
+    _CONFIG_LOADER 与 AIMAIL_AGENT_EMAIL(日志落位),供 preprocess 与 6 工具共用。
     未注册 → RuntimeError(与 OpenClaw 原语义一致)。
     """
     global _ACTIVE_AGENT_CONFIG, _CONFIG_LOADER
@@ -267,9 +261,9 @@ def set_agent_context(agent_id: str, system_id: str = "") -> None:
     _ACTIVE_AGENT_CONFIG = cfg
     _CONFIG_LOADER = lambda: cfg  # noqa: E731
     if cfg.get("email"):
-        os.environ["AMAIL_AGENT_EMAIL"] = cfg["email"]
-    os.environ.setdefault("AMAIL_AGENT_ID", agent_id)
-    os.environ.setdefault("AMAIL_SYSTEM_ID", cfg.get("system_id", system_id))
+        os.environ["AIMAIL_AGENT_EMAIL"] = cfg["email"]
+    os.environ.setdefault("AIMAIL_AGENT_ID", agent_id)
+    os.environ.setdefault("AIMAIL_SYSTEM_ID", cfg.get("system_id", system_id))
 
 
 def _clean_agent_dir_name(addr: str) -> str:

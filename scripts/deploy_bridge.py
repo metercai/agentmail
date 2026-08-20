@@ -254,11 +254,11 @@ def main():
     gw = os.environ.get("GATEWAY_URL", "")
     ak = os.environ.get("ADMIN_KEY", "")
     sid = os.environ.get("SYSTEM_ID", "")
-    domain = os.environ.get("AMAIL_DOMAIN", "")
+    domain = os.environ.get("AIMAIL_DOMAIN", "")
     wh_mode = os.environ.get("WEBHOOK_MODE", "bridge")
     # webhook_host 来源链(2026-08-18 用户定稿,与 setup_system 同源):
-    # env(AMAIL_WEBHOOK_HOST,兼容旧 WEBHOOK_HOST)→ 已有配置 → 自动探测
-    wh_host = os.environ.get("WEBHOOK_HOST", "") or os.environ.get("AMAIL_WEBHOOK_HOST", "")
+    # env(AIMAIL_WEBHOOK_HOST,兼容旧 WEBHOOK_HOST)→ 已有配置 → 自动探测
+    wh_host = os.environ.get("WEBHOOK_HOST", "") or os.environ.get("AIMAIL_WEBHOOK_HOST", "")
     if not wh_host and sid:
         try:
             gw_path = os.path.join(os.path.expanduser("~/.agentmail/systems"), sid, "agentmail_gateway.json")
@@ -268,7 +268,7 @@ def main():
             pass
 
     if not all([gw, ak, sid, domain]):
-        log_warn("Required vars missing: GATEWAY_URL, ADMIN_KEY, SYSTEM_ID, AMAIL_DOMAIN")
+        log_warn("Required vars missing: GATEWAY_URL, ADMIN_KEY, SYSTEM_ID, AIMAIL_DOMAIN")
         return 1
 
     # ── Bridge deployment ────────────────────────────────────
@@ -345,7 +345,7 @@ def main():
         log_warn("bridge API key creation failed — bridge auth may not work")
 
     # Read webhook secret from agent config (Hermes → env fallback)
-    webhook_secret = os.environ.get("AMAIL_WEBHOOK_SECRET", "")
+    webhook_secret = os.environ.get("AIMAIL_WEBHOOK_SECRET", "")
     if not webhook_secret:
         try:
             import yaml

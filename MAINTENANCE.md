@@ -289,7 +289,7 @@ Subcommands (alphabetical): `bridge`, `check`, `domain`, `install`, `mailname`,
 > built-in default), so repeated values only need to be set once:
 
 ```bash
-# .env: AMAIL_URL / AMAIL_ADMIN_KEY | AMAIL_PRODUCT_CODE / AMAIL_MANAGER_ADDRESS
+# .env: AIMAIL_URL / AIMAIL_ADMIN_KEY | AIMAIL_PRODUCT_CODE / AIMAIL_MANAGER_ADDRESS
 
 # New system — activate with a product code (from .env if not passed)
 ./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com

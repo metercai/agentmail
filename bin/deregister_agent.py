@@ -29,7 +29,7 @@ import agentmail_tools as _tools      # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description="注销 OpenClaw agent 的 amail 注册")
     ap.add_argument("--agent", required=True)
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     ap.add_argument("--no-openclaw-delete", action="store_true", help="不执行 openclaw agents delete")
     args = ap.parse_args()
 

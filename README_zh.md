@@ -91,15 +91,15 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-cp .env.example .env        # 填入 AMAIL_URL、AMAIL_PRODUCT_CODE（新系统）或
-                            # AMAIL_ADMIN_KEY（已有系统）、AMAIL_MANAGER_ADDRESS；
-                            # 可选 AMAIL_DOMAIN / AMAIL_SYSTEM_NAME
+cp .env.example .env        # 填入 AIMAIL_URL、AIMAIL_PRODUCT_CODE（新系统）或
+                            # AIMAIL_ADMIN_KEY（已有系统）、AIMAIL_MANAGER_ADDRESS；
+                            # 可选 AIMAIL_DOMAIN / AIMAIL_SYSTEM_NAME
 ./agentmail install --home ~/.hermes
 ```
 
 `install` 全程**非交互**完成整条链路：系统激活（或复用已有系统）→ bridge
 部署 → 工具与 skill 安装 → webhook 补丁与 profile 注册。所有值都从
-`.env` 读取，通常唯一需要带的参数就是 `--home`。`AMAIL_DOMAIN` 指定的
+`.env` 读取，通常唯一需要带的参数就是 `--home`。`AIMAIL_DOMAIN` 指定的
 域名会在激活时预置，缺失时主动创建。
 
 ### 验证链路

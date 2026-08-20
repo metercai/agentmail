@@ -140,7 +140,7 @@ def detect_system_id() -> str:
     """Resolve the OpenClaw system id from the agent pointer file.
 
     ~/.openclaw/agents/{agent_id}/agent/.agentmail names the system
-    (agent_id from AMAIL_AGENT_ID, default "main").  System identity is
+    (agent_id from AIMAIL_AGENT_ID, default "main").  System identity is
     fixed by config — env override is intentionally NOT supported:
     switching system_id must be an explicit config change, not a process
     env tweak.  Never scan ~/.agentmail (that picked the wrong system
@@ -184,7 +184,7 @@ def set_agent_context(agent_id: str, system_id: str = "") -> None:
     preprocess_mail_payload()（agentmail_base）与 6 工具函数
     （agentmail_tools）内部都调用 _load_profile_config() —— 公共版读
     _CONFIG_LOADER 注入点，共享 set_agent_context 设置后两处同时生效
-    （同一函数对象）。同时设 AMAIL_AGENT_EMAIL（共享 _resolve_agent_email
+    （同一函数对象）。同时设 AIMAIL_AGENT_EMAIL（共享 _resolve_agent_email
     的第一优先来源）——日志 agentmail.{email}.log 按 agent 落位。
 
     2026-08-18 起转发 tools/agentmail_base.set_agent_context（平台无关，

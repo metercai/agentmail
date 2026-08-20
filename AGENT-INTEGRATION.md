@@ -200,7 +200,7 @@ deregister_agent_email(client, system_id, email, manager_address) -> {api_key, d
 | 入站接收端 | `tools/openclaw/amail_openclaw_bridge.py` — HTTP `/hook`:验签 → set_agent_context → process_inbound_mail → dispatch_to_hooks(POST 127.0.0.1:18789/hooks/agent,agentId/sessionKey 区分多 agent) |
 | 生命周期 | CLI 包装:`bin/register_agent.py`(agents list 发现 → 注册链 → bridge 路由注册);安装补充注册 = register_agent.py --all |
 | 部署 | repo-direct(改立即生效);skill 经 install-skill.sh 拷贝 |
-| 关键坑 | 接收端必须先 set_agent_context 再调 process_inbound_mail;set_agent_context 需 export AMAIL_AGENT_EMAIL(否则日志落 default.log) |
+| 关键坑 | 接收端必须先 set_agent_context 再调 process_inbound_mail;set_agent_context 需 export AIMAIL_AGENT_EMAIL(否则日志落 default.log) |
 
 ### 4.3 DeerFlow
 
@@ -246,7 +246,7 @@ deregister_agent_email(client, system_id, email, manager_address) -> {api_key, d
 
 **平台推断(无 --agent-type)**:`--home` 目录特征(hermes-agent/profiles = hermes;openclaw.json = openclaw;backend/app/gateway = deerflow)→ 配置 system_home 反查 → 自动探测指针。
 
-**.env 自动加载**:CLI 参数 > shell env > .env > 内置默认。.env 键:AMAIL_URL / AMAIL_ADMIN_KEY / AMAIL_PRODUCT_CODE / AMAIL_MANAGER_ADDRESS / AMAIL_SYSTEM_NAME / AMAIL_DOMAIN / AMAIL_SAVE_SNAPSHOTS / AMAIL_WEBHOOK_HOST。
+**.env 自动加载**:CLI 参数 > shell env > .env > 内置默认。.env 键:AIMAIL_URL / AIMAIL_ADMIN_KEY / AIMAIL_PRODUCT_CODE / AIMAIL_MANAGER_ADDRESS / AIMAIL_SYSTEM_NAME / AIMAIL_DOMAIN / AIMAIL_SAVE_SNAPSHOTS / AIMAIL_WEBHOOK_HOST。
 install 全非交互:激活 → 从 setup_system JSON stdout 取 server 分配的 system_id → domain 预置/创建 → deploy_bridge → 平台适配。
 
 ---
@@ -280,7 +280,7 @@ install 全非交互:激活 → 从 setup_system JSON stdout 取 server 分配�
 | ping 永不回 pong | 前缀不一致(PONG_PREFIX 必须 `__amail_pong__:`);或接收端没走 process_inbound_mail 最后一步 |
 | 入站断链(新 agent) | 注册后未调 register_bridge_route(路由表无条目) |
 | webhook 会话收得到回不出 | profile `platform_toolsets.webhook` 缺 agentmail;或路由 skills 为空 |
-| 日志落 agentmail.default.log | 独立进程没 set_agent_context / 没 export AMAIL_AGENT_EMAIL |
+| 日志落 agentmail.default.log | 独立进程没 set_agent_context / 没 export AIMAIL_AGENT_EMAIL |
 | bridge 转发 401 无限重试 | webhook_secret 与接收端配置不一致(注册时落盘值) |
 | 入站富化跳过 | 接收端未先注入 agent 配置就调 process_inbound_mail |
 | check 报系统缺失 | 指针文件缺 system_id;或读错了 home(profile 布局须 --agent-home) |

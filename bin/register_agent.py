@@ -94,8 +94,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="注册 OpenClaw agent 到 amail")
     ap.add_argument("--agent", default="")
     ap.add_argument("--all", action="store_true", help="注册全部 OpenClaw agents")
-    ap.add_argument("--manager", default="", help="manager_address（审批联系人）；缺省读 AMAIL_MANAGER 环境变量")
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--manager", default="", help="manager_address（审批联系人）；缺省读 AIMAIL_MANAGER 环境变量")
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     args = ap.parse_args()
 
     if not args.agent and not args.all:
@@ -107,9 +107,9 @@ def main() -> int:
     gw = _base.load_gateway_config(system_id)
     if not gw:
         raise SystemExit(f"gateway config not found (agentmail_gateway.json) for {system_id} — run activate.py first")
-    manager = args.manager or os.environ.get("AMAIL_MANAGER", "")
+    manager = args.manager or os.environ.get("AIMAIL_MANAGER", "")
     if not manager:
-        raise SystemExit("need --manager <addr> or AMAIL_MANAGER env (审批联系人)")
+        raise SystemExit("need --manager <addr> or AIMAIL_MANAGER env (审批联系人)")
     print(f"system_id={system_id} domain={gw.get('domain')}")
 
     # admin client（register_email/activate_address 全在 _GatewayClient）

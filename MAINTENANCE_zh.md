@@ -289,7 +289,7 @@ cat ~/.hermes/gateway.log
 内置默认值），常用值只需配置一次：
 
 ```bash
-# .env: AMAIL_URL / AMAIL_ADMIN_KEY | AMAIL_PRODUCT_CODE / AMAIL_MANAGER_ADDRESS
+# .env: AIMAIL_URL / AIMAIL_ADMIN_KEY | AIMAIL_PRODUCT_CODE / AIMAIL_MANAGER_ADDRESS
 
 # 新系统——用激活码激活（未传参则从 .env 取）
 ./agentmail install --home ~/.hermes --product-code <CODE> --manager admin@example.com

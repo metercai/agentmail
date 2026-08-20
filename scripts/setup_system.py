@@ -173,7 +173,7 @@ def _detect_webhook_host(gateway_url: str) -> str:
         logger.warning(
             "[amail_setup] Gateway at %s is public but cannot detect external IP. "
             "Using LAN IP %s — gateway must be able to reach this address. "
-            "Set AMAIL_WEBHOOK_HOST to override.", gateway_host, lan_ip
+            "Set AIMAIL_WEBHOOK_HOST to override.", gateway_host, lan_ip
         )
         return lan_ip
 
@@ -333,7 +333,7 @@ def setup(
         return {"success": False, "error": "gateway_url is required"}
 
     if not webhook_host:
-        webhook_host = os.environ.get("AMAIL_WEBHOOK_HOST", "")
+        webhook_host = os.environ.get("AIMAIL_WEBHOOK_HOST", "")
     if not webhook_host:
         # reset 场景(admin_key 路径 + 已有配置):跳过探测,继承已有值
         # (实测 2026-08-16:探测出 IPv6 地址覆盖了 NAT 公网 webhook_host)
@@ -416,7 +416,7 @@ if __name__ == "__main__":
     kwargs = dict(
         gateway_url=os.environ.get("INTEGRATE_GATEWAY_URL", ""),
         system_id=os.environ.get("INTEGRATE_SYSTEM_ID", ""),
-        domain=os.environ.get("INTEGRATE_AMAIL_DOMAIN", "") or "",
+        domain=os.environ.get("INTEGRATE_AIMAIL_DOMAIN", "") or "",
         save_raw_snapshots=os.environ.get("INTEGRATE_SAVE_SNAPSHOTS", "false") == "true",
         manager_address=os.environ.get("INTEGRATE_MANAGER_ADDRESS", "") or "",
         webhook_host=os.environ.get("INTEGRATE_WEBHOOK_HOST", "") or "",

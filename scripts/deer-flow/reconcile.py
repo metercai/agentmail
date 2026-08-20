@@ -64,14 +64,14 @@ def _save_agent_config(agent_id: str, cfg: dict, system_id: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="DeerFlow 生命周期对账")
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
-    ap.add_argument("--manager", default="", help="manager_address;缺省读 AMAIL_MANAGER")
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--manager", default="", help="manager_address;缺省读 AIMAIL_MANAGER")
     ap.add_argument("--dry-run", action="store_true", help="只打印差异,不执行")
     args = ap.parse_args()
 
     system_id = args.system_id or _base.detect_system_id()
     if not system_id:
-        print("need --system-id (or AMAIL_SYSTEM_ID / pointer)", file=sys.stderr)
+        print("need --system-id (or AIMAIL_SYSTEM_ID / pointer)", file=sys.stderr)
         return 1
     gw = _base.load_gateway_config(system_id)
     if not gw:
@@ -84,7 +84,7 @@ def main() -> int:
     # 2. 本地注册表
     local = _local_agents(system_id)
 
-    manager = args.manager or os.environ.get("AMAIL_MANAGER", "")
+    manager = args.manager or os.environ.get("AIMAIL_MANAGER", "")
     client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
 
     changes = 0

@@ -924,7 +924,7 @@ def _resolve_agent_email() -> str:
     """Resolve the agent's base email via the pointer file (for log naming)."""
     # 第一优先:显式注入(OpenClaw set_agent_context 设置;Hermes
     # 不改此环境变量,走指针逻辑)。避免日志落 agentmail.default.log。
-    env_email = os.environ.get("AMAIL_AGENT_EMAIL", "")
+    env_email = os.environ.get("AIMAIL_AGENT_EMAIL", "")
     if env_email:
         return env_email
     import agentmail_base as _abm

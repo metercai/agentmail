@@ -8,7 +8,7 @@ REPO_DIR="$(cd "$(dirname "$(dirname "$(dirname "$0")")")" && pwd)"
 SERVER="$REPO_DIR/tools/amail_mcp_server.py"
 DEER_FLOW_HOME="${DEER_FLOW_HOME:-$HOME/deer-flow}"
 CFG="${DEER_FLOW_EXT_CFG:-$DEER_FLOW_HOME/extensions_config.json}"
-AGENT_ID="${AMAIL_AGENT_ID:-default}"
+AGENT_ID="${AIMAIL_AGENT_ID:-default}"
 
 # 真实版本检测(只报检测结果,不猜测):backend/pyproject.toml 的 version
 DF_VERSION="unknown"
@@ -49,8 +49,8 @@ servers["amail"] = {
     "type": "stdio",
     "command": "python3",
     "args": [server],
-    "env": {"AMAIL_AGENT_ID": agent_id,
-            "AMAIL_AGENT_IDENTITY": identity},
+    "env": {"AIMAIL_AGENT_ID": agent_id,
+            "AIMAIL_AGENT_IDENTITY": identity},
     "tool_name_prefix": True,
     "session_init_timeout": 60,
     "tool_call_timeout": 60,
@@ -62,8 +62,8 @@ with open(cfg_path, "w") as f:
     f.write("\n")
 print(f"wrote mcpServers.amail → {cfg_path}")
 print(f"  server: {server}")
-print(f"  AMAIL_AGENT_ID: {agent_id}")
-print(f"  AMAIL_AGENT_IDENTITY: {identity}")
+print(f"  AIMAIL_AGENT_ID: {agent_id}")
+print(f"  AIMAIL_AGENT_IDENTITY: {identity}")
 PY
 
 echo "verify: python3 -c \"import json; d=json.load(open('$CFG')); print(d['mcpServers']['amail']['args'])\""

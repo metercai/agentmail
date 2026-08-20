@@ -25,8 +25,8 @@ import agentmail_tools as _tools      # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description="注销 DeerFlow agent 从 amail")
     ap.add_argument("--agent", required=True, help="agent id(默认名 default)")
-    ap.add_argument("--manager", default="", help="manager_address;缺省读 AMAIL_MANAGER")
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--manager", default="", help="manager_address;缺省读 AIMAIL_MANAGER")
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     args = ap.parse_args()
 
     system_id = args.system_id or _base.detect_system_id()
@@ -40,7 +40,7 @@ def main() -> int:
         return 0
 
     email = cfg.get("email", "")
-    manager = args.manager or cfg.get("manager_address", "") or os.environ.get("AMAIL_MANAGER", "")
+    manager = args.manager or cfg.get("manager_address", "") or os.environ.get("AIMAIL_MANAGER", "")
 
     client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
     result = _base.deregister_agent_email(client, system_id, email, manager)

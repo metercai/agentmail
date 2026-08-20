@@ -86,16 +86,16 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 ```bash
 git clone https://github.com/metercai/agentmail.git
 cd agentmail
-cp .env.example .env        # fill in AMAIL_URL, AMAIL_PRODUCT_CODE (new) or
-                            # AMAIL_ADMIN_KEY (existing), AMAIL_MANAGER_ADDRESS;
-                            # optionally AMAIL_DOMAIN / AMAIL_SYSTEM_NAME
+cp .env.example .env        # fill in AIMAIL_URL, AIMAIL_PRODUCT_CODE (new) or
+                            # AIMAIL_ADMIN_KEY (existing), AIMAIL_MANAGER_ADDRESS;
+                            # optionally AIMAIL_DOMAIN / AIMAIL_SYSTEM_NAME
 ./agentmail install --home ~/.hermes
 ```
 
 `install` runs the whole chain **non-interactively**: system activation (or
 reuse of an existing system), bridge deploy, tool & skill install, webhook
 patch & profile registration. Every value is read from `.env`, so the only
-flag you usually pass is `--home`. Domains named in `AMAIL_DOMAIN` are
+flag you usually pass is `--home`. Domains named in `AIMAIL_DOMAIN` are
 preset at activation or actively created when missing.
 
 ### Verify the Chain

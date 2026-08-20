@@ -18,7 +18,7 @@ import agentmail_tools as _tools          # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description="解绑 dsh session 与 agentmail 地址")
     ap.add_argument("--email", required=True, help="agentmail 地址(agent.dsh@domain)")
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     args = ap.parse_args()
 
     system_id = args.system_id or _base.detect_system_id()

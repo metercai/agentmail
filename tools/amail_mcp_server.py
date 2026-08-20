@@ -10,7 +10,7 @@
 自动写),即可复用本服务——不 import 任何平台适配层,直接依赖共享核心
 (agentmail_base/agentmail_tools/agentmail_board)。
 
-agent 上下文：env AMAIL_AGENT_ID（mcp.servers.<name>.env 配置,默认 main）。
+agent 上下文：env AIMAIL_AGENT_ID（mcp.servers.<name>.env 配置,默认 main）。
 每工具也可显式传 agentId 参数覆盖（多 agent 共享 server 时）。
 
 零第三方依赖：纯标准库 JSON-RPC over stdio。
@@ -29,18 +29,18 @@ import agentmail_board as _board          # noqa: E402
 
 # 平台身份注入:共享 MCP server 不 import 平台适配层(平台无关),
 # 身份由平台安装脚本(install-mcp.sh 等)经 env 注入真实检测结果
-# (如 AMAIL_AGENT_IDENTITY=deerflow/2.1.0)——与 OpenClaw 适配层
+# (如 AIMAIL_AGENT_IDENTITY=deerflow/2.1.0)——与 OpenClaw 适配层
 # _AGENT_IDENTITY_OVERRIDE 注入同性质。
 # 无 env 时显式置 unknown/unknown 而非目录检测:本机多 agent 共存
 # (~/.hermes 与 ~/.openclaw 同在),目录检测必然误报(hermes 优先),
 # 身份只能由调用接口层声明,server 零猜测。
-_env_identity = os.environ.get("AMAIL_AGENT_IDENTITY", "").strip()
+_env_identity = os.environ.get("AIMAIL_AGENT_IDENTITY", "").strip()
 if _env_identity:
     _tools._AGENT_IDENTITY_OVERRIDE = _env_identity
 else:
     _tools._AGENT_IDENTITY_OVERRIDE = "unknown/unknown"
     print(
-        "[amail_mcp] WARNING: AMAIL_AGENT_IDENTITY not set — "
+        "[amail_mcp] WARNING: AIMAIL_AGENT_IDENTITY not set — "
         "X-Agentmail-Agent will report unknown/unknown. Set it in the "
         "MCP client config (see scripts/<platform>/install-mcp.sh).",
         file=sys.stderr,
@@ -69,7 +69,7 @@ def write_msg(obj):
 
 def _agent_ctx(agent_id: str = "") -> str:
     """确定当前 agentId（显式参数 > env）并切换上下文（共享 set_agent_context）。"""
-    aid = agent_id or os.environ.get("AMAIL_AGENT_ID", "main")
+    aid = agent_id or os.environ.get("AIMAIL_AGENT_ID", "main")
     _base.set_agent_context(aid)
     return aid
 

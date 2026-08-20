@@ -11,15 +11,15 @@
 # 安装后需重启 8001 生效。
 #
 # 用法:
-#   bash install-inbound.sh [DEER_FLOW_ROOT] [AMAIL_REPO]
+#   bash install-inbound.sh [DEER_FLOW_ROOT] [AIMAIL_REPO]
 #     DEER_FLOW_ROOT  默认 ~/deer-flow
-#     AMAIL_REPO      默认 ~/agentmail(agentmail_inbound.py 源所在)
+#     AIMAIL_REPO      默认 ~/agentmail(agentmail_inbound.py 源所在)
 set -euo pipefail
 
 DEER_FLOW_ROOT="${1:-$HOME/deer-flow}"
-AMAIL_REPO="${2:-$HOME/agentmail}"
+AIMAIL_REPO="${2:-$HOME/agentmail}"
 
-SRC_ROUTER="$AMAIL_REPO/tools/deer-flow/agentmail_inbound.py"
+SRC_ROUTER="$AIMAIL_REPO/tools/deer-flow/agentmail_inbound.py"
 G_DIR="$DEER_FLOW_ROOT/backend/app/gateway"   # 'gateway' 段变量化避免误匹配
 DST_ROUTER="$G_DIR/routers/agentmail_inbound.py"
 APP_PY="$G_DIR/app.py"

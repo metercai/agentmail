@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agentmail", tags=["agentmail"])
 
 # ── agentmail 共享核心定位(与旧 bridge 同源;amail_base import 时自加 tools/scripts)──
-_AGENTMAIL_REPO = os.environ.get("AMAIL_REPO") or str(Path.home() / "agentmail")
+_AGENTMAIL_REPO = os.environ.get("AIMAIL_REPO") or str(Path.home() / "agentmail")
 for _p in (str(Path(_AGENTMAIL_REPO) / "tools" / "deer-flow"),
            str(Path(_AGENTMAIL_REPO) / "tools")):
     if _p not in sys.path:

@@ -168,7 +168,7 @@ def serve(system_id: str, port: int, hooks_url: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="OpenClaw amail push bridge")
     ap.add_argument("--port", type=int, default=8799)
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     ap.add_argument("--hooks-url", default="http://127.0.0.1:18789/hooks/agent")
     args = ap.parse_args()
     system_id = args.system_id or _base.detect_system_id()

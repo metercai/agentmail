@@ -31,25 +31,25 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="绑定 dsh session 到 agentmail 地址")
     ap.add_argument("--session-id", default="", help="dsh session id(复用已存在 session);缺省生成 uuid")
     ap.add_argument("--preset", default="mail", help="dsh preset 名(agent 定义层,默认 mail)")
-    ap.add_argument("--manager", default="", help="manager_address(审批联系人);缺省读 AMAIL_MANAGER env")
-    ap.add_argument("--system-id", default=os.environ.get("AMAIL_SYSTEM_ID", ""))
+    ap.add_argument("--manager", default="", help="manager_address(审批联系人);缺省读 AIMAIL_MANAGER env")
+    ap.add_argument("--system-id", default=os.environ.get("AIMAIL_SYSTEM_ID", ""))
     args = ap.parse_args()
 
     system_id = args.system_id or _base.detect_system_id()
     gw = _base.load_gateway_config(system_id)
     if not gw:
         raise SystemExit(f"gateway config not found (agentmail_gateway.json) for {system_id} — run agentmail install first")
-    manager = args.manager or os.environ.get("AMAIL_MANAGER", "")
+    manager = args.manager or os.environ.get("AIMAIL_MANAGER", "")
     if not manager:
-        raise SystemExit("need --manager <addr> or AMAIL_MANAGER env (审批联系人)")
+        raise SystemExit("need --manager <addr> or AIMAIL_MANAGER env (审批联系人)")
 
     client = _tools._GatewayClient(gw["gateway_url"], gw.get("admin_key", ""))
     email = _base.email_for_agent("agent", gw["domain"], gw.get("system_name", ""))
     session_id = args.session_id or uuid.uuid4().hex
     webhook_secret = secrets.token_hex(32)
 
-    # 本地接收端点(mail-inbound,默认 9099;AMAIL_INBOUND_URL 可覆盖)
-    inbound_base = os.environ.get("AMAIL_INBOUND_URL", "http://127.0.0.1:9099")
+    # 本地接收端点(mail-inbound,默认 9099;AIMAIL_INBOUND_URL 可覆盖)
+    inbound_base = os.environ.get("AIMAIL_INBOUND_URL", "http://127.0.0.1:9099")
     local_webhook_url = inbound_base.rstrip("/") + "/agentmail/deliver"
     # 注册参数三态:push=bridge 公网入口 / pull=空 / 无 bridge=本地端点
     reg_url = _base.resolve_register_webhook_url(gw, local_webhook_url)

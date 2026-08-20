@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install-mcp.sh — 给 ~/.openclaw/openclaw.json 的 amail MCP server 块注入
-# 平台身份(AMAIL_AGENT_IDENTITY=openclaw/{version})。
+# 平台身份(AIMAIL_AGENT_IDENTITY=openclaw/{version})。
 #
 # 共享 tools/amail_mcp_server.py(兜底 MCP 服务,平台无关,零适配)。
 # 身份只能由调用接口层声明(启动层 env),server 零猜测——缺 env 时
@@ -12,7 +12,7 @@ REPO_DIR="$(cd "$(dirname "$(dirname "$(dirname "$0")")")" && pwd)"
 SERVER="$REPO_DIR/tools/amail_mcp_server.py"
 OC_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CFG="$OC_HOME/openclaw.json"
-AGENT_ID="${AMAIL_AGENT_ID:-main}"
+AGENT_ID="${AIMAIL_AGENT_ID:-main}"
 
 if [ ! -f "$SERVER" ]; then
   echo "MCP server not found: $SERVER" >&2
@@ -45,16 +45,16 @@ amail.setdefault("command", "python3")
 amail.setdefault("args", [server])
 amail.setdefault("transport", "stdio")
 env = amail.setdefault("env", {})
-env.setdefault("AMAIL_AGENT_ID", agent_id)
-env["AMAIL_AGENT_IDENTITY"] = identity
+env.setdefault("AIMAIL_AGENT_ID", agent_id)
+env["AIMAIL_AGENT_IDENTITY"] = identity
 
 with open(cfg_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
 print(f"updated mcp.servers.amail → {cfg_path}")
 print(f"  server: {server}")
-print(f"  AMAIL_AGENT_ID: {env['AMAIL_AGENT_ID']}")
-print(f"  AMAIL_AGENT_IDENTITY: {identity}")
+print(f"  AIMAIL_AGENT_ID: {env['AIMAIL_AGENT_ID']}")
+print(f"  AIMAIL_AGENT_IDENTITY: {identity}")
 PY
 
 echo "verify: python3 -c \"import json; d=json.load(open('$CFG')); print(d['mcp']['servers']['amail']['env'])\""

@@ -214,7 +214,7 @@ def main() -> int:
             email = email or pd.get("email", "")
         except Exception:
             pass
-    sid = sid or os.environ.get("SYSTEM_ID", "") or os.environ.get("AMAIL_SYSTEM_ID", "")
+    sid = sid or os.environ.get("SYSTEM_ID", "") or os.environ.get("AIMAIL_SYSTEM_ID", "")
 
     if not sid:
         print("✗ system_id 未解析(需 --system-id 或 {agent-home}/.agentmail 指针)")
@@ -227,7 +227,7 @@ def main() -> int:
         return 1
     cfg = json.loads(config_path.read_text())
     gw_url = cfg.get("gateway_url", "")
-    manager = args.manager or os.environ.get("AMAIL_MANAGER_ADDRESS") \
+    manager = args.manager or os.environ.get("AIMAIL_MANAGER_ADDRESS") \
         or os.environ.get("MANAGER") or cfg.get("manager_address", "")
 
     # 收件地址:--to > --agent > 指针 email > config 派生

@@ -125,8 +125,8 @@ def cmd_board(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="amail.py", description="agentmail CLI (OpenClaw)")
-    p.add_argument("--agent", default=os.environ.get("AMAIL_AGENT_ID", "main"),
-                   help="OpenClaw agentId (default: $AMAIL_AGENT_ID or main)")
+    p.add_argument("--agent", default=os.environ.get("AIMAIL_AGENT_ID", "main"),
+                   help="OpenClaw agentId (default: $AIMAIL_AGENT_ID or main)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("send", help="发送/回复邮件")
