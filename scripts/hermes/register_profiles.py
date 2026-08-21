@@ -2,10 +2,13 @@
 """Register existing Hermes profiles as amail addresses in the current system."""
 import sys, os, json
 from pathlib import Path
-# tools/ is the shared module root (works whether run from repo or copied tree)
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "hermes"))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+# 运行时核心(repo tools/ 优先 > pip aimail 兜底)+ scripts/(gateway_api)
+_SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from runtime_core import load_core, load_adapter  # noqa: E402
+load_core()
+load_adapter("hermes")
 
 def load_gateway_config():
     # Use SYSTEM_ID env var to locate config directly
@@ -26,8 +29,6 @@ def register_emails():
         print("no_config")
         return
 
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools"))
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "hermes"))
     from agentmail_hermes import _auto_register_email
     # 配置补全(幂等):platform_toolsets.webhook/cli 加 agentmail +
     # platforms.webhook enabled。断链根因曾多次出现:安装链从未写这些

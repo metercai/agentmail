@@ -19,10 +19,9 @@ from pathlib import Path
 _script_dir = str(Path(__file__).resolve().parent)
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
-# gateway_api 真源在 tools/(运行时核心目录)
-_tools_dir = str(Path(__file__).resolve().parent.parent / "tools")
-if _tools_dir not in sys.path:
-    sys.path.insert(0, _tools_dir)
+# 运行时核心(repo tools/ 优先 > pip aimail 兜底)
+from runtime_core import load_core  # noqa: E402
+load_core()
 
 from gateway_api import GatewayClient, create_api_key, gateway_config_path, load_gateway_config
 

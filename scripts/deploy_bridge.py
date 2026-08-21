@@ -2,10 +2,12 @@
 """Deploy aimail-bridge: bridge config, startup."""
 import sys, os, json, re, subprocess, socket, time
 
-# gateway_api 真源在 tools/(运行时核心目录);维护脚本从 scripts/ 调用时补路径
-_TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
-if _TOOLS not in sys.path:
-    sys.path.insert(0, _TOOLS)
+# 运行时核心(repo tools/ 优先 > pip aimail 兜底);维护脚本从 scripts/ 调用
+_SCRIPTS_DIR = str(os.path.dirname(os.path.abspath(__file__)))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from runtime_core import load_core  # noqa: E402
+load_core()
 from gateway_api import create_api_key
 
 def log_step(msg: str):

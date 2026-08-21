@@ -20,11 +20,11 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-# ── Hermes 运行时定位：本模块被 install-tools.sh 拷贝到 {hermes-agent}/tools/hermes/，
-#    共享核心（agentmail_base/tools/board）同目录。Hermes 以包形式加载工具
-#    （tools.*），顶层 import 需要 tools/ 目录在 sys.path 上——与 OpenClaw 侧
-#    amail_base.py 的 AGENTMAIL_REPO 引导对称。直接 import 本模块（独立脚本 /
-#    register_profiles.py）同样依赖此引导。
+# ── Hermes 运行时定位:本模块随捆绑落到 {install-root}/tools/hermes/,
+ #    共享核心(agentmail_base/tools/board/gateway_api)在父目录。Hermes 以包形式
+ #    加载工具(tools.*),顶层 import 需要 tools/ 目录在 sys.path 上——父目录
+ #    探测位置无关(捆绑 / pip site-packages / 仓库 dev 三态通用)。直接 import
+ #    本模块(独立脚本 / register_profiles.py)同样依赖此引导。
 _HERMES_TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _HERMES_TOOLS_DIR not in sys.path:
     sys.path.insert(0, _HERMES_TOOLS_DIR)

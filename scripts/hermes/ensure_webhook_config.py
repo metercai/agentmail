@@ -32,9 +32,6 @@ import sys
 import time
 from pathlib import Path
 
-# tools/ 是共享模块根(仓库内与拷贝树都可用)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "tools"))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "tools" / "hermes"))
 
 # webhook 会话默认工具集(用户批准);仅确保 agentmail 存在,其余不覆盖
 WEBHOOK_TOOLSET = ["agentmail", "web", "file", "terminal", "search", "delegation"]
