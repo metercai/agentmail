@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # install-skill.sh — 安装 agentmail SKILL 到 dsh 技能目录(逐字拷贝,零改写)
+# SKILL.md 源从包资源解析(pip aimail > 仓库 skills/,经 runtime_bundle.py)。
 #
 # 用法:
 #   bash install-skill.sh [DSH_HOME] [AIMAIL_REPO]
 #     DSH_HOME   默认 ~/.dsh(全局技能 <DSH_HOME>/skills/agentmail/)
-#     AIMAIL_REPO 默认 ~/agentmail(SKILL.md 源)
+#     AIMAIL_REPO 默认 ~/agentmail(runtime_bundle.py 所在仓库)
 set -euo pipefail
 
 DSH_HOME="${1:-$HOME/.dsh}"
 AIMAIL_REPO="${2:-$HOME/agentmail}"
 
-SRC="$AIMAIL_REPO/skills/SKILL.md"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUNTIME_BUNDLE="$SCRIPT_DIR/../runtime_bundle.py"
+
+SRC="$(python3 "$RUNTIME_BUNDLE" resource skills)/SKILL.md"
 DST_DIR="$DSH_HOME/skills/agentmail"
 
-[ -f "$SRC" ] || { echo "ERROR: SKILL.md not found: $SRC"; exit 1; }
+[ -f "$SRC" ] || { echo "ERROR: SKILL.md 源未找到(aimail 包未装且仓库 skills/ 缺失): $SRC"; exit 1; }
 
 mkdir -p "$DST_DIR"
 if [ -f "$DST_DIR/SKILL.md" ] && cmp -s "$SRC" "$DST_DIR/SKILL.md"; then

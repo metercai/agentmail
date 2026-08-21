@@ -1,114 +1,83 @@
-# Step 6: Install amail tools into Hermes
-# ═══════════════════════════════════════════════════════════════
-step_begin "$T_TOOLS"
+#!/usr/bin/env bash
+# install-tools.sh — 安装 aimail 运行时到 Hermes(捆绑 + toolsets 注册 + board role + skill)。
+#
+# 职责:
+#   1. 运行时捆绑(core+bootstrap+适配器,自包含+版本戳)→ $HERMES_DIR/tools
+#      (源 pip aimail > 仓库 tools/,经 runtime_bundle.py;运行与仓库路径解耦)
+#   2. toolsets.py 注册 _HERMES_CORE_TOOLS tool names(幂等)
+#   3. board role 文件 → ~/.agentmail/systems/${SYSTEM_ID}/board/role_prompt
+#   4. skill(SKILL.md+DESCRIPTION.md)→ 每个 Hermes profile 的 skills/agentmail
+#
+# 用法: install-tools.sh   (HERMES_DIR / SYSTEM_ID 经 env,CLI 传入)
+set -euo pipefail
 
+HERMES_DIR="${HERMES_DIR:-$HOME/.hermes/hermes-agent}"
+SYSTEM_ID="${SYSTEM_ID:-default}"
+TOOLS_DST="$HERMES_DIR/tools"
 TOOLSETS_PY="$HERMES_DIR/toolsets.py"
-# 仓库根（被 integrate.sh source 或独立运行时都可用）
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$(dirname "$(dirname "$0")")")" && pwd)}"
-# 部署清单：公共核心 3 文件（同目录保证相互 import）+ Hermes 适配层
-TOOLS_DST="$HERMES_DIR/tools/agentmail_tools.py"
-BASE_DST="$HERMES_DIR/tools/agentmail_base.py"
-BOARD_DST="$HERMES_DIR/tools/agentmail_board.py"
-ADAPTER_DST="$HERMES_DIR/tools/hermes/agentmail_hermes.py"
-TOOLS_PY="${TOOLS_PY:-$PROJECT_ROOT/tools/agentmail_tools.py}"
-BASE_PY="$PROJECT_ROOT/tools/agentmail_base.py"
-BOARD_PY="$PROJECT_ROOT/tools/agentmail_board.py"
-ADAPTER_PY="$PROJECT_ROOT/tools/hermes/agentmail_hermes.py"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RB="$REPO_DIR/scripts/runtime_bundle.py"
+PY="${PYTHON:-python3}"
 
-# Check if reinstall is needed: compare checksums
-NEED_COPY=false
-if [ ! -f "$TOOLS_DST" ]; then
-    NEED_COPY=true
-elif ! command -v md5sum >/dev/null 2>&1; then
-    # md5sum not available — fall back to mtime comparison
-    [ "$TOOLS_PY" -nt "$TOOLS_DST" ] && NEED_COPY=true
-else
-    SRC_MD5=$(md5sum "$TOOLS_PY" 2>/dev/null | cut -d' ' -f1)
-    DST_MD5=$(md5sum "$TOOLS_DST" 2>/dev/null | cut -d' ' -f1)
-    [ "$SRC_MD5" != "$DST_MD5" ] && NEED_COPY=true
+# 源解析(pip 包优先,仓库 tools/ 兜底);不可解析则降级跳过(hermes 未装时)
+if ! $PY "$RB" source >/dev/null 2>&1; then
+    echo "  [WARN] aimail 运行时源不可解析(pip 包 / 仓库 tools/),跳过 hermes tool 安装"
+    exit 0
 fi
 
-if [ "$NEED_COPY" = false ] && grep -q "send_mail" "$TOOLSETS_PY" 2>/dev/null; then
-    step_ok "$T_TOOLS_SKIP"
-else
-    # Copy the shared core files + Hermes adapter
-    mkdir -p "$HERMES_DIR/tools/hermes"
-    echo -n "  $T_TOOLS_COPY "
-    if cp "$TOOLS_PY" "$TOOLS_DST" 2>/dev/null \
-       && cp "$BASE_PY" "$BASE_DST" 2>/dev/null \
-       && cp "$BOARD_PY" "$BOARD_DST" 2>/dev/null \
-       && cp "$ADAPTER_PY" "$ADAPTER_DST" 2>/dev/null; then
-        echo "$T_OK"
-    else
-        echo "$T_FAILED"
-        step_fail "$T_TOOLS_FAIL"
-    fi
+# ── 1. 运行时捆绑(自包含 + 版本戳)──────────────────────────────────
+$PY "$RB" install hermes --dest "$TOOLS_DST"
+echo "  hermes tool bundle: $TOOLS_DST"
 
-    # Register in toolsets.py
-    echo -n "  $T_TOOLS_REG "
-    if [ -f "$TOOLSETS_PY" ]; then
-        python3 << PYEOF
-import re
-path = "$TOOLSETS_PY"
-with open(path) as f:
-    content = f.read()
-
+# ── 2. toolsets.py 注册 _HERMES_CORE_TOOLS tool names(幂等)──────────
+if [ -f "$TOOLSETS_PY" ]; then
+    $PY - "$TOOLSETS_PY" <<'PYEOF'
+import re, sys
+path = sys.argv[1]
+content = open(path, encoding="utf-8").read()
 needs_write = False
-
-# Add tool names to _HERMES_CORE_TOOLS if not present
-tool_names = ["send_mail", "manage_contacts", "contact_profile", "set_contact_profile", "email_summary", "set_email_summary"]
+tool_names = ["send_mail", "manage_contacts", "contact_profile",
+              "set_contact_profile", "email_summary", "set_email_summary"]
 for name in tool_names:
-    if f'"$name"' not in content.strip():
-        content = re.sub(r'(_HERMES_CORE_TOOLS\\s*=\\s*\\[)', r'\\1\\n    "' + name + '",', content, count=1)
+    if f'"{name}"' not in content:
+        content = re.sub(r'(_HERMES_CORE_TOOLS\s*=\s*\[)',
+                         r'\1\n    "' + name + '",', content, count=1)
         needs_write = True
-
 if needs_write:
-    with open(path, "w") as f:
-        f.write(content)
+    open(path, "w", encoding="utf-8").write(content)
+    print("  hermes toolsets: registered core tool names")
+else:
+    print("  hermes toolsets: already registered (skip)")
 PYEOF
-        echo "$T_OK"
-    else
-        echo "$T_SKIP"
-    fi
+else
+    echo "  hermes toolsets: $TOOLSETS_PY 缺失(跳过注册)"
 fi
 
-# ── Install a2a_board role files ──
-ROLE_SRC="$PROJECT_ROOT/board/role_prompt_en"
-ROLE_DST="$HOME/.agentmail/systems/${SYSTEM_ID:-default}/board/role_prompt"
+# ── 3. board role 文件 → systems/${SYSTEM_ID}/board/role_prompt ─────
+ROLE_SRC=$($PY "$RB" resource board-role)
+ROLE_DST="$HOME/.agentmail/systems/$SYSTEM_ID/board/role_prompt"
 mkdir -p "$ROLE_DST"
-if [ -d "$ROLE_SRC" ]; then
-    for f in "$ROLE_SRC"/*.md; do
-        [ -f "$f" ] || continue
-        fname=$(basename "$f")
-        if [ ! -f "$ROLE_DST/$fname" ] || [ "$f" -nt "$ROLE_DST/$fname" ]; then
-            cp "$f" "$ROLE_DST/$fname" 2>/dev/null
+for f in "$ROLE_SRC"/*.md; do
+    [ -f "$f" ] || continue
+    fname="$(basename "$f")"
+    if [ ! -f "$ROLE_DST/$fname" ] || [ "$f" -nt "$ROLE_DST/$fname" ]; then
+        cp "$f" "$ROLE_DST/$fname"
+    fi
+done
+echo "  hermes board role: $ROLE_DST"
+
+# ── 4. skill → 每个 Hermes profile 的 skills/agentmail ──────────────
+SKILL_SRC=$($PY "$RB" resource skills)
+for prof_dir in "$HOME/.hermes/profiles"/*/; do
+    [ -d "$prof_dir" ] || continue
+    prof_skill_dir="$prof_dir/skills/agentmail"
+    for fname in SKILL.md DESCRIPTION.md; do
+        [ -f "$SKILL_SRC/$fname" ] || continue
+        dst="$prof_skill_dir/$fname"
+        if [ ! -f "$dst" ] || ! cmp -s "$SKILL_SRC/$fname" "$dst"; then
+            mkdir -p "$prof_skill_dir"
+            cp "$SKILL_SRC/$fname" "$dst"
         fi
     done
-fi
-
-# Copy skill files to each Hermes profile
-if [ -f "$HERMES_DIR/profiles.py" ]; then
-    SKILL_SRC="$PROJECT_ROOT/skills"
-    for prof_dir in "$HOME/.hermes/profiles"/*/; do
-        [ -d "$prof_dir" ] || continue
-        prof_skill_dir="$prof_dir/skills/agentmail"
-        for f_pair in "SKILL.md:SKILL_SRC" "DESCRIPTION.md:DESC_SRC"; do
-            fname="${f_pair%%:*}"
-            var="${f_pair##*:}"
-            eval src="\$$var"
-            dst="$prof_skill_dir/$fname"
-            need_copy=false
-            if [ ! -f "$dst" ]; then
-                need_copy=true
-            else
-                src_md5=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
-                dst_md5=$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1)
-                [ "$src_md5" != "$dst_md5" ] && need_copy=true
-            fi
-            if [ "$need_copy" = true ]; then
-                mkdir -p "$prof_skill_dir"
-                cp "$src" "$dst" 2>/dev/null
-            fi
-        done
-    done
-fi
+done
+echo "  hermes skill: ~/.hermes/profiles/*/skills/agentmail"

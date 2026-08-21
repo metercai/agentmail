@@ -323,8 +323,9 @@ def cmd_install(args) -> int:
                              "--all", "--system-id", env.get("INTEGRATE_SYSTEM_ID", "")],
                             env=env3)
         if r == 0:
-            subprocess.call(["bash", str(SCRIPTS_DIR / "openclaw" / "install-skill.sh")], env=env3)
-        _ok("openclaw agents registered + skill installed")
+            for sh in ("install-skill.sh", "install-mcp.sh"):
+                subprocess.call(["bash", str(SCRIPTS_DIR / "openclaw" / sh)], env=env3)
+        _ok("openclaw agents registered + skill + mcp installed")
     else:  # deerflow
         # 补充注册(全部已有 agent 注册地址+路由)+ 入站补丁 + skill/mcp
         env3 = dict(os.environ)

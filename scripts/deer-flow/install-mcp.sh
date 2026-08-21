@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # install-mcp.sh — 写 DeerFlow extensions_config.json 的 amail MCP server 块
-# 复用共享 tools/amail_mcp_server.py(兜底 MCP 服务,平台无关,零适配)。
+# 复用共享 amail_mcp_server.py(兜底 MCP 服务,平台无关,零适配),指向
+# 自包含捆绑 ~/.agentmail/mcp/(经 runtime_bundle.py 安装,源 pip>repo,版本戳;
+# 与仓库路径解耦,改名/mv 不影响运行)。
 # 幂等: 已存在 amail server 块则更新路径/env,否则追加。
 set -e
 
-REPO_DIR="$(cd "$(dirname "$(dirname "$(dirname "$0")")")" && pwd)"
-SERVER="$REPO_DIR/tools/amail_mcp_server.py"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RB="$SCRIPT_DIR/../runtime_bundle.py"
+BUNDLE_DIR="${AIMAIL_MCP_BUNDLE:-$HOME/.agentmail/mcp}"
 DEER_FLOW_HOME="${DEER_FLOW_HOME:-$HOME/deer-flow}"
 CFG="${DEER_FLOW_EXT_CFG:-$DEER_FLOW_HOME/extensions_config.json}"
 AGENT_ID="${AIMAIL_AGENT_ID:-default}"
+
+# ── 1. 安装/更新 MCP 捆绑(源: pip aimail > 仓库 tools/)────────────
+python3 "$RB" install mcp --dest "$BUNDLE_DIR"
+SERVER="$BUNDLE_DIR/amail_mcp_server.py"
+[ -f "$SERVER" ] || { echo "MCP bundle missing: $SERVER" >&2; exit 1; }
 
 # 真实版本检测(只报检测结果,不猜测):backend/pyproject.toml 的 version
 DF_VERSION="unknown"
@@ -19,11 +27,6 @@ for pp in "$DEER_FLOW_HOME/backend/pyproject.toml" "$DEER_FLOW_HOME/pyproject.to
   fi
 done
 IDENTITY="deerflow/${DF_VERSION:-unknown}"
-
-if [ ! -f "$SERVER" ]; then
-  echo "MCP server not found: $SERVER" >&2
-  exit 1
-fi
 
 # 确保配置文件存在(缺失时以示例为模板)
 if [ ! -f "$CFG" ]; then
@@ -49,6 +52,7 @@ servers["amail"] = {
     "type": "stdio",
     "command": "python3",
     "args": [server],
+    # env 名与 server 读取一致(AIMAIL_*;旧 AMAIL_* 名已废弃)
     "env": {"AIMAIL_AGENT_ID": agent_id,
             "AIMAIL_AGENT_IDENTITY": identity},
     "tool_name_prefix": True,

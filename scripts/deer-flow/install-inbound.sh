@@ -1,39 +1,37 @@
 #!/usr/bin/env bash
-# install-inbound.sh — DeerFlow agentmail 入站补丁安装(仿 Hermes patch 模式,幂等)
+# install-inbound.sh — DeerFlow agentmail 入站捆绑安装(幂等)
 #
-# 背景(2026-08-18):DeerFlow 入站预处理并入其本地 gateway(8001)进程,
-# 需要在 deer-flow 源码实施代码 patch(上游 bytedance/deer-flow 不保留
-# 集成改动,git pull 保持干净)。本脚本负责:
-#   1. 拷贝共享 router 源 tools/deer-flow/agentmail_inbound.py
-#      → {DEER_FLOW_ROOT}/backend/app/gateway/routers/agentmail_inbound.py
-#   2. patch backend/app/gateway/app.py:import + include_router(幂等)
-#   3. 校验(语法 + 锚点存在)
+# 背景:DeerFlow 入站预处理并入其本地 gateway(8001)进程。宿主 app.py 经
+#   `from .routers import agentmail_inbound` 加载 router,router 必须留在
+#   backend/app/gateway/routers/ 且与共享 core 同目录(bootstrap case-3 自举)。
+#
+# 本脚本:
+#   1. 用 runtime_bundle.py 把 deer-flow 捆绑(core5 + router + 适配层,扁平)
+#      铺进宿主 routers/,落版本戳;源解析 pip 包 > 仓库 tools/(单一真源)。
+#   2. patch backend/app/gateway/app.py:import + include_router(幂等,宿主侧)。
+#   3. 校验(语法 + 锚点存在)。
 # 安装后需重启 8001 生效。
 #
 # 用法:
 #   bash install-inbound.sh [DEER_FLOW_ROOT] [AIMAIL_REPO]
 #     DEER_FLOW_ROOT  默认 ~/deer-flow
-#     AIMAIL_REPO      默认 ~/agentmail(agentmail_inbound.py 源所在)
+#     AIMAIL_REPO      默认 ~/agentmail(runtime_bundle.py 所在仓库)
 set -euo pipefail
 
 DEER_FLOW_ROOT="${1:-$HOME/deer-flow}"
 AIMAIL_REPO="${2:-$HOME/agentmail}"
 
-SRC_ROUTER="$AIMAIL_REPO/tools/deer-flow/agentmail_inbound.py"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUNTIME_BUNDLE="$SCRIPT_DIR/../runtime_bundle.py"
 G_DIR="$DEER_FLOW_ROOT/backend/app/gateway"   # 'gateway' 段变量化避免误匹配
-DST_ROUTER="$G_DIR/routers/agentmail_inbound.py"
+DST_ROUTERS="$G_DIR/routers"
 APP_PY="$G_DIR/app.py"
 
-[ -f "$SRC_ROUTER" ] || { echo "ERROR: source router not found: $SRC_ROUTER"; exit 1; }
+[ -f "$RUNTIME_BUNDLE" ] || { echo "ERROR: runtime_bundle.py not found: $RUNTIME_BUNDLE"; exit 1; }
 [ -f "$APP_PY" ] || { echo "ERROR: app.py not found: $APP_PY"; exit 1; }
 
-# ── 1. 拷贝 router(内容一致则跳过)──────────────────────────────────
-if [ -f "$DST_ROUTER" ] && cmp -s "$SRC_ROUTER" "$DST_ROUTER"; then
-    echo "  ✓ router 已就位且一致(跳过拷贝)"
-else
-    cp "$SRC_ROUTER" "$DST_ROUTER"
-    echo "  ✓ router 已拷贝 → $DST_ROUTER"
-fi
+# ── 1. 安装 deer-flow 捆绑到宿主 routers/(源 pip>repo,版本戳,漂移可检出)──
+python3 "$RUNTIME_BUNDLE" install deer-flow --dest "$DST_ROUTERS"
 
 # ── 2. patch app.py(幂等:import + include_router)────────────────────
 PY_PATCH=$(cat <<'PY'
@@ -73,7 +71,7 @@ PY
 "$DEER_FLOW_ROOT/backend/.venv/bin/python" -c "$PY_PATCH" "$APP_PY"
 
 # ── 3. 校验 ─────────────────────────────────────────────────────────
-"$DEER_FLOW_ROOT/backend/.venv/bin/python" -m py_compile "$DST_ROUTER" "$APP_PY"
+"$DEER_FLOW_ROOT/backend/.venv/bin/python" -m py_compile "$DST_ROUTERS/agentmail_inbound.py" "$APP_PY"
 grep -q "agentmail_inbound" "$APP_PY" || { echo "ERROR: app.py 锚点缺失"; exit 1; }
 echo "  ✓ 语法校验通过 + 锚点确认"
 echo ""
