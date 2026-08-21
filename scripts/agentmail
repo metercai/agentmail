@@ -221,6 +221,9 @@ def cmd_install(args) -> int:
 
     # 1) 激活/复用系统 → setup_system.py(env 契约);参数优先,缺失从 .env 取
     sys.path.insert(0, str(SCRIPTS_DIR))
+    _tools_dir = str(SCRIPTS_DIR.parent / "tools")
+    if _tools_dir not in sys.path:
+        sys.path.insert(0, _tools_dir)
     from gateway_api import load_gateway_config
     env = dict(os.environ)
     gw_url = args.gateway_url or _env_val("AIMAIL_URL", "https://amail.token.tm")

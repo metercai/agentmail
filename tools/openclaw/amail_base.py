@@ -19,24 +19,34 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# ── agentmail repo 定位 ────────────────────────────────────────
-_AGENTMAIL_REPO = os.environ.get(
-    "AGENTMAIL_REPO",
-    str(Path.home() / "agentmail"),
-)
+# ── aimail 运行时核心定位(bundle / site-packages / 仓库 dev;不再依赖仓库路径)──
+def _amail_bootstrap():
+    """定位 aimail 运行时核心,装配 sys.path。"""
+    import importlib.util as _ilu
+    _here = os.path.dirname(os.path.abspath(__file__))
+    for _d in (_here, os.path.dirname(_here)):
+        _p = os.path.join(_d, "_aimail_bootstrap.py")
+        if os.path.isfile(_p):
+            _spec = _ilu.spec_from_file_location("_aimail_bootstrap", _p)
+            if _spec is None or _spec.loader is None:
+                continue
+            _m = _ilu.module_from_spec(_spec)
+            sys.modules["_aimail_bootstrap"] = _m
+            _spec.loader.exec_module(_m)
+            _core = _m.ensure_core(_here)
+            if _core is None:
+                raise ImportError("aimail runtime core not found — set AIMAIL_RUNTIME_DIR")
+            return _core
+    raise ImportError("aimail runtime core not found — set AIMAIL_RUNTIME_DIR")
 
-# ── 目录与配置 ─────────────────────────────────────────────────
-# 公共共享代码已提升至 tools/（agentmail_base/tools/board——Hermes 与
-# OpenClaw 均从同一位置引用/拷贝，修订一处全局生效）
-_TOOLS = os.path.join(_AGENTMAIL_REPO, "tools")
-_SCRIPTS = os.path.join(_AGENTMAIL_REPO, "scripts")
-for _p in (_TOOLS, _SCRIPTS):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+
+_amail_bootstrap()
 
 import agentmail_base as _ab          # noqa: E402  (Hermes 复用层)
 import gateway_api as _gw             # noqa: E402  (标准 API 客户端)
 import agentmail_tools as _tools      # noqa: E402  (X-Agentmail-Agent 身份注入)
+# 共享核心目录(agentmail_board.py 等同目录)——取导入源实际位置,与部署形态无关
+_TOOLS = os.path.dirname(os.path.abspath(_ab.__file__))
 
 # ── X-Agentmail-Agent 身份注入 ───────────────────────────────────
 # 多 agent 共存机器上,agentmail_tools 的"目录存在"自动检测会把

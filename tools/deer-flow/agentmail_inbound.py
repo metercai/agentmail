@@ -33,12 +33,28 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agentmail", tags=["agentmail"])
 
-# ── agentmail 共享核心定位(与旧 bridge 同源;amail_base import 时自加 tools/scripts)──
-_AGENTMAIL_REPO = os.environ.get("AIMAIL_REPO") or str(Path.home() / "agentmail")
-for _p in (str(Path(_AGENTMAIL_REPO) / "tools" / "deer-flow"),
-           str(Path(_AGENTMAIL_REPO) / "tools")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# ── aimail 运行时核心定位(bundle / site-packages / 仓库 dev;不再依赖仓库路径)──
+def _amail_bootstrap():
+    """定位 aimail 运行时核心,装配 sys.path。"""
+    import importlib.util as _ilu
+    _here = os.path.dirname(os.path.abspath(__file__))
+    for _d in (_here, os.path.dirname(_here)):
+        _p = os.path.join(_d, "_aimail_bootstrap.py")
+        if os.path.isfile(_p):
+            _spec = _ilu.spec_from_file_location("_aimail_bootstrap", _p)
+            if _spec is None or _spec.loader is None:
+                continue
+            _m = _ilu.module_from_spec(_spec)
+            sys.modules["_aimail_bootstrap"] = _m
+            _spec.loader.exec_module(_m)
+            _core = _m.ensure_core(_here)
+            if _core is None:
+                raise ImportError("aimail runtime core not found — set AIMAIL_RUNTIME_DIR")
+            return _core
+    raise ImportError("aimail runtime core not found — set AIMAIL_RUNTIME_DIR")
+
+
+_amail_bootstrap()
 
 
 def _verify_hmac(secret: str, body: bytes, signature: str) -> bool:

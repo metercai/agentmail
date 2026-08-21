@@ -2,6 +2,10 @@
 """Deploy aimail-bridge: bridge config, startup."""
 import sys, os, json, re, subprocess, socket, time
 
+# gateway_api 真源在 tools/(运行时核心目录);维护脚本从 scripts/ 调用时补路径
+_TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+if _TOOLS not in sys.path:
+    sys.path.insert(0, _TOOLS)
 from gateway_api import create_api_key
 
 def log_step(msg: str):
