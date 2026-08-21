@@ -3,13 +3,11 @@
 # SKILL.md 源从包资源解析(pip aimail > 仓库 skills/,经 runtime_bundle.py)。
 #
 # 用法:
-#   bash install-skill.sh [DSH_HOME] [AIMAIL_REPO]
+#   bash install-skill.sh [DSH_HOME]
 #     DSH_HOME   默认 ~/.dsh(全局技能 <DSH_HOME>/skills/agentmail/)
-#     AIMAIL_REPO 默认 ~/agentmail(runtime_bundle.py 所在仓库)
 set -euo pipefail
 
 DSH_HOME="${1:-$HOME/.dsh}"
-AIMAIL_REPO="${2:-$HOME/agentmail}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNTIME_BUNDLE="$SCRIPT_DIR/../runtime_bundle.py"

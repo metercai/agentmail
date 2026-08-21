@@ -13,13 +13,11 @@
 # 安装后需重启 8001 生效。
 #
 # 用法:
-#   bash install-inbound.sh [DEER_FLOW_ROOT] [AIMAIL_REPO]
+#   bash install-inbound.sh [DEER_FLOW_ROOT]
 #     DEER_FLOW_ROOT  默认 ~/deer-flow
-#     AIMAIL_REPO      默认 ~/agentmail(runtime_bundle.py 所在仓库)
 set -euo pipefail
 
 DEER_FLOW_ROOT="${1:-$HOME/deer-flow}"
-AIMAIL_REPO="${2:-$HOME/agentmail}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNTIME_BUNDLE="$SCRIPT_DIR/../runtime_bundle.py"

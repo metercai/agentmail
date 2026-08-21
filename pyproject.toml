@@ -35,8 +35,8 @@ docs = ["markitdown>=0.0.1"]
 hermes = ["PyYAML>=6"]
 
 [project.urls]
-Homepage = "https://github.com/metercai/agentmail"
-Repository = "https://github.com/metercai/agentmail"
+Homepage = "https://github.com/metercai/aimail"
+Repository = "https://github.com/metercai/aimail"
 
 # ── Wheel: glue code from src/aimail + runtime files force-included from
 # their single source of truth (tools/, scripts/). Flat layout inside the

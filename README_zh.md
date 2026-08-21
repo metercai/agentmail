@@ -89,7 +89,7 @@ Webhook Push/Pull 双模式共存，适配各类网络环境中的多样化 Agen
 ### 一键集成
 
 ```bash
-git clone https://github.com/metercai/agentmail.git
+git clone https://github.com/metercai/aimail.git
 cd agentmail
 cp .env.example .env        # 填入 AIMAIL_URL、AIMAIL_PRODUCT_CODE（新系统）或
                             # AIMAIL_ADMIN_KEY（已有系统）、AIMAIL_MANAGER_ADDRESS；

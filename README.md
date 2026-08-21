@@ -84,7 +84,7 @@ One Profile supports multiple Personas (e.g. `sales.bob@domain` / `support.bob@d
 ### One-Command Integration
 
 ```bash
-git clone https://github.com/metercai/agentmail.git
+git clone https://github.com/metercai/aimail.git
 cd agentmail
 cp .env.example .env        # fill in AIMAIL_URL, AIMAIL_PRODUCT_CODE (new) or
                             # AIMAIL_ADMIN_KEY (existing), AIMAIL_MANAGER_ADDRESS;
